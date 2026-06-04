@@ -1,0 +1,40 @@
+module RubyMinify
+  class ClassScopedRenameMapping
+    type cpath = Array[Symbol]
+    type var_data = { read_nodes: Array[TypeProf::Core::AST::Node], write_nodes: Array[TypeProf::Core::AST::Node] }
+
+    @class_vars: Hash[cpath, Hash[Symbol, var_data]]
+    @cpath_to_canonical: Hash[cpath, cpath]
+    @excluded_cpaths: Set[cpath]
+    @node_short_names: Hash[[Integer, Integer], String]
+    @reserved_names: Hash[cpath, Set[String]]
+
+    def initialize: () -> void
+
+    def add_read_site: (cpath cpath, Symbol var_name, TypeProf::Core::AST::Node node) -> void
+
+    def add_write_site: (cpath cpath, Symbol var_name, TypeProf::Core::AST::Node node) -> void
+
+    def exclude_cpath: (cpath cpath) -> void
+
+    def reserve_name: (cpath cpath, String short_name) -> void
+
+    def each_canonical_cpath: () { (cpath) -> void } -> void
+
+    def merge_with_ancestor: (cpath child_cpath, cpath ancestor_cpath) -> void
+
+    def assign_short_names: () -> void
+
+    def node_mapping: () -> Hash[[Integer, Integer], String]
+
+    private
+
+    def name_prefix: () -> String
+
+    def keep_threshold: () -> Integer
+
+    def resolve_canonical: (cpath cpath) -> cpath
+
+    def var_entry: (cpath cpath, Symbol var_name) -> var_data
+  end
+end
