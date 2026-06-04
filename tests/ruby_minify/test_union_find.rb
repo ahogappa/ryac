@@ -135,4 +135,17 @@ class TestUnionFind < Minitest::Test
     root = @uf.root(0)
     100.times { |i| assert_equal root, @uf.root(i) }
   end
+
+  def test_lower_rank_tree_attaches_to_higher_rank_root
+    # Build a rank-1 tree rooted at :a (equal ranks promote the survivor's rank).
+    @uf.add(:a)
+    @uf.add(:b)
+    @uf.merge(:a, :b)
+    # :c is a rank-0 singleton; merging it into the taller tree must keep the
+    # taller tree's root (union by rank, lower rank attaches to higher).
+    @uf.add(:c)
+    @uf.merge(:c, :a)
+    assert_equal @uf.root(:a), @uf.root(:c)
+    assert_equal @uf.root(:a), @uf.root(:b)
+  end
 end
