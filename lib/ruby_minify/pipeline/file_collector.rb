@@ -51,7 +51,10 @@ module RubyMinify
         end
 
         @visited.add(file_path)
-        content = File.read(file_path)
+        # Ruby source defaults to UTF-8; reading with the ambient locale instead
+        # tags non-ASCII sources US-ASCII under a POSIX locale and every later
+        # String operation raises on the invalid bytes.
+        content = File.read(file_path, encoding: Encoding::UTF_8)
 
         # Parse and extract require statements
         require_nodes = extract_require_nodes(file_path, content)
@@ -283,7 +286,7 @@ module RubyMinify
 
       def load_rbs_from(dir)
         Dir.glob(File.join(dir, "**", "*.rbs")).each do |path|
-          @graph.rbs_files[path] = File.read(path)
+          @graph.rbs_files[path] = File.read(path, encoding: Encoding::UTF_8)
         end
       end
 
