@@ -120,6 +120,20 @@ class TestMethodCollection < Minitest::Test
     assert_equal 'A=Object.new;def A.long_method =42;puts A.long_method', result.code
   end
 
+  # === Standalone: bare `module_function` ===
+
+  # A bare `module_function` publishes each `def` as both an instance and a
+  # singleton method. Both must receive the same short name, or the internal
+  # call and the external `U.…` call end up pointing at different names.
+  def test_bare_module_function_variants_share_a_name
+    code = 'module U;module_function;def unwrap_value(n);n.is_a?(Array) ? n.first : n;end;' \
+           'def string_like?(n);unwrap_value(n).is_a?(String);end;end;puts U.string_like?(["x"])'
+    result = minify_at_level(code, 5)
+    assert_equal 'module U;module_function;def b(a) =a.is_a?(Array)?a[0] : a;' \
+                 'def a(a) =b(a).is_a?(String);end;puts U.a([?x])',
+                 result.code
+  end
+
   # === Standalone: undef (verify_output: false) ===
 
   def test_undef_methods_not_renamed

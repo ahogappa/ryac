@@ -36,9 +36,12 @@ module RubyMinify
       next unless event == :enter
       case node
       when TypeProf::Core::AST::AttrReaderMetaNode,
+           TypeProf::Core::AST::AttrWriterMetaNode,
            TypeProf::Core::AST::AttrAccessorMetaNode
         cpath = node.lenv.cref.cpath
         node.args.each { |sym| result[cpath] << :"@#{sym}" }
+      # attr_* only becomes a meta node in a class/module body with no receiver;
+      # anywhere else TypeProf still reports a plain call.
       when TypeProf::Core::AST::CallNode
         next unless %i[attr attr_reader attr_writer attr_accessor].include?(node.mid)
         next unless node.recv.nil?

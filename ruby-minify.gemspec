@@ -15,7 +15,7 @@ Gem::Specification.new do |spec|
                      "through scope-aware analysis."
   spec.homepage = "https://github.com/ahogappa/ruby-minify"
   spec.license = "MIT"
-  spec.required_ruby_version = ">= 4.0.2"
+  spec.required_ruby_version = ">= 3.2.0"
 
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = "https://github.com/ahogappa/ruby-minify"
@@ -34,6 +34,12 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   spec.add_dependency "prism", ">= 1.4.0"
-  spec.add_dependency "typeprof", ">= 0.31.0"
+  # 0.32.0 is the first release containing the constant-resolution fixes this
+  # gem relies on; 0.31.x aborts while analyzing some real-world sources.
+  spec.add_dependency "typeprof", ">= 0.32.0"
+  # rbs is a transitive dependency via typeprof, but the bound belongs here:
+  # from 4.1.0 on, TypeProf::Core::Service.new never finishes loading the core
+  # RBS files, which hangs every run that reaches the analysis stages (L2+).
+  spec.add_dependency "rbs", ">= 3.6.0", "< 4.1.0"
   spec.add_dependency "rubocop"
 end

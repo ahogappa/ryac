@@ -19,7 +19,7 @@ module RubyMinify
           method_key = [cpath, box.singleton, box.mid].freeze
           next if EXCLUDED_METHODS.include?(box.mid)
           @method_rename_mapping.add_method(method_key, node)
-          link_module_function_variant(genv, cpath, box.singleton, box.mid, method_key)
+          link_module_function_variant(genv, node, cpath, box.singleton, box.mid, method_key)
         end
       when TypeProf::Core::AST::AttrReaderMetaNode,
            TypeProf::Core::AST::AttrAccessorMetaNode
@@ -65,13 +65,20 @@ module RubyMinify
 
   private
 
-  # module_function creates both instance and singleton versions with no
-  # separate def. Detect this by checking if the complementary version
-  # exists in genv with call_boxes but no defs (defs=0 means no explicit
-  # `def self.method` — it's a module_function artifact).
-  def link_module_function_variant(genv, cpath, singleton, mid, method_key)
+  # module_function publishes a single `def` as both an instance and a
+  # singleton method, so the two must always be renamed together.
+  #
+  # The pair is identified by both entities pointing at the same def node —
+  # an explicit `def self.foo` alongside `def foo` yields two distinct nodes
+  # and must stay independent. The older "no defs but has call boxes" shape
+  # is still accepted: TypeProf only began recording a def for the singleton
+  # side of module_function in 0.32.0.
+  def link_module_function_variant(genv, node, cpath, singleton, mid, method_key)
     alt_entity = genv.resolve_method(cpath, !singleton, mid) rescue nil
-    return unless alt_entity && alt_entity.defs.size == 0 && alt_entity.method_call_boxes.size > 0
+    return unless alt_entity
+    shares_def_node = alt_entity.defs.to_a.any? { |d| d.node.equal?(node) }
+    call_only = alt_entity.defs.size == 0 && alt_entity.method_call_boxes.size > 0
+    return unless shares_def_node || call_only
     alt_key = [cpath, !singleton, mid].freeze
     @method_rename_mapping.add_method(alt_key, nil)
     @method_rename_mapping.merge_groups(method_key, alt_key)

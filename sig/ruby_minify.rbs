@@ -44,7 +44,7 @@ module RubyMinify
 
   private
 
-  def link_module_function_variant: (tp_genv genv, Array[Symbol] cpath, bool singleton, Symbol mid, method_key method_key) -> void
+  def link_module_function_variant: (tp_genv genv, tp_node node, Array[Symbol] cpath, bool singleton, Symbol mid, method_key method_key) -> void
   def resolve_def_receiver_cpath: (tp_node? receiver, tp_genv genv) -> Array[Symbol]?
   def build_cpath_from_prism_node: (Prism::Node node) -> Array[Symbol]?
   def merge_super_groups: (Array[[method_key, method_key]] super_merges) -> void
