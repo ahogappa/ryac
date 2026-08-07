@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'stringio'
+
 module RubyMinify
   module Pipeline
     # Stage 3: Analysis
@@ -47,7 +49,7 @@ module RubyMinify
       end
 
       def call(source)
-        prism_result, nodes, genv = setup_typeprof(source)
+        prism_result, nodes, genv = without_stdout_pollution { setup_typeprof(source) }
         @syntax_data = collect_syntax_data(prism_result.value)
 
         analyze_keywords_and_scopes(nodes, genv)
@@ -75,6 +77,23 @@ module RubyMinify
       end
 
       private
+
+      # TypeProf prints diagnostics for node types it does not recognize
+      # straight to stdout, which is also where the minified program is
+      # written. Divert anything it emits to stderr so it can never end up
+      # inside the output.
+      def without_stdout_pollution
+        original = $stdout
+        capture = StringIO.new
+        $stdout = capture
+        begin
+          yield
+        ensure
+          $stdout = original
+          noise = capture.string
+          $stderr.print(noise) unless noise.empty?
+        end
+      end
 
       def setup_typeprof(source)
         path = "(minify_concat)"

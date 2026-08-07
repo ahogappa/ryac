@@ -10,6 +10,7 @@ module RubyMinify
 
       private
 
+      def without_stdout_pollution: [T] () { () -> T } -> T
       def setup_typeprof: (ConcatenatedSource source) -> [Prism::ParseResult, TypeProf::Core::AST::Node, TypeProf::Core::GlobalEnv]
       def analyze_keywords_and_scopes: (TypeProf::Core::AST::Node nodes, TypeProf::Core::GlobalEnv genv) -> void
       def analyze_methods_phase: (TypeProf::Core::AST::Node nodes, TypeProf::Core::GlobalEnv genv) -> void
