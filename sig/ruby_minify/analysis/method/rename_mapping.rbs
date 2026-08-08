@@ -7,7 +7,7 @@ module RubyMinify
     include UnionFind
 
     type class_key = [Array[Symbol], bool]
-    type method_data = { def_nodes: Array[TypeProf::Core::AST::Node], call_sites: Array[TypeProf::Core::AST::Node] }
+    type method_data = { def_nodes: Array[Prism::Node], call_sites: Array[Prism::Node] }
 
     class MethodGroupEntry
       attr_accessor keys: Array[method_key]
@@ -26,19 +26,19 @@ module RubyMinify
 
     def initialize: () -> void
 
-    def add_method: (method_key method_key, TypeProf::Core::AST::Node? def_node) -> void
+    def add_method: (method_key method_key, Prism::Node? def_node) -> void
 
     def has_method?: (method_key method_key) -> bool
 
-    def add_call_site: (TypeProf::Core::AST::Node call_node, method_key method_key, has_receiver: bool, ?scope_id: scope_id?) -> void
+    def add_call_site: (Prism::Node call_node, method_key method_key, has_receiver: bool, ?scope_id: scope_id?) -> void
 
     def exclude_methods_by_mid: (Set[Symbol] mids) -> void
 
     def merge_all_by_mid: (Symbol mid) -> void
 
-    def add_unresolved_sites_for_mid: (Symbol mid, Array[TypeProf::Core::AST::Node] call_nodes) -> void
+    def add_unresolved_sites_for_mid: (Symbol mid, Array[Prism::Node] call_nodes) -> void
 
-    def assign_short_names: (scope_mapping_table scope_mappings, ?TypeProf::Core::GlobalEnv? genv) -> void
+    def assign_short_names: (scope_mapping_table scope_mappings, ?TypeOracle? oracle) -> void
     def verify_no_shadowing!: () -> void
 
     def short_name_for: ([Integer, Integer] node_location_key) -> String?
@@ -59,7 +59,7 @@ module RubyMinify
 
     def build_scope_vars: (scope_mapping_table scope_mappings) -> Hash[scope_id, Set[String]]
 
-    def build_existing_method_names: (TypeProf::Core::GlobalEnv genv) -> [Hash[class_key, Set[String]], Hash[Symbol, Hash[class_key, Set[class_key]]]]
+    def build_existing_method_names: (TypeOracle oracle) -> [Hash[class_key, Set[String]], Hash[Symbol, Hash[class_key, Set[class_key]]]]
 
     def find_shortest_name: (Array[method_key] keys, Hash[Integer, Set[String]] scope_vars, Hash[class_key, Set[String]] existing_methods) -> String
 

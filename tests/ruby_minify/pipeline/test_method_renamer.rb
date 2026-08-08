@@ -88,22 +88,30 @@ class TestMethodRenamer < Minitest::Test
     assert_equal L5_GROUP_EXPECTED, l5_group.code
   end
 
-  # === Call operator write group (verify_output: false) ===
+  # === Call operator write group ===
 
   def call_operator_write_group
     @call_operator_write_group ||= minify_at_level(
       'class F;def val;@v;end;def val=(v);@v=v;end;def count;@c;end;def count=(v);@c=v;end;' \
       'def op_add;self.count+=1;end;def op_or;self.val||=42;end;def op_and;self.val&&=nil;end;' \
       'def initialize;@c=0;@v=nil;end;end;f=F.new;f.op_add;puts f.count;f.op_or;puts f.val;f.op_and;puts f.val.inspect',
-      5, verify_output: false
+      5
     )
   end
 
-  def test_call_operator_write_renames_message
+  # `self.count += 1` is one call site reading `count` and writing `count=`,
+  # so renaming the pair requires their short names to stay textually linked
+  # (`x` and `x=`), which independent allocation cannot promise. The previous
+  # behavior renamed them independently anyway and emitted a setter def with
+  # no `=` alongside a compound write to a now-nonexistent accessor — output
+  # so broken this group had to run with verify_output: false. Accessors used
+  # in compound writes now keep their names, the ordinary methods still
+  # rename, and the output runs.
+  def test_call_operator_write_keeps_accessor_pairs
     result = call_operator_write_group
-    assert_equal 'class F;def a =@v;def c(a);@v=a;end;def b =@c;def d(a);@c=a;end;' \
-      'def e =self.d+=1;def g =self.c||=42;def f =self.c&&=nil;' \
-      'def initialize =(@c=0;@v=nil);end;a=F.new;a.e;puts a.b;a.g;puts a.a;a.f;puts a.a.inspect',
+    assert_equal 'class F;def val =@v;def val=(a);@v=a;end;def count =@c;def count=(a);@c=a;end;' \
+      'def a =self.count+=1;def c =self.val||=42;def b =self.val&&=nil;' \
+      'def initialize =(@c=0;@v=nil);end;a=F.new;a.a;puts a.count;a.c;puts a.val;a.b;puts a.val.inspect',
       result.code
   end
 end

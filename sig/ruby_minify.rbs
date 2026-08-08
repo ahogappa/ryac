@@ -27,84 +27,91 @@ module RubyMinify
   include RenameInvariants
 
   # --- analysis/method/collection.rb ---
-  def collect_method_definitions: (tp_node nodes, tp_genv genv) -> void
-  def resolve_method_calls: (tp_genv genv, tp_node nodes) -> void
-  def scan_dynamic_method_references: (tp_node nodes) -> void
-  def collect_visibility_modifier_methods: (tp_node nodes) -> void
-  def collect_alias_undef_methods: (tp_node nodes) -> void
+  def collect_method_definitions: (Prism::Node prism_root) -> void
+  def resolve_method_calls: () -> void
+  def scan_dynamic_method_references: (Prism::Node prism_root) -> void
+  def collect_visibility_modifier_methods: (Prism::Node prism_root) -> void
+  def collect_alias_undef_methods: (Prism::Node prism_root) -> void
 
   DYNAMIC_DISPATCH_METHODS: Array[Symbol]
   VISIBILITY_MODIFIERS: Array[Symbol]
+  UNRESOLVED_CALL_NODES: Array[Class]
 
   private
 
-  def link_module_function_variant: (tp_genv genv, tp_node node, Array[Symbol] cpath, bool singleton, Symbol mid, method_key method_key) -> void
-  def resolve_def_receiver_cpath: (tp_node? receiver, tp_genv genv) -> Array[Symbol]?
+  def link_module_function_variant: (Prism::DefNode def_node, Array[Symbol] cpath, bool singleton, Symbol mid, method_key method_key) -> void
+  def resolve_def_receiver_cpath: (Prism::Node? receiver) -> Array[Symbol]?
   def build_cpath_from_prism_node: (Prism::Node node) -> Array[Symbol]?
   def merge_super_groups: (Array[[method_key, method_key]] super_merges) -> void
-  def merge_polymorphic_groups: (Hash[Integer, Array[method_key]] call_node_to_keys) -> void
-  def merge_unresolved_calls: (tp_node nodes, Set[Integer] resolved_call_ids, tp_genv genv) -> void
-  def classify_unresolved_call: (Symbol mid, tp_node node, tp_genv genv) -> Symbol
+  def merge_polymorphic_groups: (Hash[location_key, Array[method_key]] call_node_to_keys) -> void
+  def merge_unresolved_calls: (Set[location_key] resolved_call_keys) -> void
+  def classify_unresolved_call: (Symbol mid, Prism::Node node) -> Symbol
 
   public
 
   # --- analysis/constant/collection.rb ---
-  def syntax_data: (tp_node subnode) -> Hash[Symbol, syntax_value]
-  def normalize_const_write_cpath: (tp_node node) -> Array[Symbol]
-  def resolve_constant_read_cpath: (tp_node node) -> Array[Symbol]?
-  def build_constant_path: (tp_node node) -> Array[Symbol]?
-  def resolve_constant_path: (tp_node const_node, tp_node current_scope) -> Array[Symbol]?
-  def exclude_private_constants: (tp_node nodes) -> void
-  def collect_constants: (tp_node nodes) -> void
-  def count_constant_references: (tp_node nodes) -> void
-  def increment_constant_read_usage: (tp_node node) -> void
-  def resolve_user_defined_cpath: (tp_node node) -> Array[Symbol]?
-  def augment_constant_counts_via_typeprof: (tp_genv genv) -> void
-  def collect_external_references: (tp_node nodes) -> void
+  CONST_SIMPLE_WRITE_NODES: Array[Class]
+  CONST_COMPOUND_WRITE_NODES: Array[Class]
+  CONST_PATH_WRITE_NODES: Array[Class]
+  CONST_READ_LIKE_NODES: Array[Class]
+
+  def class_definition_cpath: (Prism::ClassNode | Prism::ModuleNode node, Array[Symbol] nesting) -> Array[Symbol]?
+  def const_write_cpath: (Prism::Node node, Array[Symbol] nesting) -> Array[Symbol]?
+  def syntactic_const_segments: (Prism::Node node) -> Array[Symbol]
+  def struct_definition_write?: (Prism::Node node) -> bool
+  def collect_constants: (Prism::Node prism_root) -> void
+  def exclude_private_constants: (Prism::Node prism_root) -> void
+  def count_constant_references: (Prism::Node prism_root) -> void
+  def increment_constant_read_usage: (Prism::Node node) -> void
+  def resolve_user_defined_cpath: (Prism::Node node) -> Array[Symbol]?
+  def resolve_superclass_path: (Prism::Node superclass_node, Array[Symbol] class_cpath) -> Array[Symbol]?
+  def augment_constant_counts_via_oracle: () -> void
+  def collect_external_references: (Prism::Node prism_root) -> void
 
   # --- analysis/ivar/collection.rb ---
   DYNAMIC_IVAR_METHODS: Array[Symbol]
+  ATTR_DECLARATION_METHODS: Array[Symbol]
+  IVAR_WRITE_NODES: Array[Class]
 
-  def collect_ivar_definitions: (tp_node nodes, Hash[Array[Symbol], Set[Symbol]] attr_backed) -> void
-  def collect_attr_backed_ivars: (tp_node nodes) -> Hash[Array[Symbol], Set[Symbol]]
-  def scan_dynamic_ivar_access: (tp_node nodes) -> void
-  def merge_inherited_ivars: (tp_genv genv) -> void
-  def reserve_attr_ivar_names: (tp_node nodes) -> void
-  def coordinate_attr_renames: (tp_node nodes, tp_genv genv, Hash[[Integer, Integer], String] rename_map, Hash[[Integer, Integer], String] attr_ivar_entries) -> Hash[[Integer, Integer], Hash[Symbol, String]]
+  def collect_ivar_definitions: (Prism::Node prism_root, Hash[Array[Symbol], Set[Symbol]] attr_backed) -> void
+  def collect_attr_backed_ivars: (Prism::Node prism_root) -> Hash[Array[Symbol], Set[Symbol]]
+  def scan_dynamic_ivar_access: (Prism::Node prism_root) -> void
+  def merge_inherited_ivars: () -> void
+  def reserve_attr_ivar_names: (Prism::Node prism_root) -> void
+  def coordinate_attr_renames: (Prism::Node prism_root, Hash[location_key, String] rename_map, Hash[location_key, String] attr_ivar_entries) -> Hash[location_key, Hash[Symbol, String]]
 
   # --- analysis/keyword/collection.rb ---
-  def collect_keyword_info: (tp_node nodes, tp_genv genv) -> void
+  def collect_keyword_info: (Prism::Node prism_root) -> void
 
   private
 
-  def collect_keyword_call_sites: (tp_genv genv, tp_node nodes) -> void
-  def forwards_parameters_to_super?: (tp_node def_node) -> bool
-  def exclude_unresolved_keyword_calls: (tp_node nodes, tp_genv genv) -> void
+  def each_attr_declaration: (Prism::Node prism_root, Array[Symbol] methods, ?require_class_body: bool) { (Prism::CallNode, Array[Symbol], bool, Symbol) -> void } -> void
+  def def_keyword_names: (Prism::DefNode def_node) -> Array[Symbol]
+  def def_keyword_rest?: (Prism::DefNode def_node) -> bool
+  def collect_keyword_call_sites: (Prism::Node prism_root) -> void
+  def forwards_parameters_to_super?: (Prism::DefNode def_node) -> bool
+  def exclude_unresolved_keyword_calls: (Prism::Node prism_root) -> void
 
   public
 
   # --- analysis/cvar/collection.rb ---
   DYNAMIC_CVAR_METHODS: Array[Symbol]
+  CVAR_WRITE_NODES: Array[Class]
 
-  def collect_cvar_definitions: (tp_node nodes) -> void
-  def scan_dynamic_cvar_access: (tp_node nodes) -> void
-  def merge_inherited_cvars: (tp_genv genv) -> void
+  def collect_cvar_definitions: (Prism::Node prism_root) -> void
+  def scan_dynamic_cvar_access: (Prism::Node prism_root) -> void
+  def merge_inherited_cvars: () -> void
 
   # --- analysis/gvar/collection.rb ---
-  def collect_gvar_definitions: (tp_node nodes) -> void
-  def scan_alias_globals: (tp_node nodes) -> void
+  GVAR_NODES: Array[Class]
+
+  def collect_gvar_definitions: (Prism::Node prism_root) -> void
+  def scan_alias_globals: (Prism::Node prism_root) -> void
 
   # --- analysis/method_aliases.rb ---
   METHOD_ALIASES: Hash[Symbol, Symbol]
   METHOD_TRANSFORMS: Hash[[Symbol, Symbol], String]
 
   # --- analysis/method_aliasing.rb ---
-  def resolve_method_aliases_and_transforms: (tp_node nodes, tp_genv genv) -> [Hash[[Integer, Integer], Symbol], Hash[[Integer, Integer], String]]
-
-  private
-
-  def alias_available_on_receiver?: (tp_node? recv_node, Symbol shorter_method, tp_genv genv) -> bool
-  def method_available_on_type?: (tp_genv genv, TypeProf::Core::ModuleEntity mod, bool singleton, Symbol method_name) -> bool
-  def receiver_matches_type?: (tp_node? recv_node, Symbol type_name, tp_genv genv) -> bool
-  def mod_is_or_inherits?: (tp_genv genv, TypeProf::Core::ModuleEntity mod, TypeProf::Core::ModuleEntity target) -> bool
+  def resolve_method_aliases_and_transforms: (Prism::Node prism_root) -> [Hash[location_key, Symbol], Hash[location_key, String]]
 end

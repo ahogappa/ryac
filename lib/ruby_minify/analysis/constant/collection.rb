@@ -1,140 +1,174 @@
 # frozen_string_literal: true
 
 module RubyMinify
-  def syntax_data(subnode)
-    if subnode.respond_to?(:location)
-      loc = subnode.location
-      @syntax_data[[loc.start_line, loc.start_column]] || {}
+  # Assignments that write a bare constant name; the constant lives directly
+  # under the lexical nesting.
+  CONST_SIMPLE_WRITE_NODES = [
+    Prism::ConstantWriteNode,
+    Prism::ConstantTargetNode,
+    Prism::ConstantOperatorWriteNode,
+    Prism::ConstantOrWriteNode,
+    Prism::ConstantAndWriteNode
+  ].freeze
+
+  # Compound assignments (`X += 1`, `X ||= v`) read the constant as well as
+  # write it; both halves count as usage.
+  CONST_COMPOUND_WRITE_NODES = [
+    Prism::ConstantOperatorWriteNode,
+    Prism::ConstantOrWriteNode,
+    Prism::ConstantAndWriteNode
+  ].freeze
+
+  # Assignments that write through a qualified path (`Foo::X = 1`).
+  CONST_PATH_WRITE_NODES = [
+    Prism::ConstantPathWriteNode,
+    Prism::ConstantPathTargetNode,
+    Prism::ConstantPathOperatorWriteNode,
+    Prism::ConstantPathOrWriteNode,
+    Prism::ConstantPathAndWriteNode
+  ].freeze
+
+  # Nodes that constitute a constant read at their own position: plain reads,
+  # qualified chains (every level), the read half of compound writes, and a
+  # qualified target in multiple assignment (`Foo::A, b = ary`).
+  CONST_READ_LIKE_NODES = [
+    Prism::ConstantReadNode,
+    Prism::ConstantPathNode,
+    Prism::ConstantPathTargetNode,
+    *CONST_COMPOUND_WRITE_NODES
+  ].freeze
+
+  # The fully-qualified path a class/module definition creates, or nil when
+  # the written path is not static.
+  def class_definition_cpath(node, nesting)
+    segments, absolute = Nesting.path_segments(node.constant_path)
+    return nil unless segments
+
+    absolute ? segments : nesting + segments
+  end
+
+  # The path a constant assignment defines, or nil when it is not static
+  # (`self::X`, `expr::X`). A plain path write that repeats the lexical
+  # nesting (`Foo::Bar::X = 1` inside module Foo; module Bar) names the same
+  # constant the bare write would, so the doubled prefix is dropped; compound
+  # and multiple-target writes concatenate as written.
+  def const_write_cpath(node, nesting)
+    case node
+    when *CONST_SIMPLE_WRITE_NODES
+      nesting + [node.name]
+    when Prism::ConstantPathWriteNode
+      segments, absolute = Nesting.path_segments(node.target)
+      return nil unless segments
+      return segments if absolute
+
+      segments.take(nesting.size) == nesting ? segments : nesting + segments
     else
-      cr = subnode.code_range
-      @syntax_data[[cr.first.lineno, cr.first.column]] || {}
+      target = node.is_a?(Prism::ConstantPathTargetNode) ? node : node.target
+      segments, absolute = Nesting.path_segments(target)
+      return nil unless segments
+
+      absolute ? segments : nesting + segments
     end
   end
 
-  # Normalize ConstantWriteNode's static_cpath to remove path doubling.
-  # TypeProf produces scope + explicit_path for ConstantPathWriteNode (e.g., Foo::Bar::X inside
-  # module Foo; module Bar gives [:Foo,:Bar,:Foo,:Bar,:X]). This strips the redundant scope prefix.
-  def normalize_const_write_cpath(node)
-    static_cpath = node.static_cpath
-    explicit_len = syntax_data(node)[:cpath_write_segments]
-    return static_cpath unless explicit_len
-
-    scope_len = static_cpath.length - explicit_len
-    return static_cpath if scope_len <= 0
-
-    scope = static_cpath[0...scope_len]
-    explicit_path = static_cpath[scope_len..]
-
-    if explicit_path.length >= scope.length && explicit_path[0...scope.length] == scope
-      scope + explicit_path[scope.length..]
+  # The constant path as written, without any resolution — partial when the
+  # chain hangs off a dynamic root (`expr::CONST` gives just [:CONST]).
+  def syntactic_const_segments(node)
+    case node
+    when Prism::ConstantPathNode, Prism::ConstantPathTargetNode
+      segments = [node.name]
+      current = node.parent
+      while current.is_a?(Prism::ConstantPathNode)
+        segments.unshift(current.name)
+        current = current.parent
+      end
+      segments.unshift(current.name) if current.is_a?(Prism::ConstantReadNode)
+      segments
     else
-      static_cpath
+      [node.name]
     end
   end
 
-  # Resolve a ConstantReadNode to its fully-qualified path using TypeProf's analysis result.
-  # For class/module constants: static_ret.cpath provides the path directly.
-  # For value constants (cpath=nil): derive path from cdef.defs[].static_cpath.
-  # For qualified refs with cbase (Foo::CONST): derive from cbase.static_ret.cpath + cname.
-  def resolve_constant_read_cpath(node)
-    return nil unless node.is_a?(TypeProf::Core::AST::ConstantReadNode)
+  # `X = Struct.new(:a)` / `X = Data.define(:a)` with all-symbol arguments is
+  # a class definition to type analysis, not a value assignment; such
+  # constants are left entirely alone (not registered, counted, or renamed).
+  def struct_definition_write?(node)
+    return false unless node.is_a?(Prism::ConstantWriteNode) || node.is_a?(Prism::ConstantPathWriteNode)
 
-    static_ret = node.static_ret rescue nil
-    return nil unless static_ret
-    return nil unless static_ret.respond_to?(:cpath)
+    value = node.value
+    return false unless value.is_a?(Prism::CallNode)
 
-    # Class/module constants have cpath directly
-    return static_ret.cpath if static_ret.cpath
+    receiver = value.receiver
+    return false unless receiver.is_a?(Prism::ConstantReadNode)
+    return false unless (value.name == :new && receiver.name == :Struct) ||
+                        (value.name == :define && receiver.name == :Data)
 
-    # Value constants: derive from cdef's definition node
-    cdef = static_ret.respond_to?(:cdef) ? static_ret.cdef : nil
-    if cdef&.respond_to?(:defs)
-      cdef.defs.each do |d|
-        return d.static_cpath if d.respond_to?(:static_cpath) && d.static_cpath
-      end
-    end
+    arguments = value.arguments&.arguments
+    return false unless arguments
 
-    # Qualified refs (Foo::CONST): derive from cbase chain
-    if node.cbase
-      cbase_cpath = resolve_constant_read_cpath(node.cbase)
-      return cbase_cpath + [node.cname] if cbase_cpath
-    end
-
-    nil
+    arguments.all? { |arg| arg.is_a?(Prism::SymbolNode) }
   end
 
-  def build_constant_path(node)
-    return nil unless node.is_a?(TypeProf::Core::AST::ConstantReadNode)
-
-    path = [node.cname]
-    current = node.cbase
-    while current
-      if current.is_a?(TypeProf::Core::AST::ConstantReadNode)
-        path.unshift(current.cname)
-        current = current.cbase
-      else
-        break
-      end
-    end
-    path
-  end
-
-  def resolve_constant_path(const_node, current_scope)
-    return nil unless const_node.is_a?(TypeProf::Core::AST::ConstantReadNode)
-
-    if const_node.cbase
-      return build_constant_path(const_node)
-    end
-
-    simple_name = const_node.cname
-    scope = current_scope.is_a?(Array) ? current_scope[0...-1] : []
-    full_path = scope + [simple_name]
-    return full_path if @constant_mapping&.user_defined_path?(full_path)
-
-    nil
-  end
-
-  def exclude_private_constants(nodes)
-    nodes.body.traverse do |event, node|
-      next unless event == :enter
-      next unless node.is_a?(TypeProf::Core::AST::CallNode)
-      next unless %i[private_constant public_constant].include?(node.mid)
-      cpath = node.lenv.cref.cpath
-      node.positional_args&.each do |arg|
-        next unless arg.is_a?(TypeProf::Core::AST::SymbolNode)
-        @constant_mapping.exclude_path(cpath + [arg.lit])
-      end
-    end
-  end
-
-  def collect_constants(nodes)
-    nodes.body.traverse do |event, node|
-      next unless event == :enter
+  def collect_constants(prism_root)
+    Nesting.each(prism_root) do |node, nesting, singleton, in_def|
       case node
-      when TypeProf::Core::AST::ClassNode
-        @constant_mapping.add_definition_with_path(node.static_cpath, definition_type: :class)
-      when TypeProf::Core::AST::ModuleNode
-        @constant_mapping.add_definition_with_path(node.static_cpath, definition_type: :module)
-      when TypeProf::Core::AST::ConstantWriteNode
+      when Prism::ClassNode, Prism::ModuleNode
+        cpath = class_definition_cpath(node, nesting)
+        next unless cpath
+
+        type = node.is_a?(Prism::ClassNode) ? :class : :module
+        @constant_mapping.add_definition_with_path(cpath, definition_type: type)
+      when *CONST_SIMPLE_WRITE_NODES, *CONST_PATH_WRITE_NODES
         # Skip constants defined inside `class << self` — they live on the
         # metaclass and cannot be accessed as Foo::X, so alias declarations
-        # would fail at runtime.
-        next if node.lenv&.cref&.scope_level == :metaclass
-        @constant_mapping.add_definition_with_path(normalize_const_write_cpath(node), definition_type: :value)
+        # would fail at runtime. (An assignment inside a def body there is a
+        # plain assignment and still registers.)
+        next if singleton && !in_def
+        next if struct_definition_write?(node)
+
+        cpath = const_write_cpath(node, nesting)
+        @constant_mapping.add_definition_with_path(cpath, definition_type: :value) if cpath
       end
     end
   end
 
-  def count_constant_references(nodes)
-    nodes.body.traverse do |event, node|
-      next unless event == :enter
+  def exclude_private_constants(prism_root)
+    Nesting.each(prism_root) do |node, nesting, _singleton, _in_def|
+      next unless node.is_a?(Prism::CallNode)
+      next unless %i[private_constant public_constant].include?(node.name)
+
+      node.arguments&.arguments&.each do |arg|
+        next unless arg.is_a?(Prism::SymbolNode)
+
+        @constant_mapping.exclude_path(nesting + [arg.unescaped.to_sym])
+      end
+    end
+  end
+
+  def count_constant_references(prism_root)
+    Nesting.each(prism_root) do |node, nesting, _singleton, _in_def|
       case node
-      when TypeProf::Core::AST::ClassNode, TypeProf::Core::AST::ModuleNode
-        @constant_mapping.increment_usage_by_path(node.static_cpath)
-      when TypeProf::Core::AST::ConstantReadNode
+      when Prism::ClassNode, Prism::ModuleNode
+        cpath = class_definition_cpath(node, nesting)
+        @constant_mapping.increment_usage_by_path(cpath) if cpath
+      when Prism::ConstantReadNode, Prism::ConstantPathNode
         increment_constant_read_usage(node)
-      when TypeProf::Core::AST::ConstantWriteNode
-        @constant_mapping.increment_usage_by_path(normalize_const_write_cpath(node))
+      when *CONST_COMPOUND_WRITE_NODES
+        increment_constant_read_usage(node)
+        @constant_mapping.increment_usage_by_path(nesting + [node.name])
+      when Prism::ConstantWriteNode, Prism::ConstantTargetNode
+        next if struct_definition_write?(node)
+
+        @constant_mapping.increment_usage_by_path(nesting + [node.name])
+      when Prism::ConstantPathTargetNode
+        increment_constant_read_usage(node)
+        cpath = const_write_cpath(node, nesting)
+        @constant_mapping.increment_usage_by_path(cpath) if cpath
+      when *CONST_PATH_WRITE_NODES
+        next if struct_definition_write?(node)
+
+        cpath = const_write_cpath(node, nesting)
+        @constant_mapping.increment_usage_by_path(cpath) if cpath
       end
     end
   end
@@ -144,55 +178,72 @@ module RubyMinify
     if user_path
       @constant_mapping.increment_usage_by_path(user_path)
     else
-      @constant_mapping.increment_usage(node.cname)
+      @constant_mapping.increment_usage(node.name)
     end
   end
 
   def resolve_user_defined_cpath(node)
-    [resolve_constant_read_cpath(node), build_constant_path(node)].each do |cpath|
+    [@oracle.resolve_constant_read(node), syntactic_const_segments(node)].each do |cpath|
       return cpath if cpath && @constant_mapping.user_defined_path?(cpath)
     end
     nil
   end
 
-  def augment_constant_counts_via_typeprof(genv)
-    @constant_mapping.each_user_defined_path do |cpath|
-      ve = genv.resolve_const(cpath) rescue nil
-      next unless ve && ve.respond_to?(:read_boxes)
-      typeprof_count = ve.read_boxes.size
-      current_count = @constant_mapping.usage_count_for_path(cpath)
-      if typeprof_count > current_count
-        @constant_mapping.set_usage_count_by_path(cpath, typeprof_count)
-      end
+  # Where a superclass reference lands, for the alias patcher. A qualified
+  # path is taken as written; a bare name is meaningful only when it names a
+  # user-defined constant in the class's enclosing scope.
+  def resolve_superclass_path(superclass_node, class_cpath)
+    case superclass_node
+    when Prism::ConstantPathNode
+      syntactic_const_segments(superclass_node)
+    when Prism::ConstantReadNode
+      full_path = class_cpath[0...-1] + [superclass_node.name]
+      full_path if @constant_mapping&.user_defined_path?(full_path)
     end
   end
 
-  def collect_external_references(nodes)
-    cbase_ids = Set.new
+  # A closed-world walk sees each textual reference once, but type analysis
+  # can record more read sites than the text shows (reads reached through
+  # resolution rather than spelling). Take whichever count is higher, so a
+  # rename is never judged unprofitable on an undercount.
+  def augment_constant_counts_via_oracle
+    @constant_mapping.each_user_defined_path do |cpath|
+      oracle_count = @oracle.constant_read_count(cpath)
+      current_count = @constant_mapping.usage_count_for_path(cpath)
+      @constant_mapping.set_usage_count_by_path(cpath, oracle_count) if oracle_count > current_count
+    end
+  end
+
+  def collect_external_references(prism_root)
+    counted_prefix_ids = Set.new
     prefix_counts = Hash.new(0)
 
-    nodes.body.traverse do |event, node|
-      next unless event == :enter
-      next unless node.is_a?(TypeProf::Core::AST::ConstantReadNode)
-      next if cbase_ids.include?(node.object_id)
+    Nesting.each(prism_root) do |node, _nesting, _singleton, _in_def|
+      case node
+      when *CONST_READ_LIKE_NODES
+        next if counted_prefix_ids.include?(node.object_id)
 
-      # Mark cbase chain to avoid double-counting sub-paths
-      current = node.cbase
-      while current.is_a?(TypeProf::Core::AST::ConstantReadNode)
-        cbase_ids << current.object_id
-        current = current.cbase
-      end
+        # Mark the prefix chain so sub-paths are not double-counted.
+        current = case node
+                  when Prism::ConstantPathNode, Prism::ConstantPathTargetNode then node.parent
+                  end
+        while current.is_a?(Prism::ConstantPathNode) || current.is_a?(Prism::ConstantReadNode)
+          counted_prefix_ids << current.object_id
+          current = current.is_a?(Prism::ConstantPathNode) ? current.parent : nil
+        end
 
-      full_path = build_constant_path(node)
-      resolved_cpath = resolve_constant_read_cpath(node)
-      is_user_defined = (full_path && @constant_mapping.user_defined_path?(full_path)) ||
-                        (resolved_cpath && @constant_mapping.user_defined_path?(resolved_cpath))
-      effective_path = resolved_cpath
-      if effective_path && !is_user_defined
+        full_path = syntactic_const_segments(node)
+        resolved_cpath = @oracle.resolve_constant_read(node)
+        is_user_defined = @constant_mapping.user_defined_path?(full_path) ||
+                          (resolved_cpath && @constant_mapping.user_defined_path?(resolved_cpath))
+        effective_path = resolved_cpath
+        next unless effective_path && !is_user_defined
         next if effective_path.size < 2
-        next if full_path && @constant_mapping.has_user_defined_prefix?(full_path)
+        next if @constant_mapping.has_user_defined_prefix?(full_path)
+
         prefix = effective_path[0...-1]
         next if @constant_mapping.user_defined_path?(prefix)
+
         prefix_counts[prefix] += 1
       end
     end

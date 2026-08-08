@@ -4,14 +4,14 @@ module RubyMinify
 
     def initialize: () -> void
     def add_keyword_def: (method_key method_key, Symbol keyword_sym) -> void
-    def add_keyword_call: (method_key method_key, Symbol keyword_sym, Prism::SymbolNode symbol_node, TypeProf::Core::AST::Node val_node) -> void
+    def add_keyword_call: (method_key method_key, Symbol keyword_sym, Prism::SymbolNode symbol_node, Prism::Node val_node) -> void
     def exclude_method: (method_key method_key) -> void
     def merge_groups: (method_key key1, method_key key2) -> void
     def each_method_key: () { (method_key) -> void } -> void
     def assign_short_names: () -> void
     def node_mapping: () -> Hash[location_key, String]
-    def def_node_mapping: (Hash[method_key, Array[TypeProf::Core::AST::DefNode]] def_node_registry) -> Hash[location_key, Hash[Symbol, String]]
-    def build_variable_hints: () { (TypeProf::Core::AST::Node) -> scope_id? } -> Hash[scope_id, Hash[Symbol, String]]
+    def def_node_mapping: (Hash[method_key, Array[Prism::DefNode]] def_node_registry) -> Hash[location_key, Hash[Symbol, String]]
+    def build_variable_hints: () { (Prism::Node) -> scope_id? } -> Hash[scope_id, Hash[Symbol, String]]
 
     private
 

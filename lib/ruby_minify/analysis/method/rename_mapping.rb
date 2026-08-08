@@ -84,7 +84,7 @@ module RubyMinify
       call_nodes.each { |node| add_call_site(node, target_key, has_receiver: true) }
     end
 
-    def assign_short_names(scope_mappings, genv = nil)
+    def assign_short_names(scope_mappings, oracle = nil)
       groups = Hash.new { |h, k| h[k] = [] }
       @methods.each_key { |key| groups[uf_root(key)] << key }
 
@@ -92,7 +92,7 @@ module RubyMinify
       group_entries.sort_by! { |entry| -(entry.original_name.length * entry.total_occurrences) }
 
       scope_vars = build_scope_vars(scope_mappings)
-      existing_methods, hierarchy = genv ? build_existing_method_names(genv) : [{}, {}]
+      existing_methods, hierarchy = oracle ? build_existing_method_names(oracle) : [{}, {}]
 
       group_entries.each do |entry|
         short_name = find_shortest_name(entry.keys, scope_vars, existing_methods)
@@ -192,7 +192,7 @@ module RubyMinify
       scope_vars
     end
 
-    def build_existing_method_names(genv)
+    def build_existing_method_names(oracle)
       result = {}
       includers = Hash.new { |h, k| h[k] = Set.new }
       ancestors_map = {}
@@ -202,16 +202,15 @@ module RubyMinify
         next if result.key?(cache_key)
         names = Set.new
         ancestor_keys = []
-        mod = genv.resolve_cpath(key[0]) rescue nil
-        next unless mod
-        genv.each_superclass(mod, key[1]) do |ancestor_mod, s|
-          ancestor_mod.methods[s]&.each_key { |mid| names << mid.to_s }
-          ancestor_key = [ancestor_mod.cpath, s]
+        oracle.each_ancestor_methods(key[0], key[1]) do |ancestor_cpath, s, mids|
+          mids.each { |mid| names << mid }
+          ancestor_key = [ancestor_cpath, s]
           if ancestor_key != cache_key
             includers[ancestor_key] << cache_key
             ancestor_keys << ancestor_key
           end
         end
+        next if names.empty? && ancestor_keys.empty?
         result[cache_key] = names
         ancestors_map[cache_key] = ancestor_keys
       end

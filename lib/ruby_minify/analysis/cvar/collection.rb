@@ -7,43 +7,44 @@ module RubyMinify
     remove_class_variable
   ].freeze
 
-  def collect_cvar_definitions(nodes)
-    nodes.traverse do |event, node|
-      next unless event == :enter
+  CVAR_WRITE_NODES = [
+    Prism::ClassVariableWriteNode,
+    Prism::ClassVariableTargetNode,
+    Prism::ClassVariableOperatorWriteNode,
+    Prism::ClassVariableOrWriteNode,
+    Prism::ClassVariableAndWriteNode
+  ].freeze
+
+  def collect_cvar_definitions(prism_root)
+    Nesting.each(prism_root) do |node, cpath, _singleton|
       case node
-      when TypeProf::Core::AST::ClassVariableReadNode
-        cpath = node.lenv.cref.cpath
-        @cvar_rename_mapping.add_read_site(cpath, node.var, node)
-      when TypeProf::Core::AST::ClassVariableWriteNode
-        cpath = node.lenv.cref.cpath
-        @cvar_rename_mapping.add_write_site(cpath, node.var, node)
+      when Prism::ClassVariableReadNode
+        @cvar_rename_mapping.add_read_site(cpath, node.name, node)
+      when *CVAR_WRITE_NODES
+        @cvar_rename_mapping.add_write_site(cpath, node.name, node)
       end
     end
   end
 
-  def scan_dynamic_cvar_access(nodes)
-    nodes.traverse do |event, node|
-      next unless event == :enter
-      next unless node.is_a?(TypeProf::Core::AST::CallNode)
-      next unless DYNAMIC_CVAR_METHODS.include?(node.mid)
+  def scan_dynamic_cvar_access(prism_root)
+    Nesting.each(prism_root) do |node, cpath, _singleton|
+      next unless node.is_a?(Prism::CallNode)
+      next unless DYNAMIC_CVAR_METHODS.include?(node.name)
 
-      recv = node.recv
-      if recv.nil? || recv.is_a?(TypeProf::Core::AST::SelfNode)
-        cpath = node.lenv.cref.cpath
+      recv = node.receiver
+      if recv.nil? || recv.is_a?(Prism::SelfNode)
         @cvar_rename_mapping.exclude_cpath(cpath)
       end
     end
   end
 
-  def merge_inherited_cvars(genv)
+  def merge_inherited_cvars
     cpaths = []
     @cvar_rename_mapping.each_canonical_cpath { |c| cpaths << c }
     cpaths.each do |cpath|
-      mod = genv.resolve_cpath(cpath) rescue nil
-      next unless mod
-      genv.each_superclass(mod, false) do |ancestor_mod, _|
-        next if ancestor_mod.cpath == cpath
-        @cvar_rename_mapping.merge_with_ancestor(cpath, ancestor_mod.cpath)
+      @oracle.each_ancestor_cpath(cpath, false) do |ancestor_cpath|
+        next if ancestor_cpath == cpath
+        @cvar_rename_mapping.merge_with_ancestor(cpath, ancestor_cpath)
       end
     end
   end

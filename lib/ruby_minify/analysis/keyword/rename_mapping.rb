@@ -129,13 +129,13 @@ module RubyMinify
 
           entries.each do |entry|
             val_node = entry[:val_node]
-            next unless val_node.is_a?(TypeProf::Core::AST::LocalVariableReadNode)
+            next unless val_node.is_a?(Prism::LocalVariableReadNode)
 
             scope_id = yield(val_node)
             next unless scope_id
 
             hints[scope_id] ||= {}
-            hints[scope_id][val_node.var] ||= final_name
+            hints[scope_id][val_node.name] ||= final_name
           end
         end
       end

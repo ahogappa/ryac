@@ -5,26 +5,13 @@ require_relative '../../../test_helper'
 class TestKeywordRenameMapping < Minitest::Test
   include FakeNodeSupport
 
-  # Fake node that satisfies is_a?(TypeProf::Core::AST::LocalVariableReadNode)
-  # for testing build_variable_hints
-  class FakeLocalVarNode < TypeProf::Core::AST::LocalVariableReadNode
-    attr_reader :var
-
-    def initialize(id, var:, cref_id:)
-      @id = id
-      @var = var
-      @cref_id = cref_id
-    end
-
-    def code_range = FakeNodeSupport::FakeCodeRange.new(@id)
-
-    def lenv
-      return nil unless @cref_id
-      FakeNodeSupport::FakeLenv.new(@cref_id)
-    end
-  end
+# build_variable_hints recognizes Prism local reads; parse one for real.
+def prism_local_read(name)
+  Prism.parse("#{name} = 1; #{name}").value.statements.body.last
+end
 
   def setup
+    @scope_id = 1
     @mapping = RubyMinify::KeywordRenameMapping.new
   end
 
@@ -156,25 +143,23 @@ class TestKeywordRenameMapping < Minitest::Test
   def test_build_variable_hints_with_renamed_keyword
     key = [:MyClass, false, :my_method]
     @mapping.add_keyword_def(key, :long_keyword)
-    val_node = FakeLocalVarNode.new(200, var: :my_var, cref_id: 1)
+    val_node = prism_local_read(:my_var)
     3.times { |i| @mapping.add_keyword_call(key, :long_keyword, fake_node(100 + i), val_node) }
     @mapping.assign_short_names
 
-    hints = @mapping.build_variable_hints { |n| n.lenv&.cref&.object_id }
-    cref_oid = val_node.lenv.cref.object_id
-    assert_equal "a", hints[cref_oid][:my_var]
+    hints = @mapping.build_variable_hints { |_n| @scope_id }
+    assert_equal "a", hints[@scope_id][:my_var]
   end
 
   def test_build_variable_hints_short_keyword_uses_original_name
     key = [:MyClass, false, :my_method]
     @mapping.add_keyword_def(key, :ab)
-    val_node = FakeLocalVarNode.new(200, var: :x, cref_id: 1)
+    val_node = prism_local_read(:x)
     3.times { |i| @mapping.add_keyword_call(key, :ab, fake_node(100 + i), val_node) }
     @mapping.assign_short_names
 
-    hints = @mapping.build_variable_hints { |n| n.lenv&.cref&.object_id }
-    cref_oid = val_node.lenv.cref.object_id
-    assert_equal "ab", hints[cref_oid][:x]
+    hints = @mapping.build_variable_hints { |_n| @scope_id }
+    assert_equal "ab", hints[@scope_id][:x]
   end
 
   def test_build_variable_hints_skips_non_local_var_nodes
@@ -183,30 +168,31 @@ class TestKeywordRenameMapping < Minitest::Test
     3.times { |i| @mapping.add_keyword_call(key, :long_keyword, fake_node(100 + i), fake_node(200 + i)) }
     @mapping.assign_short_names
 
-    hints = @mapping.build_variable_hints { |n| n.lenv&.cref&.object_id }
+    hints = @mapping.build_variable_hints { |_n| @scope_id }
     assert_equal({}, hints)
   end
 
   def test_build_variable_hints_skips_excluded_method
     key = [:MyClass, false, :my_method]
     @mapping.add_keyword_def(key, :long_keyword)
-    val_node = FakeLocalVarNode.new(200, var: :my_var, cref_id: 1)
+    val_node = prism_local_read(:my_var)
     3.times { |i| @mapping.add_keyword_call(key, :long_keyword, fake_node(100 + i), val_node) }
     @mapping.exclude_method(key)
     @mapping.assign_short_names
 
-    hints = @mapping.build_variable_hints { |n| n.lenv&.cref&.object_id }
+    hints = @mapping.build_variable_hints { |_n| @scope_id }
     assert_equal({}, hints)
   end
 
-  def test_build_variable_hints_skips_node_without_cref
+  def test_build_variable_hints_skips_node_without_scope
+    @scope_id = nil
     key = [:MyClass, false, :my_method]
     @mapping.add_keyword_def(key, :long_keyword)
-    val_node = FakeLocalVarNode.new(200, var: :my_var, cref_id: nil)
+    val_node = prism_local_read(:my_var)
     3.times { |i| @mapping.add_keyword_call(key, :long_keyword, fake_node(100 + i), val_node) }
     @mapping.assign_short_names
 
-    hints = @mapping.build_variable_hints { |n| n.lenv&.cref&.object_id }
+    hints = @mapping.build_variable_hints { |_n| @scope_id }
     assert_equal({}, hints)
   end
 end

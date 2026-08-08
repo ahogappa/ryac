@@ -1,36 +1,47 @@
 # frozen_string_literal: true
 
 module RubyMinify
-  def collect_keyword_info(nodes, genv)
+  def collect_keyword_info(prism_root)
     @keyword_def_node_registry = {}
     @keyword_forwarding_super_keys = Set.new
 
-    nodes.traverse do |event, node|
-      next unless event == :enter && node.is_a?(TypeProf::Core::AST::DefNode)
+    Nesting.each(prism_root) do |node, cpath, sclass_singleton, _in_def|
+      next unless node.is_a?(Prism::DefNode)
 
-      req_kw = node.req_keywords || []
-      opt_kw = node.opt_keywords || []
-      next if req_kw.empty? && opt_kw.empty?
+      keywords = def_keyword_names(node)
+      next if keywords.empty?
 
-      node.boxes(:mdef) do |box|
-        method_key = [box.cpath, box.singleton, box.mid].freeze
-        (req_kw + opt_kw).each { |sym| @keyword_rename_mapping.add_keyword_def(method_key, sym) }
+      singleton = sclass_singleton || !node.receiver.nil?
+      method_key = [cpath, singleton, node.name].freeze
+      keywords.each { |sym| @keyword_rename_mapping.add_keyword_def(method_key, sym) }
 
-        @keyword_def_node_registry[method_key] ||= []
-        @keyword_def_node_registry[method_key] << node
+      @keyword_def_node_registry[method_key] ||= []
+      @keyword_def_node_registry[method_key] << node
 
-        if node.rest_keywords
-          @keyword_rename_mapping.exclude_method(method_key)
-        end
+      @keyword_rename_mapping.exclude_method(method_key) if def_keyword_rest?(node)
 
-        @keyword_forwarding_super_keys << method_key if forwards_parameters_to_super?(node)
-      end
+      @keyword_forwarding_super_keys << method_key if forwards_parameters_to_super?(node)
     end
 
-    collect_keyword_call_sites(genv, nodes)
+    collect_keyword_call_sites(prism_root)
   end
 
   private
+
+  def def_keyword_names(def_node)
+    params = def_node.parameters
+    return [] unless params
+
+    names = []
+    params.keywords&.each do |kw|
+      names << kw.name if kw.respond_to?(:name)
+    end
+    names
+  end
+
+  def def_keyword_rest?(def_node)
+    def_node.parameters&.keyword_rest.is_a?(Prism::KeywordRestParameterNode)
+  end
 
   # A bare `super` forwards this method's parameters to the parent by name, so
   # the keyword names have to keep matching the parent's signature. When the
@@ -40,37 +51,34 @@ module RubyMinify
   def forwards_parameters_to_super?(def_node)
     found = false
     walk = lambda do |n|
-      return if found || n.nil?
+      return if found || !n.is_a?(Prism::Node)
       # A nested def has its own parameters; its `super` is not about ours.
-      return if n.is_a?(TypeProf::Core::AST::DefNode)
-      if n.is_a?(TypeProf::Core::AST::ForwardingSuperNode)
+      return if n.is_a?(Prism::DefNode)
+      if n.is_a?(Prism::ForwardingSuperNode)
         found = true
         return
       end
-      n.each_subnode { |child| walk.call(child) }
+      n.compact_child_nodes.each { |child| walk.call(child) }
     end
     walk.call(def_node.body)
     found
   end
 
-  def collect_keyword_call_sites(genv, nodes)
+  def collect_keyword_call_sites(prism_root)
     call_node_to_keys = Hash.new { |h, k| h[k] = [] }
     super_merges = []
     zero_call_keys = []
     has_super_target = Set.new
 
     @keyword_rename_mapping.each_method_key do |key|
-      method_entity = genv.resolve_method(key[0], key[1], key[2])
-      next unless method_entity
-
       call_count = 0
-      method_entity.method_call_boxes.each do |cb|
-        cn = cb.node
+      splat_seen = false
 
-        if cn.is_a?(TypeProf::Core::AST::SuperNode) ||
-           cn.is_a?(TypeProf::Core::AST::ForwardingSuperNode)
-          child_cpath = cn.lenv.cref.cpath
-          child_key = [child_cpath, key[1], key[2]].freeze
+      @oracle.each_caller(key[0], key[1], key[2]) do |info|
+        next if splat_seen
+
+        if info.super
+          child_key = [info.caller_cpath, key[1], key[2]].freeze
           super_merges << [child_key, key]
           has_super_target << key
           next
@@ -78,24 +86,22 @@ module RubyMinify
 
         call_count += 1
 
-        kw_args = cn.respond_to?(:keyword_args) ? cn.keyword_args : nil
-        next unless kw_args
-        next unless kw_args.is_a?(TypeProf::Core::AST::HashNode)
+        next unless info.keyword_entries
 
-        if kw_args.keys.any?(&:nil?)
+        if info.keyword_splat
           @keyword_rename_mapping.exclude_method(key)
-          break
+          splat_seen = true
+          next
         end
 
-        kw_args.keys.zip(kw_args.vals).each do |sym_node, val_node|
-          next unless sym_node.is_a?(TypeProf::Core::AST::SymbolNode)
-          @keyword_rename_mapping.add_keyword_call(key, sym_node.lit, sym_node, val_node)
+        info.keyword_entries.each do |sym_node, val_node|
+          @keyword_rename_mapping.add_keyword_call(key, sym_node.unescaped.to_sym, sym_node, val_node)
         end
 
-        call_node_to_keys[cn.object_id] << key
+        call_node_to_keys[AstUtils.location_key(info.prism_node)] << key
       end
 
-      zero_call_keys << key if call_count == 0
+      zero_call_keys << key if !splat_seen && call_count == 0 && @oracle.method_known?(key[0], key[1], key[2])
     end
 
     super_merges.each do |child_key, parent_key|
@@ -123,27 +129,27 @@ module RubyMinify
       @keyword_rename_mapping.exclude_method(key)
     end
 
-    exclude_unresolved_keyword_calls(nodes, genv)
+    exclude_unresolved_keyword_calls(prism_root)
   end
 
-  def exclude_unresolved_keyword_calls(nodes, genv)
+  # A call to a keyword-taking method that type inference never connected to
+  # its target would keep its written keywords while the def's got renamed —
+  # so any such call disqualifies the whole method name.
+  def exclude_unresolved_keyword_calls(prism_root)
     keyword_mids = Set.new
     @keyword_rename_mapping.each_method_key { |key| keyword_mids << key[2] }
     return if keyword_mids.empty?
 
-    resolved_call_ids = Set.new
+    resolved_site_keys = Set.new
     @keyword_rename_mapping.each_method_key do |key|
-      me = genv.resolve_method(key[0], key[1], key[2])
-      next unless me
-      me.method_call_boxes.each { |cb| resolved_call_ids << cb.node.object_id }
+      @oracle.each_call_site_key(key[0], key[1], key[2]) { |loc| resolved_site_keys << loc }
     end
 
     unresolved_mids = Set.new
-    nodes.traverse do |event, node|
-      next unless event == :enter
-      next unless node.is_a?(TypeProf::Core::AST::CallNode)
-      if keyword_mids.include?(node.mid) && !resolved_call_ids.include?(node.object_id)
-        unresolved_mids << node.mid
+    AstUtils.each_node(prism_root) do |node|
+      next unless node.is_a?(Prism::CallNode)
+      if keyword_mids.include?(node.name) && !resolved_site_keys.include?(AstUtils.location_key(node))
+        unresolved_mids << node.name
       end
     end
 

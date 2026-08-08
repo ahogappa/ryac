@@ -251,6 +251,14 @@ module RubyMinify
       end
     end
 
+    # Depth-first over every node. The shared primitive for analyses that
+    # need the whole tree without caring about scope or nesting context.
+    def self.each_node(node, &block)
+      return unless node.is_a?(Prism::Node)
+      yield node
+      node.compact_child_nodes.each { |child| each_node(child, &block) }
+    end
+
     # The Prism node a TypeProf node was built from — the other half of the
     # seam between the two trees, and the only supported way across it.
     #

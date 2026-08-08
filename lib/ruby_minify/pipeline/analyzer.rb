@@ -50,21 +50,23 @@ module RubyMinify
 
       def call(source)
         prism_result, nodes, genv = without_stdout_pollution { setup_typeprof(source) }
-        @syntax_data = collect_syntax_data(prism_result.value)
+        @prism_root = prism_result.value
+        @oracle = TypeOracle.new(genv, nodes)
+        @syntax_data = collect_syntax_data(@prism_root)
 
-        analyze_keywords_and_scopes(prism_result.value, nodes, genv)
-        analyze_methods_phase(nodes, genv)
-        method_alias_map, method_transform_map = resolve_method_aliases_and_transforms(nodes, genv)
-        analyze_variables_phase(nodes, genv)
+        analyze_keywords_and_scopes(@prism_root)
+        analyze_methods_phase
+        method_alias_map, method_transform_map = resolve_method_aliases_and_transforms(@prism_root)
+        analyze_variables_phase
 
         rename_map = @method_rename_mapping.node_mapping.dup
         attr_ivar_entries = {}
-        attr_rename_map = coordinate_attr_renames(nodes, genv, rename_map, attr_ivar_entries)
+        attr_rename_map = coordinate_attr_renames(@prism_root, rename_map, attr_ivar_entries)
 
-        analyze_constants_phase(nodes, genv)
-        local_rename_entries = precompute_rename_entries(nodes)
-        precompute_constant_resolution(nodes)
-        precompute_meta_nodes(nodes)
+        analyze_constants_phase
+        local_rename_entries = precompute_rename_entries
+        precompute_constant_resolution
+        precompute_meta_nodes
 
         build_analysis_result(
           prism_result, source, rename_map, method_alias_map, method_transform_map,
@@ -115,11 +117,11 @@ module RubyMinify
         [prism_result, nodes, service.genv]
       end
 
-      def analyze_keywords_and_scopes(prism_root, nodes, genv)
+      def analyze_keywords_and_scopes(prism_root)
         @local_scopes = LocalScopes.new(prism_root)
 
         @keyword_rename_mapping = KeywordRenameMapping.new
-        collect_keyword_info(nodes, genv)
+        collect_keyword_info(prism_root)
         @keyword_rename_mapping.assign_short_names
 
         # Inline rather than through locals: a local passed as the same-named
@@ -135,47 +137,47 @@ module RubyMinify
         @scope_mappings = @local_scopes.scope_mappings
       end
 
-      def analyze_methods_phase(nodes, genv)
+      def analyze_methods_phase
         @method_rename_mapping = MethodRenameMapping.new
-        collect_method_definitions(nodes, genv)
-        resolve_method_calls(genv, nodes)
-        collect_alias_undef_methods(nodes)
-        scan_dynamic_method_references(nodes)
-        collect_visibility_modifier_methods(nodes)
-        @method_rename_mapping.assign_short_names(@scope_mappings, genv)
+        collect_method_definitions(@prism_root)
+        resolve_method_calls
+        collect_alias_undef_methods(@prism_root)
+        scan_dynamic_method_references(@prism_root)
+        collect_visibility_modifier_methods(@prism_root)
+        @method_rename_mapping.assign_short_names(@scope_mappings, @oracle)
       end
 
-      def analyze_variables_phase(nodes, genv)
+      def analyze_variables_phase
         @ivar_rename_mapping = IvarRenameMapping.new
-        attr_backed = collect_attr_backed_ivars(nodes)
-        collect_ivar_definitions(nodes, attr_backed)
-        scan_dynamic_ivar_access(nodes)
-        merge_inherited_ivars(genv)
-        reserve_attr_ivar_names(nodes)
+        attr_backed = collect_attr_backed_ivars(@prism_root)
+        collect_ivar_definitions(@prism_root, attr_backed)
+        scan_dynamic_ivar_access(@prism_root)
+        merge_inherited_ivars
+        reserve_attr_ivar_names(@prism_root)
         @ivar_rename_mapping.assign_short_names
 
         @cvar_rename_mapping = CvarRenameMapping.new
-        collect_cvar_definitions(nodes)
-        scan_dynamic_cvar_access(nodes)
-        merge_inherited_cvars(genv)
+        collect_cvar_definitions(@prism_root)
+        scan_dynamic_cvar_access(@prism_root)
+        merge_inherited_cvars
         @cvar_rename_mapping.assign_short_names
 
         @gvar_rename_mapping = GvarRenameMapping.new
-        collect_gvar_definitions(nodes)
-        scan_alias_globals(nodes)
+        collect_gvar_definitions(@prism_root)
+        scan_alias_globals(@prism_root)
         @gvar_rename_mapping.assign_short_names
       end
 
-      def analyze_constants_phase(nodes, genv)
+      def analyze_constants_phase
         @constant_mapping = ConstantRenameMapping.new
-        collect_constants(nodes)
-        exclude_private_constants(nodes)
-        count_constant_references(nodes)
-        augment_constant_counts_via_typeprof(genv)
-        collect_external_references(nodes)
+        collect_constants(@prism_root)
+        exclude_private_constants(@prism_root)
+        count_constant_references(@prism_root)
+        augment_constant_counts_via_oracle
+        collect_external_references(@prism_root)
       end
 
-      def precompute_rename_entries(_nodes)
+      def precompute_rename_entries
         @local_scopes.def_param_names.each do |key, names|
           (@syntax_data[key] ||= {})[:param_names] = names
         end
@@ -216,53 +218,84 @@ module RubyMinify
         )
       end
 
-      def walk_prism_tree(node, &block)
-        return unless node
-        yield node
-        node.compact_child_nodes.each { |child| walk_prism_tree(child, &block) }
-      end
-
-      def precompute_constant_resolution(nodes)
+      def precompute_constant_resolution
         @const_resolution_map = {}
         @const_full_path_map = {}
         @const_write_cpath_map = {}
         @class_cpath_map = {}
         @superclass_resolution_map = {}
 
-        nodes.body.traverse do |event, node|
-          next unless event == :enter
+        Nesting.each(@prism_root) do |node, nesting, _singleton, _in_def|
           case node
-          when TypeProf::Core::AST::ConstantReadNode
+          when Prism::ConstantReadNode, Prism::ConstantPathNode
+            record_constant_read(node)
+          when *CONST_COMPOUND_WRITE_NODES
+            record_constant_read(node)
+            @const_write_cpath_map[AstUtils.location_key(node)] = nesting + [node.name]
+          when Prism::ConstantWriteNode, Prism::ConstantTargetNode
+            next if struct_definition_write?(node)
+
+            @const_write_cpath_map[AstUtils.location_key(node)] = nesting + [node.name]
+          when Prism::ConstantPathTargetNode
+            record_constant_read(node)
+            cpath = const_write_cpath(node, nesting)
+            @const_write_cpath_map[AstUtils.location_key(node)] = cpath if cpath
+          when *CONST_PATH_WRITE_NODES
+            next if struct_definition_write?(node)
+
+            cpath = const_write_cpath(node, nesting)
+            @const_write_cpath_map[AstUtils.location_key(node)] = cpath if cpath
+          when Prism::ClassNode, Prism::ModuleNode
             key = AstUtils.location_key(node)
-            resolved = resolve_constant_read_cpath(node)
-            @const_resolution_map[key] = resolved
-            @const_full_path_map[key] = resolved || build_constant_path(node)
-          when TypeProf::Core::AST::ConstantWriteNode
-            @const_write_cpath_map[AstUtils.location_key(node)] = normalize_const_write_cpath(node)
-          when TypeProf::Core::AST::ClassNode
-            key = AstUtils.location_key(node)
-            @class_cpath_map[key] = node.static_cpath
-            if node.superclass_cpath
-              @superclass_resolution_map[key] = resolve_constant_path(node.superclass_cpath, node.static_cpath)
+            cpath = class_definition_cpath(node, nesting)
+            next unless cpath
+
+            @class_cpath_map[key] = cpath
+            if node.is_a?(Prism::ClassNode) && node.superclass
+              resolved = resolve_superclass_path(node.superclass, cpath)
+              @superclass_resolution_map[key] = resolved if resolved
             end
-          when TypeProf::Core::AST::ModuleNode
-            @class_cpath_map[AstUtils.location_key(node)] = node.static_cpath
           end
         end
       end
 
-      def precompute_meta_nodes(nodes)
+      def record_constant_read(node)
+        key = AstUtils.location_key(node)
+        resolved = @oracle.resolve_constant_read(node)
+        @const_resolution_map[key] = resolved
+        @const_full_path_map[key] = resolved || syntactic_const_segments(node)
+      end
+
+      # A call is "meta" — rewritten structurally instead of as a plain call
+      # — under the conditions type analysis uses: statement position, no
+      # receiver, lexically inside a class/module body (or `class << self`),
+      # and outside any def.
+      def precompute_meta_nodes
         @meta_node_map = {}
-        nodes.body.traverse do |event, node|
-          next unless event == :enter
-          case node
-          when TypeProf::Core::AST::AttrReaderMetaNode
-            @meta_node_map[AstUtils.location_key(node)] = { type: :attr_reader, args: node.args }
-          when TypeProf::Core::AST::AttrAccessorMetaNode
-            @meta_node_map[AstUtils.location_key(node)] = { type: :attr_accessor, args: node.args }
-          when TypeProf::Core::AST::IncludeMetaNode
-            @meta_node_map[AstUtils.location_key(node)] = { type: :include, args: node.args }
+        Nesting.each(@prism_root) do |node, nesting, singleton, in_def|
+          next unless node.is_a?(Prism::StatementsNode)
+          next if in_def
+          next if nesting.empty? && !singleton
+
+          node.body.each do |child|
+            next unless child.is_a?(Prism::CallNode)
+            next if child.receiver
+
+            record_meta_node(child)
           end
+        end
+      end
+
+      def record_meta_node(call_node)
+        case call_node.name
+        when :attr_reader, :attr_accessor
+          arguments = call_node.arguments&.arguments
+          return unless arguments
+
+          args = arguments.filter_map { |arg| arg.unescaped.to_sym if arg.is_a?(Prism::SymbolNode) }
+          @meta_node_map[AstUtils.location_key(call_node)] = { type: call_node.name, args: args }
+        when :include
+          @meta_node_map[AstUtils.location_key(call_node)] = { type: :include }
         end
       end
 
@@ -270,15 +303,6 @@ module RubyMinify
         data = {}
         traverse_prism(prism_ast, data)
         data
-      end
-
-      def count_cpath_segments(node)
-        case node
-        when Prism::ConstantPathNode
-          1 + (node.parent ? count_cpath_segments(node.parent) : 1)
-        else
-          1
-        end
       end
 
       def traverse_prism(node, data)
@@ -304,8 +328,6 @@ module RubyMinify
           end
         when Prism::DefinedNode
           data[key] = { value_slice: node.value.slice }
-        when Prism::ConstantPathWriteNode
-          data[key] = { cpath_write_segments: count_cpath_segments(node.target) }
         when Prism::RationalNode, Prism::ImaginaryNode, Prism::LambdaNode,
              Prism::MatchLastLineNode, Prism::InterpolatedMatchLastLineNode,
              Prism::FlipFlopNode, Prism::AliasGlobalVariableNode,
