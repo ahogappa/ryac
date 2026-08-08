@@ -70,6 +70,28 @@ class TestKeywordCollection < Minitest::Test
     assert_equal L3_GROUP_EXPECTED, l3_group.code
   end
 
+  # === Standalone: `super` into a signature we do not own ===
+
+  # Data.define generates its initializer from the member list, so a `super`
+  # forwarding renamed keywords into it raises "unknown keywords: :c, :b, :a".
+  # Unlike the class E/F case above, there is no parent def to merge with, so
+  # these keywords have to be left alone.
+  def test_super_into_generated_initializer_keeps_keywords
+    code = "module P\n" \
+           "  R = Data.define(:code, :aliases, :preamble) do\n" \
+           "    def initialize(code:, aliases: '', preamble: '')\n" \
+           "      super\n" \
+           "    end\n" \
+           "  end\n" \
+           "end\n" \
+           "puts P::R.new(code: 'x', aliases: 'y', preamble: 'z').code"
+    result = minify_at_level(code, 5)
+    assert_equal 'module P;R=Data.define(:code,:aliases,:preamble)' \
+                 '{def initialize(code:,aliases:"",preamble:"") =super};end;' \
+                 'puts P::R.new(code:?x,aliases:?y,preamble:?z).code',
+                 result.code
+  end
+
   # === Standalone: zero call count (verify_output: false) ===
 
   def test_zero_call_count_excludes_method

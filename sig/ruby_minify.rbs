@@ -84,6 +84,7 @@ module RubyMinify
   private
 
   def collect_keyword_call_sites: (tp_genv genv, tp_node nodes) -> void
+  def forwards_parameters_to_super?: (tp_node def_node) -> bool
   def exclude_unresolved_keyword_calls: (tp_node nodes, tp_genv genv) -> void
 
   public

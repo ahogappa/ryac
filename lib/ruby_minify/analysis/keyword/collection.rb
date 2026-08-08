@@ -3,6 +3,7 @@
 module RubyMinify
   def collect_keyword_info(nodes, genv)
     @keyword_def_node_registry = {}
+    @keyword_forwarding_super_keys = Set.new
 
     nodes.traverse do |event, node|
       next unless event == :enter && node.is_a?(TypeProf::Core::AST::DefNode)
@@ -21,6 +22,8 @@ module RubyMinify
         if node.rest_keywords
           @keyword_rename_mapping.exclude_method(method_key)
         end
+
+        @keyword_forwarding_super_keys << method_key if forwards_parameters_to_super?(node)
       end
     end
 
@@ -28,6 +31,27 @@ module RubyMinify
   end
 
   private
+
+  # A bare `super` forwards this method's parameters to the parent by name, so
+  # the keyword names have to keep matching the parent's signature. When the
+  # parent is a def we also collected, collect_keyword_call_sites merges the
+  # two groups and both sides are renamed together; this only reports the
+  # forwarding, the decision is made once we know whether that merge happened.
+  def forwards_parameters_to_super?(def_node)
+    found = false
+    walk = lambda do |n|
+      return if found || n.nil?
+      # A nested def has its own parameters; its `super` is not about ours.
+      return if n.is_a?(TypeProf::Core::AST::DefNode)
+      if n.is_a?(TypeProf::Core::AST::ForwardingSuperNode)
+        found = true
+        return
+      end
+      n.each_subnode { |child| walk.call(child) }
+    end
+    walk.call(def_node.body)
+    found
+  end
 
   def collect_keyword_call_sites(genv, nodes)
     call_node_to_keys = Hash.new { |h, k| h[k] = [] }
@@ -76,6 +100,17 @@ module RubyMinify
 
     super_merges.each do |child_key, parent_key|
       @keyword_rename_mapping.merge_groups(child_key, parent_key)
+    end
+
+    # Supers are discovered from the parent's call boxes, so a `super` whose
+    # parent we never collected produces no merge at all. That parent's
+    # signature is outside our control — Data.define and Struct.new generate
+    # theirs from the member list — and renaming only the child raises
+    # "unknown keywords" at runtime, so leave those keywords alone.
+    merged_children = Set.new(super_merges.map { |child_key, _| child_key })
+    @keyword_forwarding_super_keys.each do |key|
+      next if merged_children.include?(key)
+      @keyword_rename_mapping.exclude_method(key)
     end
 
     call_node_to_keys.each_value do |keys|

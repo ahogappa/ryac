@@ -40,16 +40,24 @@ module RubyMinify
         end
         generator = NameGenerator.new(reserved_names.uniq)
         mapping = {}
-        used_hint_names = Set.new
+        # A keyword parameter's name does not depend on where it sits in tbl,
+        # so settle all of them before handing any name out. Otherwise a hint
+        # for an ordinary local appearing earlier in tbl can claim the name a
+        # keyword takes later, emitting `def f(c, c: {})`.
+        keyword_names = {}
+        keyword_params.each { |kw| keyword_names[kw] = kw_mapping&.[](kw) || kw.to_s }
+        claimed = Set.new(keyword_names.values)
         node.tbl.each do |var|
           next if unused_rescue.include?(var)
           if keyword_params.include?(var)
-            mapping[var] = kw_mapping&.[](var) || var.to_s
-          elsif !is_unsafe && var_hints.key?(var) && !used_hint_names.include?(var_hints[var])
+            mapping[var] = keyword_names[var]
+          elsif !is_unsafe && var_hints.key?(var) && !claimed.include?(var_hints[var])
             mapping[var] = var_hints[var]
-            used_hint_names << var_hints[var]
+            claimed << var_hints[var]
           else
-            mapping[var] = is_unsafe ? var.to_s : generator.next_name
+            name = is_unsafe ? var.to_s : generator.next_name
+            mapping[var] = name
+            claimed << name
           end
         end
         scope_mappings[cref_id] = mapping
