@@ -56,7 +56,7 @@ class TestLevel5 < Minitest::Test
       "end;a);",
       "def d =(Integer(\"abc\") rescue 0);",
       "def e(a) =!a ? \"nil\":a.to_s;",
-      "def b(a) =[1,if a;2;end,3].compact;",
+      "def b(a) =[1,(2 if a),3].compact;",
       "def n(a) =a.match(/=\\d+/);",
       "def a(a) =(if a;b,c=1,2;else;b,c=3,4;",
       "end;b+c);",

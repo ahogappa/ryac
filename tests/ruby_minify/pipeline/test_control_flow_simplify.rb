@@ -173,13 +173,25 @@ class TestControlFlowSimplify < Minitest::Test
     assert_equal "!align_to ? 0:align_to.column", result
   end
 
-  def test_no_modifier_if_inside_array_literal
-    # [a, b if c] is invalid Ruby — modifier if can't be used inside array
-    assert_equal "[a,if x;b;end]", @stage.call("[a,if x;b;end]")
+  def test_paren_modifier_if_inside_array_literal
+    # [a, b if c] is invalid Ruby — in value position the modifier needs parens
+    assert_equal "[a,(b if x)]", @stage.call("[a,if x;b;end]")
   end
 
-  def test_no_modifier_if_after_open_bracket
-    assert_equal "[if x;b;end]", @stage.call("[if x;b;end]")
+  def test_paren_modifier_if_after_open_bracket
+    assert_equal "[(b if x)]", @stage.call("[if x;b;end]")
+  end
+
+  # `x = if c; b; end` assigns nil when c is false; a bare `x=b if c` would
+  # skip the assignment entirely and keep x's previous value. The self-hosted
+  # minifier looped forever on exactly this: a chain-walking loop whose
+  # `current = ... ? ... : nil` step silently stopped clearing current.
+  def test_assignment_value_if_keeps_assignment
+    assert_equal "x=(b if c)", @stage.call("x=if c;b;end")
+  end
+
+  def test_assignment_value_while_not_simplified
+    assert_equal "x=while c;b;end", @stage.call("x=while c;b;end")
   end
 
   def test_no_ternary_with_multi_assignment_body
@@ -208,8 +220,8 @@ class TestControlFlowSimplify < Minitest::Test
     assert_equal "if !(x=foo());puts(x);end", @stage.call("unless (x=foo());puts(x);end")
   end
 
-  def test_no_modifier_if_inside_argument_context
-    assert_equal "foo(if x;b;end)", @stage.call("foo(if x;b;end)")
+  def test_paren_modifier_if_inside_argument_context
+    assert_equal "foo((b if x))", @stage.call("foo(if x;b;end)")
   end
 
   def test_no_modifier_while_inside_array
@@ -225,6 +237,6 @@ class TestControlFlowSimplify < Minitest::Test
   end
 
   def test_unless_in_collection_context_uses_block_form
-    assert_equal "[if !x;b;end]", @stage.call("[unless x;b;end]")
+    assert_equal "[(b if !x)]", @stage.call("[unless x;b;end]")
   end
 end

@@ -23,41 +23,48 @@ module RubyMinify
 
       private
 
-      def walk(node, source, patches)
+      # statement_position: the node is a direct child of a statements list.
+      # A modifier rewrite is only sound there — in value position the
+      # modifier captures the surrounding expression: `x = if c; v; end`
+      # assigns nil when c is false, but `x = v if c` skips the assignment,
+      # leaving x's previous value. (The compactor produces exactly that
+      # shape from `x = c ? v : nil`.)
+      def walk(node, source, patches, statement_position = false)
         case node
         when Prism::IfNode
           if node.end_keyword_loc && source.byteslice(node.if_keyword_loc.start_offset, 2) == 'if'
-            if (replacement = try_if(node, source))
+            if (replacement = try_if(node, source, statement_position))
               patches << mk(node, replacement)
               return
             end
           end
         when Prism::UnlessNode
           if node.end_keyword_loc
-            if (replacement = try_unless(node, source))
+            if (replacement = try_unless(node, source, statement_position))
               patches << mk(node, replacement)
               return
             end
           end
         when Prism::WhileNode
           if node.closing_loc
-            if (replacement = try_while(node, source))
+            if (replacement = try_while(node, source, statement_position))
               patches << mk(node, replacement)
               return
             end
           end
         when Prism::UntilNode
           if node.closing_loc
-            if (replacement = try_until(node, source))
+            if (replacement = try_until(node, source, statement_position))
               patches << mk(node, replacement)
               return
             end
           end
         end
-        node.compact_child_nodes.each { |child| walk(child, source, patches) }
+        child_position = node.is_a?(Prism::StatementsNode)
+        node.compact_child_nodes.each { |child| walk(child, source, patches, child_position) }
       end
 
-      def try_if(node, source)
+      def try_if(node, source, statement_position)
         cond = src(source, node.predicate)
         stmts = node.statements
 
@@ -66,8 +73,14 @@ module RubyMinify
           body = src(source, stmts)
           return nil if body.include?(';')
           return nil if condition_assigns_var_used_in_body?(node.predicate, stmts)
-          return nil if in_collection_context?(node, source)
-          "#{body} if #{cond}"
+          if statement_position
+            return nil if in_collection_context?(node, source)
+            "#{body} if #{cond}"
+          else
+            # As a value, the bare modifier would capture the surrounding
+            # expression; parenthesized it stays a self-contained nil-or-body.
+            "(#{body} if #{cond})"
+          end
         else
           then_body = stmts ? src(source, stmts) : nil
           else_result = else_text_for_ternary(node.subsequent, source)
@@ -139,26 +152,29 @@ module RubyMinify
         "#{cond}#{q_pre}?#{q_post}#{then_expr}#{colon_pre}:#{colon_post}#{else_expr}"
       end
 
-      def try_unless(node, source)
+      def try_unless(node, source, statement_position)
         stmts = node.statements
         body = stmts ? src(source, stmts) : nil
         cond = src(source, node.predicate)
 
+        modifier_ok = statement_position && body && !body.include?(';') &&
+                      !condition_assigns_var_used_in_body?(node.predicate, stmts) &&
+                      !in_collection_context?(node, source)
+
         if AstUtils.simple_negatable?(node.predicate)
           neg_cond = "!#{cond}"
-          if body && !body.include?(';') && !condition_assigns_var_used_in_body?(node.predicate, stmts) && !in_collection_context?(node, source)
+          if modifier_ok
             "#{body} if #{neg_cond}"
           else
             "if #{neg_cond};#{body || ''};end"
           end
-        else
-          if body && !body.include?(';') && !condition_assigns_var_used_in_body?(node.predicate, stmts) && !in_collection_context?(node, source)
-            "#{body} unless #{cond}"
-          end
+        elsif modifier_ok
+          "#{body} unless #{cond}"
         end
       end
 
-      def try_while(node, source)
+      def try_while(node, source, statement_position)
+        return nil unless statement_position
         stmts = node.statements
         return nil unless stmts && AstUtils.single_statement_body?(stmts)
         body = src(source, stmts)
@@ -173,7 +189,8 @@ module RubyMinify
           text.match?(/\A(?:return|break|next|yield) /))
       end
 
-      def try_until(node, source)
+      def try_until(node, source, statement_position)
+        return nil unless statement_position
         stmts = node.statements
         return nil unless stmts && AstUtils.single_statement_body?(stmts)
         body = src(source, stmts)

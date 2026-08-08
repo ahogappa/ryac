@@ -62,7 +62,7 @@ class TestLevel1 < Minitest::Test
       "end;total);",
       "def rescue_modifier_example =(Integer(\"abc\") rescue 0);",
       "def negated_ternary(val) =!val ? \"nil\":val.to_s;",
-      "def array_with_conditional(flag) =[1,if flag;2;end,3].compact;",
+      "def array_with_conditional(flag) =[1,(2 if flag),3].compact;",
       "def regex_match(str) =str.match(/=\\d+/);",
       "def multi_assign_conditional(flag) =(if flag;a,b=1,2;else;a,b=3,4;",
       "end;a+b);",
