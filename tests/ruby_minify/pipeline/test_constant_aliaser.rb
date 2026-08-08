@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative '../../test_helper'
+require 'tmpdir'
 
 class TestConstantAliaserPipeline < Minitest::Test
   include MinifyTestHelper
@@ -45,6 +46,65 @@ class TestConstantAliaserPipeline < Minitest::Test
     assert_equal 'A=Process', result.preamble
     assert_equal 'class App;def run =(puts A::Status.name;puts A::Sys.name;puts A::UID.name;puts A::GID.name;puts A::Tms.name);end;App.new.run',
                  result.code
+  end
+
+  # Prism has no RBS in the analysis environment, so type analysis cannot
+  # resolve Prism::CallNode — but the chain is spelled in full from a
+  # constant root that the program's own `require "prism"` provides, which
+  # is all an alias declaration needs once the requires are re-emitted ahead
+  # of it. Without the fallback every unresolvable gem reference stays at
+  # full length. This goes through Minifier because the require hoisting
+  # that makes the ordering sound lives in the collector/concatenator.
+  def test_external_prefix_aliased_without_type_resolution
+    code = <<~RUBY
+      require "prism"
+      class Scanner
+        def run(src)
+          root = Prism.parse(src).value
+          [Prism::CallNode, Prism::DefNode, Prism::ClassNode, Prism::ModuleNode].count do |klass|
+            root.statements.body.first.is_a?(klass)
+          end
+        end
+      end
+      puts Scanner.new.run("x = 1")
+    RUBY
+    Dir.mktmpdir('aliaser') do |dir|
+      path = File.join(dir, 'scanner.rb')
+      File.write(path, code)
+      result = RubyMinify::Minifier.new.call(path, level: 2)
+      assert result.content.start_with?('require "prism";A=Prism;'),
+             "requires must precede the alias declaration:\n#{result.content[0, 120]}"
+      assert_includes result.content, 'A::CallNode'
+      refute_includes result.content, 'Prism::CallNode'
+
+      original_out, original_ok = run_ruby_code(code)
+      minified_out, minified_ok = run_ruby_code(result.content)
+      assert original_ok && minified_ok, "both variants must run"
+      assert_equal original_out, minified_out
+    end
+  end
+
+  # Without a top-level require to anchor the root, the fallback must stay
+  # off: an alias in the preamble would raise at boot for a constant the
+  # original program only touches when the reference is reached.
+  def test_unresolved_external_without_require_not_aliased
+    code = <<~RUBY
+      class Worker
+        def run
+          LazyGem::Config.load
+          LazyGem::Config.load
+          LazyGem::Config.load
+          LazyGem::Config.load
+        end
+      end
+    RUBY
+    Dir.mktmpdir('aliaser') do |dir|
+      path = File.join(dir, 'worker.rb')
+      File.write(path, code)
+      result = RubyMinify::Minifier.new.call(path, level: 2)
+      assert_includes result.content, 'LazyGem::Config'
+      refute_includes result.content, '=LazyGem'
+    end
   end
 
   def test_external_prefix_uses_resolved_path_for_unqualified_refs

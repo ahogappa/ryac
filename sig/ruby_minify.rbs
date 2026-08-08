@@ -67,6 +67,9 @@ module RubyMinify
   def resolve_superclass_path: (Prism::Node superclass_node, Array[Symbol] class_cpath) -> Array[Symbol]?
   def augment_constant_counts_via_oracle: () -> void
   def collect_external_references: (Prism::Node prism_root) -> void
+  def complete_const_chain?: (Prism::Node node) -> bool
+  def required_external_root?: (Symbol root) -> bool
+  def external_require_roots: (Array[String] stdlib_requires) -> Set[String]
 
   # --- analysis/ivar/collection.rb ---
   DYNAMIC_IVAR_METHODS: Array[Symbol]

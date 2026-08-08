@@ -189,6 +189,33 @@ module RubyMinify
     nil
   end
 
+  # True when the qualified chain is rooted at a plain constant (or written
+  # absolute), so its syntactic segments are its complete spelling.
+  def complete_const_chain?(node)
+    case node
+    when Prism::ConstantPathNode, Prism::ConstantPathTargetNode
+      current = node.parent
+      current = current.parent while current.is_a?(Prism::ConstantPathNode)
+      current.nil? || current.is_a?(Prism::ConstantReadNode)
+    else
+      false
+    end
+  end
+
+  def required_external_root?(root)
+    (@external_require_roots || Set.new).include?(root.to_s)
+  end
+
+  # The top-level module names the program's own stdlib/gem requires are
+  # expected to provide, by the usual naming convention ("prism" → Prism).
+  # A gem that names its module differently just misses the fallback and
+  # keeps its full spelling — the conservative direction.
+  def external_require_roots(stdlib_requires)
+    stdlib_requires.to_set do |path|
+      path.split('/').first.split(/[_-]/).map(&:capitalize).join
+    end
+  end
+
   # Where a superclass reference lands, for the alias patcher. A qualified
   # path is taken as written; a bare name is meaningful only when it names a
   # user-defined constant in the class's enclosing scope.
@@ -236,7 +263,19 @@ module RubyMinify
         resolved_cpath = @oracle.resolve_constant_read(node)
         is_user_defined = @constant_mapping.user_defined_path?(full_path) ||
                           (resolved_cpath && @constant_mapping.user_defined_path?(resolved_cpath))
-        effective_path = resolved_cpath
+        # A chain the oracle cannot resolve (no RBS for the gem, say
+        # Prism::CallNode) is still a usable alias target when two things
+        # hold. The chain must be written out in full from a constant root,
+        # so its spelling means the same thing next to the alias declaration
+        # as it does here. And the root must belong to a library the program
+        # itself requires at top level — the requires are re-emitted ahead of
+        # the preamble, so such a root provably exists when the declaration
+        # runs. Without that anchor an alias would turn "NameError if this
+        # line is ever reached" into "NameError at boot", or capture the
+        # wrong constant for a reference that resolves through its nesting
+        # at runtime.
+        effective_path = resolved_cpath ||
+                         (full_path if complete_const_chain?(node) && required_external_root?(full_path.first))
         next unless effective_path && !is_user_defined
         next if effective_path.size < 2
         next if @constant_mapping.has_user_defined_prefix?(full_path)

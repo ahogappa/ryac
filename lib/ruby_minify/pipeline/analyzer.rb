@@ -52,6 +52,7 @@ module RubyMinify
         prism_result, nodes, genv = without_stdout_pollution { setup_typeprof(source) }
         @prism_root = prism_result.value
         @oracle = TypeOracle.new(genv, nodes)
+        @external_require_roots = external_require_roots(source.stdlib_requires)
         @syntax_data = collect_syntax_data(@prism_root)
 
         analyze_keywords_and_scopes(@prism_root)
