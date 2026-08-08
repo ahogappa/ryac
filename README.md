@@ -46,6 +46,10 @@ bin/minify path/to/entry.rb -o minified.rb -a aliases.rb
 # Multiple entry points
 bin/minify file1.rb file2.rb
 
+# Minify installed gem(s) by name (resolved via Gem::Specification)
+bin/minify -g rack
+bin/minify -g rack,rack-session -o bundle.rb
+
 # Show version / help
 bin/minify -v
 bin/minify -h
@@ -84,6 +88,15 @@ The default level is **3** (`stable`). Levels 0-3 are safe transformations that 
 
 See [`tests/ruby_minify/pipeline/`](tests/ruby_minify/pipeline/) for per-stage transformation examples, and [`tests/ruby_minify/levels/`](tests/ruby_minify/levels/) for end-to-end compression examples at each level.
 
+### What the aggressive levels are verified against
+
+The supported boundary is defined by two programs, both verified in CI:
+
+- **This minifier itself at L5** — the minified minifier re-minifies the original source to identical output ([`tests/test_integration.rb`](tests/test_integration.rb))
+- **[Optcarrot](https://github.com/mame/optcarrot) at L4** — the minified emulator renders 180 frames from a real ROM with a checksum identical to the original ([`tests/test_optcarrot.rb`](tests/test_optcarrot.rb))
+
+How far a given program gets past L3 depends on the program. Optcarrot stops at L4 because it defeats method renaming by construction: it builds its CPU/PPU cores as source strings and `eval`s them, scans that text for `@ivar` names with a regexp, and dispatches through `send(computed_symbol)` — method names survive inside strings, out of reach of static analysis. The sinatra and rubocop suites run in CI as regression canaries at L3, but they sit outside this boundary and do not define it.
+
 ## Development
 
 ```bash
@@ -100,6 +113,10 @@ rake test:integration
 
 # Run gem integration tests (minifies real gems and runs their test suites)
 rake test:gems
+
+# Minify optcarrot at L4 and compare rendered frames against the original
+# (requires gem_tests/optcarrot: git clone https://github.com/mame/optcarrot gem_tests/optcarrot)
+rake test:optcarrot
 
 # Show compression ratio on self-hosting
 rake benchmark

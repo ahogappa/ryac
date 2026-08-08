@@ -740,4 +740,14 @@ class TestCompactor < Minitest::Test
   def test_multi_statement_parens
     assert_equal '(x;y)', @stage.call('(x; y)')
   end
+
+  # The rebuild is the one stage that emits everything from scratch, so a node
+  # type it does not know cannot be skipped — skipping deletes the code it
+  # represents. New Ruby syntax must arrive as a loud failure, never as a
+  # quietly smaller program.
+  def test_unknown_node_raises_instead_of_dropping_code
+    unknown = Object.new
+    error = assert_raises(RubyMinify::MinifyError) { @stage.send(:r, unknown) }
+    assert_match(/Unknown node/, error.message)
+  end
 end
