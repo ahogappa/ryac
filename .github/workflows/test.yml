@@ -9,15 +9,24 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both ends of the range the gemspec claims to support. Without the
+        # lower entry, required_ruby_version is an untested assertion.
+        ruby-version: ["3.3", "4.0"]
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "4.0"
+          ruby-version: ${{ matrix.ruby-version }}
       - run: bundle install --jobs 4
       - name: Run tests
         run: bundle exec rake test:all
+      # Steep runs once: it checks sig/ against lib/, which does not vary by
+      # the Ruby the suite happens to run on.
       - name: Type check with Steep
+        if: matrix.ruby-version == '4.0'
         run: bundle exec rbs collection install && bundle exec steep check
 
   external-gems:
