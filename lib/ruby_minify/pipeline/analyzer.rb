@@ -275,7 +275,9 @@ module RubyMinify
         Nesting.each(@prism_root) do |node, nesting, singleton, in_def|
           next unless node.is_a?(Prism::StatementsNode)
           next if in_def
-          next if nesting.empty? && !singleton
+          # any? rather than empty?: the type-dependent empty? transform does
+          # not reach a fixed point on this code under self-hosting.
+          next unless nesting.any? || singleton
 
           node.body.each do |child|
             next unless child.is_a?(Prism::CallNode)
