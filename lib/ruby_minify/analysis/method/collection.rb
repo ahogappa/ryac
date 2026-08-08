@@ -52,7 +52,9 @@ module RubyMinify
           next
         end
 
-        @method_rename_mapping.add_call_site(call_node, key, has_receiver: !call_node.recv.nil?)
+        has_receiver = !call_node.recv.nil?
+        scope_id = has_receiver ? nil : @local_scopes.scope_id_of(call_node)
+        @method_rename_mapping.add_call_site(call_node, key, has_receiver: has_receiver, scope_id: scope_id)
         call_node_to_keys[call_node.object_id] << key
         resolved_call_ids << call_node.object_id
       end
@@ -122,11 +124,26 @@ module RubyMinify
     end
   end
 
+  # One call site reaching the same method name on several classes is
+  # polymorphism: merge, so every receiver renames in lockstep. One call site
+  # reaching several *different* names is a computed dispatch — optcarrot's
+  # `send(mode)` resolves to imm/zpg/abs/… at once — and "merging" that would
+  # assign one short name to all of them, collapsing distinct methods into
+  # whichever def lands last. Those names must simply survive.
   def merge_polymorphic_groups(call_node_to_keys)
+    computed_dispatch_mids = Set.new
     call_node_to_keys.each_value do |keys|
       next if keys.size < 2
+
+      mids = keys.map { |k| k[2] }.uniq
+      if mids.size > 1
+        computed_dispatch_mids.merge(mids)
+        next
+      end
+
       (1...keys.size).each { |i| @method_rename_mapping.merge_groups(keys[i - 1], keys[i]) }
     end
+    @method_rename_mapping.exclude_methods_by_mid(computed_dispatch_mids) unless computed_dispatch_mids.empty?
   end
 
   def merge_unresolved_calls(nodes, resolved_call_ids, genv)

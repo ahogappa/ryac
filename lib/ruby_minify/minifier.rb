@@ -141,6 +141,8 @@ module RubyMinify
 
     def build_result(rename_result, source)
       content = build_output(rename_result.code, source.stdlib_requires, rename_result.preamble)
+      verify_parses(content, 'content')
+      verify_parses(rename_result.aliases, 'aliases')
       size = content.bytesize
 
       stats = Pipeline::CompressionStats.new(
@@ -163,6 +165,16 @@ module RubyMinify
       parts << preamble unless preamble.empty?
       parts << code
       parts.join(';')
+    end
+
+    # The output of every pipeline permutation must at minimum be valid Ruby.
+    # Prism also rejects duplicated parameter names, so a rename that collides
+    # inside a signature is caught here, at the stage that produced it.
+    def verify_parses(text, label)
+      return if text.empty?
+
+      errors = Prism.parse(text).errors
+      raise Pipeline::InvalidOutputError.new(label, errors) unless errors.empty?
     end
   end
 end

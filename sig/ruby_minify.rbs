@@ -13,24 +13,18 @@ module RubyMinify
   type tp_node = TypeProf::Core::AST::Node
   type tp_genv = TypeProf::Core::GlobalEnv
   type location_key = [Integer, Integer]
+  type scope_id = location_key
+  type scope_mapping_table = Hash[scope_id, Hash[Symbol, String]]
   type syntax_value = String | Integer | Symbol | bool | Hash[Symbol, String] | nil
   type syntax_data_map = Hash[[Integer, Integer], Hash[Symbol, syntax_value]]
   type meta_node_entry = { type: Symbol, args: Array[Symbol] }
 
-  DYNAMIC_VARIABLE_METHODS: Array[Symbol]
-
   # --- scope_management.rb ---
-  def build_scope_mappings: (tp_node nodes, Hash[Integer, Hash[Symbol, String]] scope_mappings, ?kw_def_map: Hash[Integer, Hash[Symbol, String]]?, ?var_hints_map: Hash[Integer, Hash[Symbol, String]]?) -> void
-  def register_top_level_scope: (tp_node nodes, Hash[Integer, Hash[Symbol, String]] scope_mappings) -> void
-  def collect_scope_vars: (tp_node node, Hash[Integer, Hash[Symbol, String]] scope_mappings, ?kw_def_map: Hash[Integer, Hash[Symbol, String]]?, ?var_hints_map: Hash[Integer, Hash[Symbol, String]]?) -> void
-  def collect_extra_block_param_names: (Prism::ParametersNode? prism_params) -> Array[Symbol]
-  def get_body_cref_id: (tp_node? body) -> Integer?
-  def collect_parent_mangled_names: (tp_node? body, Hash[Integer, Hash[Symbol, String]] scope_mappings) -> Array[String]
-  def should_use_numbered_params?: (tp_node node, Array[String] parent_mangled_names) -> bool
-  def collect_unused_rescue_vars: (tp_node? body) -> Set[Symbol]
-  def check_dynamic_pattern: (tp_node node) -> bool
-  def collect_multi_target_names: (Prism::MultiTargetNode multi_target_node) -> Array[Symbol]
-  def get_mangled_name: (tp_node node, Symbol var, Hash[Integer, Hash[Symbol, String]] scope_mappings) -> String
+  module RenameInvariants
+    def verify_injective!: (Hash[Symbol, String] mapping, String scope_label) -> void
+  end
+
+  include RenameInvariants
 
   # --- analysis/method/collection.rb ---
   def collect_method_definitions: (tp_node nodes, tp_genv genv) -> void

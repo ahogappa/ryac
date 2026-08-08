@@ -61,5 +61,29 @@ module RubyMinify
         super("Gem not found: #{gem_name}")
       end
     end
+
+    # Raised when the pipeline produced output that does not parse. The broken
+    # output is a bug in a stage, and failing here names the producer instead
+    # of letting the consumer discover it at load time.
+    class InvalidOutputError < StageError
+      def initialize(label, errors)
+        detail = errors.first(3).map { |e|
+          "#{e.location.start_line}:#{e.location.start_column}: #{e.message}"
+        }.join("; ")
+        super("minified #{label} does not parse (#{detail})")
+      end
+    end
+
+    # Raised when two different names in one scope were assigned the same
+    # short name. The output may still parse — `def c(a) = c(a) || d(a)` is
+    # valid Ruby — so this cannot be left to a syntax check.
+    class RenameCollisionError < StageError
+      def initialize(scope, collisions)
+        detail = collisions.map { |short, originals|
+          "#{originals.join(', ')} -> #{short}"
+        }.join("; ")
+        super("rename collision in #{scope}: #{detail}")
+      end
+    end
   end
 end

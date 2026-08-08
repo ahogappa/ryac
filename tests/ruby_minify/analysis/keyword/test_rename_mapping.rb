@@ -109,10 +109,10 @@ class TestKeywordRenameMapping < Minitest::Test
     3.times { |i| @mapping.add_keyword_call(key, :long_keyword, fake_node(100 + i), fake_node(200 + i)) }
     @mapping.assign_short_names
 
-    def_node = Object.new
+    def_node = fake_node(1)
     registry = { key => [def_node] }
     result = @mapping.def_node_mapping(registry)
-    assert_equal({ long_keyword: "a" }, result[def_node.object_id])
+    assert_equal({ long_keyword: "a" }, result[loc_key(1)])
   end
 
   def test_def_node_mapping_skips_excluded_method
@@ -123,7 +123,7 @@ class TestKeywordRenameMapping < Minitest::Test
 
     @mapping.exclude_method(key)
 
-    def_node = Object.new
+    def_node = fake_node(1)
     registry = { key => [def_node] }
     result = @mapping.def_node_mapping(registry)
     assert_equal({}, result)
@@ -136,7 +136,7 @@ class TestKeywordRenameMapping < Minitest::Test
     @mapping.assign_short_names
 
     unknown_key = [:Other, false, :other]
-    def_node = Object.new
+    def_node = fake_node(1)
     registry = { unknown_key => [def_node] }
     result = @mapping.def_node_mapping(registry)
     assert_equal({}, result)
@@ -160,7 +160,7 @@ class TestKeywordRenameMapping < Minitest::Test
     3.times { |i| @mapping.add_keyword_call(key, :long_keyword, fake_node(100 + i), val_node) }
     @mapping.assign_short_names
 
-    hints = @mapping.build_variable_hints
+    hints = @mapping.build_variable_hints { |n| n.lenv&.cref&.object_id }
     cref_oid = val_node.lenv.cref.object_id
     assert_equal "a", hints[cref_oid][:my_var]
   end
@@ -172,7 +172,7 @@ class TestKeywordRenameMapping < Minitest::Test
     3.times { |i| @mapping.add_keyword_call(key, :ab, fake_node(100 + i), val_node) }
     @mapping.assign_short_names
 
-    hints = @mapping.build_variable_hints
+    hints = @mapping.build_variable_hints { |n| n.lenv&.cref&.object_id }
     cref_oid = val_node.lenv.cref.object_id
     assert_equal "ab", hints[cref_oid][:x]
   end
@@ -183,7 +183,7 @@ class TestKeywordRenameMapping < Minitest::Test
     3.times { |i| @mapping.add_keyword_call(key, :long_keyword, fake_node(100 + i), fake_node(200 + i)) }
     @mapping.assign_short_names
 
-    hints = @mapping.build_variable_hints
+    hints = @mapping.build_variable_hints { |n| n.lenv&.cref&.object_id }
     assert_equal({}, hints)
   end
 
@@ -195,7 +195,7 @@ class TestKeywordRenameMapping < Minitest::Test
     @mapping.exclude_method(key)
     @mapping.assign_short_names
 
-    hints = @mapping.build_variable_hints
+    hints = @mapping.build_variable_hints { |n| n.lenv&.cref&.object_id }
     assert_equal({}, hints)
   end
 
@@ -206,7 +206,7 @@ class TestKeywordRenameMapping < Minitest::Test
     3.times { |i| @mapping.add_keyword_call(key, :long_keyword, fake_node(100 + i), val_node) }
     @mapping.assign_short_names
 
-    hints = @mapping.build_variable_hints
+    hints = @mapping.build_variable_hints { |n| n.lenv&.cref&.object_id }
     assert_equal({}, hints)
   end
 end

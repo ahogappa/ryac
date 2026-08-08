@@ -86,4 +86,26 @@ class TestSendSymbolRename < Minitest::Test
     result = minify_at_level(code, 5)
     assert_equal 'class A;def a ="hello";def b =a;def c =send :a;end;a=A.new;puts a.b;puts a.c', result.code
   end
+
+  # One send reaching two *different* method names is a computed dispatch, not
+  # polymorphism. Merging them handed one short name to both defs — optcarrot's
+  # CPU collapsed 9 addressing modes into a single `k` this way — so both
+  # names must survive while ordinary single-target renaming continues.
+  def test_computed_dispatch_keeps_every_target_name
+    code = <<~RUBY
+      class A
+        def alpha_mode = "a"
+        def beta_mode = "b"
+        def run(w)
+          send(w ? :alpha_mode : :beta_mode)
+        end
+      end
+      puts A.new.run(true)
+      puts A.new.run(false)
+    RUBY
+    result = minify_at_level(code, 5)
+    assert_equal 'class A;def alpha_mode =?a;def beta_mode =?b;def a(a) =send a ? :alpha_mode : :beta_mode;end;' \
+                 'puts A.new.a(!!1);puts A.new.a(!1)',
+                 result.code
+  end
 end

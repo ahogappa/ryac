@@ -46,7 +46,7 @@ module RubyMinify
 
     class AnalysisResult
       attr_reader prism_ast: Prism::ProgramNode
-      attr_reader scope_mappings: Hash[Integer, Hash[Symbol, String]]
+      attr_reader scope_mappings: scope_mapping_table
       attr_reader constant_mapping: ConstantRenameMapping?
       attr_reader rename_map: Hash[location_key, String]
       attr_reader method_alias_map: Hash[location_key, Symbol]
@@ -70,7 +70,7 @@ module RubyMinify
 
       def self.new: (
         prism_ast: Prism::ProgramNode,
-        scope_mappings: Hash[Integer, Hash[Symbol, String]],
+        scope_mappings: scope_mapping_table,
         constant_mapping: ConstantRenameMapping?,
         rename_map: Hash[location_key, String],
         method_alias_map: Hash[location_key, Symbol],
@@ -94,7 +94,7 @@ module RubyMinify
       ) -> AnalysisResult
       def initialize: (
         prism_ast: Prism::ProgramNode,
-        scope_mappings: Hash[Integer, Hash[Symbol, String]],
+        scope_mappings: scope_mapping_table,
         constant_mapping: ConstantRenameMapping?,
         rename_map: Hash[location_key, String],
         method_alias_map: Hash[location_key, Symbol],

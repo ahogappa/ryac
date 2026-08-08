@@ -60,8 +60,13 @@ module RubyMinify
         data = analysis.syntax_data[syntax_key]
         return unless data
 
+        # any? rather than empty?: `empty?` on a receiver TypeProf can prove
+        # is a Hash gets rewritten to `=={}` — but only when it can prove it,
+        # and whether it can differs between the original and the minified
+        # text. Self-hosting then never reaches a fixed point. `any?` has no
+        # such rewrite.
         param_names = data[param_names_key] || {}
-        return if param_names.empty?
+        return unless param_names.any?
 
         params = node.parameters
         patch_required_params(params.requireds, param_names, patches)

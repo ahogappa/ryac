@@ -52,7 +52,7 @@ module RubyMinify
         prism_result, nodes, genv = without_stdout_pollution { setup_typeprof(source) }
         @syntax_data = collect_syntax_data(prism_result.value)
 
-        analyze_keywords_and_scopes(nodes, genv)
+        analyze_keywords_and_scopes(prism_result.value, nodes, genv)
         analyze_methods_phase(nodes, genv)
         method_alias_map, method_transform_map = resolve_method_aliases_and_transforms(nodes, genv)
         analyze_variables_phase(nodes, genv)
@@ -115,16 +115,24 @@ module RubyMinify
         [prism_result, nodes, service.genv]
       end
 
-      def analyze_keywords_and_scopes(nodes, genv)
+      def analyze_keywords_and_scopes(prism_root, nodes, genv)
+        @local_scopes = LocalScopes.new(prism_root)
+
         @keyword_rename_mapping = KeywordRenameMapping.new
         collect_keyword_info(nodes, genv)
         @keyword_rename_mapping.assign_short_names
 
-        @keyword_def_node_map = @keyword_rename_mapping.def_node_mapping(@keyword_def_node_registry || {})
-        @keyword_variable_hints = @keyword_rename_mapping.build_variable_hints
-
-        @scope_mappings = {}
-        build_scope_mappings(nodes, @scope_mappings, kw_def_map: @keyword_def_node_map, var_hints_map: @keyword_variable_hints)
+        # Inline rather than through locals: a local passed as the same-named
+        # keyword gets hint-aligned and collapses to shorthand, and the
+        # re-minified form of that shorthand no longer carries the hint — the
+        # names then oscillate between passes instead of reaching a fixed
+        # point under self-hosting.
+        @local_scopes.allocate(
+          kw_def_map: @keyword_rename_mapping.def_node_mapping(@keyword_def_node_registry || {}),
+          var_hints: @keyword_rename_mapping.build_variable_hints { |tp_node| @local_scopes.scope_id_of(tp_node) }
+        )
+        @local_scopes.resolve
+        @scope_mappings = @local_scopes.scope_mappings
       end
 
       def analyze_methods_phase(nodes, genv)
@@ -167,13 +175,16 @@ module RubyMinify
         collect_external_references(nodes)
       end
 
-      def precompute_rename_entries(nodes)
-        local_rename_entries = precompute_variable_names(nodes, @scope_mappings)
-        precompute_lambda_variable_names(nodes, @scope_mappings, local_rename_entries)
-        augment_def_node_params(nodes, @scope_mappings, :param_names)
-        @block_param_names_map = precompute_block_params(nodes, @scope_mappings, local_rename_entries)
-        augment_for_index(nodes, @scope_mappings, :for_index_mangled)
-        local_rename_entries
+      def precompute_rename_entries(_nodes)
+        @local_scopes.def_param_names.each do |key, names|
+          (@syntax_data[key] ||= {})[:param_names] = names
+        end
+        @local_scopes.for_index_names.each do |key, name|
+          data = @syntax_data[key]
+          data[:for_index_mangled] = name if data&.[](:index_name)
+        end
+        @block_param_names_map = @local_scopes.block_param_names
+        @local_scopes.rename_entries
       end
 
       def build_analysis_result(prism_result, source, rename_map, method_alias_map,
@@ -205,191 +216,10 @@ module RubyMinify
         )
       end
 
-      def precompute_variable_names(nodes, scope_mappings)
-        map = {}
-        nodes.traverse do |event, node|
-          next unless event == :enter
-          case node
-          when TypeProf::Core::AST::LocalVariableReadNode,
-               TypeProf::Core::AST::LocalVariableWriteNode
-            map[AstUtils.location_key(node)] = get_mangled_name(node, node.var, scope_mappings)
-          when TypeProf::Core::AST::DefNode
-            raw = AstUtils.prism_node(node)
-            next unless raw.receiver.is_a?(Prism::LocalVariableReadNode)
-            map[AstUtils.location_key(raw.receiver)] = get_mangled_name(node, raw.receiver.name, scope_mappings)
-          when TypeProf::Core::AST::DefinedNode
-            raw = AstUtils.prism_node(node)
-            next unless raw.is_a?(Prism::DefinedNode) && raw.value.is_a?(Prism::LocalVariableReadNode)
-            lvar_node = raw.value
-            map[AstUtils.location_key(lvar_node)] = get_mangled_name(node, lvar_node.name, scope_mappings)
-          end
-        end
-        map
-      end
-
-      def precompute_lambda_variable_names(nodes, scope_mappings, variable_rename_entries)
-        nodes.traverse do |event, node|
-          next unless event == :enter
-          next unless node.is_a?(TypeProf::Core::AST::LambdaNode)
-          raw = AstUtils.prism_node(node)
-          next unless raw.is_a?(Prism::LambdaNode) && raw.body
-          cref = node.lenv&.cref
-          next unless cref
-          walk_prism_tree(raw.body) do |pnode|
-            case pnode
-            when Prism::LocalVariableReadNode, Prism::LocalVariableWriteNode
-              next if pnode.depth == 0
-              mangled = find_scope_var_name(cref, pnode.name, scope_mappings)
-              variable_rename_entries[AstUtils.location_key(pnode)] = mangled if mangled
-            end
-          end
-        end
-      end
-
-      def find_scope_var_name(cref, var_name, scope_mappings)
-        current = cref
-        while current
-          mapping = scope_mappings[current.object_id]
-          return mapping[var_name] if mapping&.key?(var_name)
-          current = current.outer
-        end
-        nil
-      end
-
       def walk_prism_tree(node, &block)
         return unless node
         yield node
         node.compact_child_nodes.each { |child| walk_prism_tree(child, &block) }
-      end
-
-      def block_has_non_required_params?(params)
-        params && (
-          params.optionals&.any? ||
-          params.rest ||
-          params.posts&.any? ||
-          params.keywords&.any? ||
-          params.keyword_rest ||
-          params.block
-        )
-      end
-
-      def collect_block_body_var_keys(body_node, var_name)
-        keys = []
-        walk_prism_tree(body_node) do |n|
-          case n
-          when Prism::LocalVariableReadNode, Prism::LocalVariableWriteNode,
-               Prism::LocalVariableTargetNode
-            keys << AstUtils.location_key(n) if n.name == var_name
-          end
-        end
-        keys
-      end
-
-      def augment_def_node_params(nodes, scope_mappings, syntax_key)
-        nodes.traverse do |event, node|
-          next unless event == :enter
-          next unless node.is_a?(TypeProf::Core::AST::DefNode)
-
-          body_node = node.body
-          body_node = nil if body_node.is_a?(TypeProf::Core::AST::DummyNilNode)
-
-          param_names = {}
-          all_params = node.req_positionals + node.opt_positionals + node.post_positionals +
-            (node.req_keywords || []) + (node.opt_keywords || [])
-          all_params << node.rest_positionals if node.rest_positionals
-          all_params << node.rest_keywords if node.rest_keywords
-          all_params << node.block if node.block
-          all_params.each do |p|
-            param_names[p] = body_node ? get_mangled_name(body_node, p, scope_mappings) : p.to_s
-          end
-
-          raw = AstUtils.prism_node(node)
-          loc = raw.location
-          key = [loc.start_line, loc.start_column]
-          @syntax_data[key] = {} unless @syntax_data[key]
-          @syntax_data[key][syntax_key] = param_names
-        end
-      end
-
-      def precompute_block_params(nodes, scope_mappings, local_rename_entries = {})
-        block_param_names_map = {}
-        nodes.traverse do |event, node|
-          next unless event == :enter
-          next unless node.is_a?(TypeProf::Core::AST::CallNode)
-          raw = AstUtils.prism_node(node)
-          has_block_params = node.block_f_args&.any? ||
-            (raw.block.is_a?(Prism::BlockNode) &&
-             raw.block.parameters.is_a?(Prism::BlockParametersNode) &&
-             raw.block.parameters.parameters &&
-             collect_extra_block_param_names(raw.block.parameters.parameters).any?)
-          next unless has_block_params
-
-          block_body_node = node.block_body
-          block_body_node = nil if block_body_node.is_a?(TypeProf::Core::AST::DummyNilNode)
-
-          block_param_names = {}
-          node.block_f_args&.each do |param|
-            next unless param
-            block_param_names[param] = block_body_node ? get_mangled_name(block_body_node, param, scope_mappings) : param.to_s
-          end
-          node.block_multi_targets&.each_value do |mt|
-            collect_multi_target_names(mt).each do |name|
-              block_param_names[name] = block_body_node ? get_mangled_name(block_body_node, name, scope_mappings) : name.to_s
-            end
-          end
-          # Add non-required block params from Prism AST
-          if raw.block.is_a?(Prism::BlockNode) &&
-             raw.block.parameters.is_a?(Prism::BlockParametersNode) &&
-             raw.block.parameters.parameters
-            collect_extra_block_param_names(raw.block.parameters.parameters).each do |name|
-              next if block_param_names.key?(name)
-              block_param_names[name] = block_body_node ? get_mangled_name(block_body_node, name, scope_mappings) : name.to_s
-            end
-          end
-
-          # Numbered parameters (_1, _2) only work for blocks with simple required
-          # params. If the block has optionals, rest, keywords, or block params,
-          # we must fall back to regular short names.
-          if raw.block.is_a?(Prism::BlockNode) &&
-             raw.block.parameters.is_a?(Prism::BlockParametersNode) &&
-             block_has_non_required_params?(raw.block.parameters.parameters)
-            numbered_params = block_param_names.select { |_, v| v.match?(/\A_\d+\z/) }
-            if numbered_params.any?
-              gen = NameGenerator.new(block_param_names.values.reject { |v| v.match?(/\A_\d+\z/) })
-              numbered_params.each do |param_name, old_mangled|
-                new_name = gen.next_name
-                block_param_names[param_name] = new_name
-                # Update local_rename_entries only for variables in this block body
-                body_keys = collect_block_body_var_keys(raw.block.body, param_name)
-                body_keys.each { |k| local_rename_entries[k] = new_name if local_rename_entries[k] == old_mangled }
-              end
-            end
-          end
-
-          block_param_names_map[AstUtils.location_key(node)] = block_param_names
-        end
-        block_param_names_map
-      end
-
-      def augment_for_index(nodes, scope_mappings, syntax_key)
-        nodes.traverse do |event, node|
-          next unless event == :enter
-          next unless node.is_a?(TypeProf::Core::AST::ForNode)
-
-          raw = AstUtils.prism_node(node)
-          loc = raw.location
-          key = [loc.start_line, loc.start_column]
-          data = @syntax_data[key]
-          next unless data&.[](:index_name)
-
-          if node.body
-            data[syntax_key] = begin
-              get_mangled_name(node.body, data[:index_name], scope_mappings)
-            rescue
-              data[:index_name].to_s
-            end
-          end
-        end
       end
 
       def precompute_constant_resolution(nodes)

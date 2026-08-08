@@ -91,20 +91,22 @@ class TestMethodRenameMapping < Minitest::Test
   end
 
   def test_variable_collision_avoidance
+    scope_id = [999, 999]
+    mapping = RubyMinify::MethodRenameMapping.new
     key = [:MyClass, false, :my_method].freeze
-    @mapping.add_method(key, fake_node(100))
+    mapping.add_method(key, fake_node(100))
 
-    call_node = fake_node(201, cref_id: 999)
-    @mapping.add_call_site(call_node, key, has_receiver: false)
+    # An implicit-receiver call site in a scope where a local already claimed
+    # "a" — a bare `a` there would read the local, so the method must not
+    # take that name.
+    mapping.add_call_site(fake_node(201), key, has_receiver: false, scope_id: scope_id)
 
-    4.times { |i| @mapping.add_call_site(fake_node(202 + i), key, has_receiver: true) }
+    4.times { |i| mapping.add_call_site(fake_node(202 + i), key, has_receiver: true) }
 
-    cref_object_id = call_node.lenv.cref.object_id
-    scope_mappings = { cref_object_id => { my_var: 'a' } }
-    @mapping.assign_short_names(scope_mappings)
+    scope_mappings = { scope_id => { my_var: 'a' } }
+    mapping.assign_short_names(scope_mappings)
 
-    short = @mapping.short_name_for(loc_key(100))
-    assert_equal "b", short
+    assert_equal "b", mapping.short_name_for(loc_key(100))
   end
 
   def test_node_mapping_returns_dup

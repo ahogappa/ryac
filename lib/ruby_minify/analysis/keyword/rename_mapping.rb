@@ -85,6 +85,7 @@ module RubyMinify
       @node_short_names.dup
     end
 
+    # Keyed by the def's location, the coordinate the scope analysis works in.
     def def_node_mapping(def_node_registry)
       result = {}
       def_node_registry.each do |method_key, def_nodes|
@@ -99,12 +100,18 @@ module RubyMinify
           keyword_map.each do |sym, short|
             mapping[sym] = short
           end
-          result[def_node.object_id] = mapping unless mapping.empty?
+          result[AstUtils.location_key(def_node)] = mapping unless mapping.empty?
         end
       end
       result
     end
 
+    # A call passing a local as a keyword value — `f(code: c)` — pays nothing
+    # when the local is named like the keyword, because the shorthand form
+    # `f(code:)` applies. These hints suggest that name to the local's scope.
+    #
+    # The scope containing the call site is the caller's concern: pass a block
+    # mapping a call-argument node to its scope id.
     def build_variable_hints
       hints = {}
 
@@ -124,11 +131,11 @@ module RubyMinify
             val_node = entry[:val_node]
             next unless val_node.is_a?(TypeProf::Core::AST::LocalVariableReadNode)
 
-            cref_id = val_node.lenv&.cref&.object_id
-            next unless cref_id
+            scope_id = yield(val_node)
+            next unless scope_id
 
-            hints[cref_id] ||= {}
-            hints[cref_id][val_node.var] ||= final_name
+            hints[scope_id] ||= {}
+            hints[scope_id][val_node.var] ||= final_name
           end
         end
       end

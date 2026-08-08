@@ -93,4 +93,5 @@ module FakeNodeSupport
 
   def fake_node(id, **kw) = FakeNode.new(id, **kw)
   def loc_key(id) = [id, id]
+
 end

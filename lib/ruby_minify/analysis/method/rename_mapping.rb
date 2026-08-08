@@ -27,7 +27,7 @@ module RubyMinify
       @node_to_key = {}   # node_object_id => method_key
       @node_short_names = {} # node_object_id => short_name (after freeze)
       @key_short_names = {} # method_key => short_name (after freeze)
-      @implicit_receiver_sites = {} # node_object_id => cref_id (for collision check)
+      @implicit_receiver_sites = {} # node_object_id => scope_id (for collision check)
       @frozen = false
     end
 
@@ -44,15 +44,19 @@ module RubyMinify
       @methods.key?(method_key)
     end
 
-    def add_call_site(call_node, method_key, has_receiver:)
+    # scope_id names the scope containing an implicit-receiver call site, so
+    # the method can avoid short names a visible local already took there — a
+    # bare `a` would parse as the local, not the call. The caller resolves it
+    # rather than this class holding a resolver: this code minifies itself at
+    # L5, and a call through a stored collaborator is exactly the dynamic
+    # dispatch TypeProf cannot pin down, leaving the resolver's method
+    # renamed on one side and not the other.
+    def add_call_site(call_node, method_key, has_receiver:, scope_id: nil)
       @methods[method_key] ||= { def_nodes: [], call_sites: [] }
       @methods[method_key][:call_sites] << call_node
       @node_to_key[call_node.object_id] = method_key
 
-      unless has_receiver
-        cref_id = call_node.lenv&.cref&.object_id
-        @implicit_receiver_sites[call_node.object_id] = cref_id if cref_id
-      end
+      @implicit_receiver_sites[call_node.object_id] = scope_id if !has_receiver && scope_id
     end
 
     def exclude_methods_by_mid(mids)
@@ -103,7 +107,31 @@ module RubyMinify
         propagate_short_name(entry.keys, short_name, existing_methods, hierarchy)
       end
 
+      verify_no_shadowing!
       @frozen = true
+    end
+
+    # A rename group never spans mids, so after assignment each (cpath,
+    # singleton) namespace must map its mids onto distinct final names — a
+    # renamed method landing on another's name, renamed or kept, would shadow
+    # it and the output would still parse. The module_function regression
+    # (instance and singleton halves allocated independently) was exactly this
+    # shape; this turns any recurrence into a failed run.
+    def verify_no_shadowing!
+      namespaces = Hash.new { |h, k| h[k] = Hash.new { |h2, k2| h2[k2] = Set.new } }
+      @methods.each_key do |key|
+        cpath, singleton, mid = key
+        final = @key_short_names[key] || mid.to_s
+        namespaces[[cpath, singleton]][final] << mid
+      end
+
+      namespaces.each do |(cpath, singleton), finals|
+        collisions = finals.filter_map { |name, mids| [name, mids.to_a] if mids.size > 1 }
+        next if collisions.empty?
+
+        label = "#{cpath.join('::')}#{singleton ? '.' : '#'}"
+        raise Pipeline::RenameCollisionError.new(label, collisions)
+      end
     end
 
     def short_name_for(node_location_key)
