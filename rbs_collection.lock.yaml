@@ -1,6 +1,14 @@
 ---
 path: ".gem_rbs_collection"
 gems:
+- name: activesupport
+  version: '7.0'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: 2443035126922ee49f775a0edb0b705896fef7c6
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
 - name: ast
   version: '2.4'
   source:
@@ -9,8 +17,24 @@ gems:
     revision: 2443035126922ee49f775a0edb0b705896fef7c6
     remote: https://github.com/ruby/gem_rbs_collection.git
     repo_dir: gems
+- name: base64
+  version: 0.3.0
+  source:
+    type: rubygems
+- name: bigdecimal
+  version: 4.1.2
+  source:
+    type: rubygems
 - name: concurrent-ruby
   version: '1.1'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: 2443035126922ee49f775a0edb0b705896fef7c6
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
+- name: connection_pool
+  version: '2.4'
   source:
     type: git
     name: ruby/gem_rbs_collection
@@ -25,6 +49,18 @@ gems:
     revision: 2443035126922ee49f775a0edb0b705896fef7c6
     remote: https://github.com/ruby/gem_rbs_collection.git
     repo_dir: gems
+- name: date
+  version: '0'
+  source:
+    type: stdlib
+- name: digest
+  version: '0'
+  source:
+    type: stdlib
+- name: erb
+  version: '0'
+  source:
+    type: stdlib
 - name: ffi
   version: 1.17.4
   source:
@@ -37,6 +73,14 @@ gems:
   version: '0'
   source:
     type: stdlib
+- name: i18n
+  version: '1.10'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: 2443035126922ee49f775a0edb0b705896fef7c6
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
 - name: io-console
   version: '0'
   source:
@@ -82,6 +126,10 @@ gems:
     remote: https://github.com/ruby/gem_rbs_collection.git
     repo_dir: gems
 - name: monitor
+  version: '0'
+  source:
+    type: stdlib
+- name: openssl
   version: '0'
   source:
     type: stdlib
@@ -138,7 +186,7 @@ gems:
   source:
     type: stdlib
 - name: rbs
-  version: 4.0.3
+  version: 4.0.0
   source:
     type: rubygems
 - name: rdoc
@@ -173,8 +221,16 @@ gems:
   version: '0'
   source:
     type: stdlib
+- name: singleton
+  version: '0'
+  source:
+    type: stdlib
+- name: socket
+  version: '0'
+  source:
+    type: stdlib
 - name: steep
-  version: 2.1.0.dev.1
+  version: 2.0.0.dev
   source:
     type: rubygems
 - name: stringio
@@ -185,10 +241,26 @@ gems:
   version: '0'
   source:
     type: stdlib
+- name: time
+  version: '0'
+  source:
+    type: stdlib
+- name: timeout
+  version: '0'
+  source:
+    type: stdlib
 - name: tsort
   version: '0'
   source:
     type: stdlib
+- name: tzinfo
+  version: '2.0'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: 2443035126922ee49f775a0edb0b705896fef7c6
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
 - name: uri
   version: '0'
   source:
