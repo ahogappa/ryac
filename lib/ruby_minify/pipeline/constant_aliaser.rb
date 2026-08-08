@@ -42,6 +42,12 @@ module RubyMinify
             next :skip_children
           when Prism::ConstantWriteNode
             patch_constant_write(subnode, patches, analysis)
+          when Prism::ConstantTargetNode
+            # `A, B = ...` — Prism models each target as a ConstantTargetNode,
+            # not a ConstantWriteNode. TypeProf still reports one constant per
+            # target at the same location, so without this the references get
+            # renamed while the definitions keep their original names.
+            patch_constant_write(subnode, patches, analysis)
           when Prism::ConstantPathWriteNode
             patch_constant_path_write(subnode, patches, analysis)
           when Prism::ClassNode
@@ -92,7 +98,9 @@ module RubyMinify
         short_name = analysis.constant_mapping.short_name_for_path(static_cpath)
         return unless short_name
 
-        name_loc = node.name_loc
+        # A ConstantTargetNode is entirely the name; a ConstantWriteNode also
+        # spans `= value`, so only its name_loc belongs to us.
+        name_loc = node.is_a?(Prism::ConstantTargetNode) ? node.location : node.name_loc
         patches << { start: name_loc.start_offset, end: name_loc.end_offset, replacement: short_name }
       end
 

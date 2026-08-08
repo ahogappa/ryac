@@ -5,12 +5,12 @@ require "rake/testtask"
 
 Rake::TestTask.new(:test) do |t|
   t.libs << "lib"
-  t.test_files = FileList["tests/**/test_*.rb"].exclude("tests/test_integration.rb", "tests/test_fixtures.rb", "tests/test_gem_minification.rb", "tests/_archive/**/*")
+  t.test_files = FileList["tests/**/test_*.rb"].exclude("tests/test_integration.rb", "tests/test_fixtures.rb", "tests/test_gem_minification.rb", "tests/test_optcarrot.rb", "tests/_archive/**/*")
 end
 
 Rake::TestTask.new("test:all") do |t|
   t.libs << "lib"
-  t.test_files = FileList["tests/**/test_*.rb"].exclude("tests/test_fixtures.rb", "tests/test_gem_minification.rb", "tests/_archive/**/*")
+  t.test_files = FileList["tests/**/test_*.rb"].exclude("tests/test_fixtures.rb", "tests/test_gem_minification.rb", "tests/test_optcarrot.rb", "tests/_archive/**/*")
 end
 
 Rake::TestTask.new("test:integration") do |t|
@@ -21,6 +21,12 @@ end
 Rake::TestTask.new("test:gems") do |t|
   t.libs << "lib"
   t.test_files = FileList["tests/test_gem_minification.rb"]
+end
+
+desc "Minify optcarrot at the supported level and compare rendered frames"
+Rake::TestTask.new("test:optcarrot") do |t|
+  t.libs << "lib"
+  t.test_files = FileList["tests/test_optcarrot.rb"]
 end
 
 desc "Show self-hosting compression ratio"

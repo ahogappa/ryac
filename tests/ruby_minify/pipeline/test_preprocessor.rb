@@ -80,4 +80,29 @@ class TestPreprocessor < Minitest::Test
   def test_unless_else_rewritten
     assert_equal "if x\n  b\nelse\n  a\nend\n", preprocess("unless x\n  a\nelse\n  b\nend\n")
   end
+
+  # %w[] does not honour `#` comments, so a note written inside COPS silently
+  # becomes cop names — which is how Style/SendWithLiteralMethodName ended up
+  # enabled by the very comment saying it was excluded. Entries that do not
+  # resolve are dropped by filter_map, so nothing else would report this.
+  def test_every_configured_cop_resolves
+    unresolved = RubyMinify::Pipeline::Preprocessor::COPS.reject do |name|
+      RuboCop::Cop::Registry.global.find_by_cop_name(name)
+    end
+    assert_empty unresolved, "COPS contains entries that are not RuboCop cops"
+  end
+
+  # These rewrite `x.count == 0` / `x.any?` on the assumption the receiver is a
+  # collection. RuboCop marks them Safe=false and they broke a real program
+  # (optcarrot's APU::LengthCounter#count is a plain attr_reader).
+  def test_collection_assuming_cops_stay_disabled
+    %w[Style/ZeroLengthPredicate Style/CollectionQuerying].each do |cop|
+      refute_includes RubyMinify::Pipeline::Preprocessor::COPS, cop
+    end
+  end
+
+  def test_count_zero_comparison_left_alone
+    code = "def active?\n  @length_counter.count == 0\nend\n"
+    assert_equal code, preprocess(code)
+  end
 end

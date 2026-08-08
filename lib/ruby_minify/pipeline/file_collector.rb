@@ -198,7 +198,8 @@ module RubyMinify
               line: node.location.start_line,
               start_offset: node.location.start_offset,
               length: node.location.length,
-              in_class: in_class
+              in_class: in_class,
+              in_method: in_method
             }
           end
         else

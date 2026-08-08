@@ -192,6 +192,54 @@ class TestConcatenator < Minitest::Test
     assert_equal({ "/a.rbs" => "class A; end" }, result.rbs_files)
   end
 
+  # A require inside a method body runs only when that method is called, and is
+  # usually guarded — optcarrot requires stackprof only under --stackprof-mode.
+  # Hoisting it to the top of the output would make an optional dependency
+  # mandatory, so it has to stay inline and out of stdlib_requires.
+  def test_in_method_stdlib_require_stays_inline
+    content = "class R\n  def run\n    if @profile\n      require \"stackprof\"\n    end\n  end\nend"
+    graph = build_graph(
+      "/r.rb" => {
+        content: content,
+        deps: [],
+        require_nodes: [{
+          type: :require_stdlib,
+          path: "stackprof",
+          line: 4,
+          start_offset: content.index('require "stackprof"'),
+          length: 'require "stackprof"'.length,
+          in_class: true,
+          in_method: true
+        }]
+      }
+    )
+    result = @concatenator.call(graph)
+    assert_empty result.stdlib_requires, "in-method require must not be hoisted"
+    assert_includes result.content, 'require "stackprof"', "in-method require must stay in place"
+  end
+
+  def test_top_level_stdlib_require_still_hoisted
+    content = "require \"zlib\"\nclass R\nend"
+    graph = build_graph(
+      "/r.rb" => {
+        content: content,
+        deps: [],
+        require_nodes: [{
+          type: :require_stdlib,
+          path: "zlib",
+          line: 1,
+          start_offset: 0,
+          length: 'require "zlib"'.length,
+          in_class: false,
+          in_method: false
+        }]
+      }
+    )
+    result = @concatenator.call(graph)
+    assert_equal ["zlib"], result.stdlib_requires
+    refute_includes result.content, 'require "zlib"'
+  end
+
   def test_autoload_declaration_removed_when_dependency_inlined
     formatter_content = "module MyLib\n  class Formatter\n    def format(text)\n      text.upcase\n    end\n  end\nend"
     main_content = "module MyLib\n  autoload :Formatter, \"my_lib/formatter\"\n\n  class Runner\n    def run\n      Formatter.new.format(\"hello\")\n    end\n  end\nend"

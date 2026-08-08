@@ -140,9 +140,16 @@ module RubyMinify
         )
       end
 
+      # Hoisting a require to the top of the output makes it run at load time.
+      # That is fine for one the file already ran at load time, but a require
+      # inside a method body runs only when the method is called and is often
+      # guarded — optcarrot loads stackprof only under --stackprof-mode, so
+      # hoisting it turns an optional dependency into a mandatory one.
       def collect_stdlib_requires(entry, stdlib_requires)
         entry.require_nodes.each do |node|
-          stdlib_requires << node[:path] if node[:type] == :require_stdlib
+          next unless node[:type] == :require_stdlib
+          next if node[:in_method]
+          stdlib_requires << node[:path]
         end
       end
 
@@ -183,6 +190,10 @@ module RubyMinify
               next
             end
           end
+
+          # An in-method stdlib require is not hoisted, so it has to stay where
+          # it is — deleting it here would drop the require altogether.
+          next if node[:type] == :require_stdlib && node[:in_method]
 
           # For removal: consume trailing semicolons and newlines
           while end_pos < result.length && (result[end_pos] == ';' || result[end_pos] == "\n")

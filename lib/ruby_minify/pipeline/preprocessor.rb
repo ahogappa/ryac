@@ -7,6 +7,23 @@ module RubyMinify
     # Stage 2.5: RuboCop Preprocessor
     # Applies RuboCop autocorrect to reduce code size before analysis
     class Preprocessor < Stage
+      # Deliberately absent, and they must stay that way:
+      #
+      #   Style/ZeroLengthPredicate
+      #     rewrites `x.count == 0` to `x.none?`, which only holds when the
+      #     receiver is a collection — `@length_counter.count == 0` against an
+      #     ordinary attr_reader raises NoMethodError.
+      #   Style/CollectionQuerying
+      #     same shape, same failure mode.
+      #
+      # Style/SendWithLiteralMethodName is listed and stays listed: with the
+      # default AllowSend it only rewrites public_send, which cannot reach a
+      # private method, so the direct call it produces is equivalent.
+      # send/__send__ keep their symbol argument and MethodRenamer patches it.
+      #
+      # Keep such notes out here: %w[] does not honour `#` comments, so a note
+      # written inside the array below silently becomes enabled cop names.
+      # test_preprocessor.rb asserts every entry resolves to a real cop.
       COPS = %w[
         Style/RedundantReturn
         Style/RedundantSelf
@@ -47,16 +64,13 @@ module RubyMinify
         Style/MinMax
         Style/Sample
         Style/RedundantSort
-        # NOT included: Style/SendWithLiteralMethodName
-        # send/public_send can call private methods; direct calls cannot.
+        Style/SendWithLiteralMethodName
         Naming/BlockForwarding
         Style/ObjectThen
         Style/SuperArguments
         Style/EmptyCaseCondition
         Style/EachForSimpleLoop
-        Style/ZeroLengthPredicate
         Style/Lambda
-        Style/CollectionQuerying
         Style/SoleNestedConditional
         Style/IfInsideElse
       ].freeze

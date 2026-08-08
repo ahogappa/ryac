@@ -29,6 +29,28 @@ jobs:
         if: matrix.ruby-version == '4.0'
         run: bundle exec rbs collection install && bundle exec steep check
 
+  # Optcarrot is the aggressive end of the supported range, so this one blocks.
+  # It renders 180 frames from a real ROM and compares the checksum against the
+  # unminified program, which no unit test can stand in for.
+  optcarrot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0"
+          bundler-cache: true
+      - name: Clone optcarrot
+        run: |
+          mkdir -p gem_tests
+          git clone --depth 1 https://github.com/mame/optcarrot gem_tests/optcarrot
+      - name: Verify rendered frames survive minification
+        run: bundle exec rake test:optcarrot
+
+  # sinatra and rubocop sit outside the supported range — they are canaries for
+  # regressions, not a definition of what the minifier promises, so they do not
+  # block the build.
   external-gems:
     runs-on: ubuntu-latest
     continue-on-error: true

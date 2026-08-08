@@ -234,4 +234,21 @@ class TestConstantAliaserPipeline < Minitest::Test
     assert_equal 'class Foo;class<<self;PATTERNS=[/foo/,/bar/];def get_patterns =PATTERNS;end;def self.use_patterns =puts get_patterns.inspect;end;Foo.use_patterns',
                  result.code
   end
+
+  # Prism models `A, B = ...` as ConstantTargetNodes rather than
+  # ConstantWriteNodes. Missing them renamed every reference while leaving the
+  # definitions untouched, so the short names were never assigned to anything.
+  def test_multi_assigned_constants_renamed_at_definition
+    code = "class CPU\n" \
+           "  RP2A03_CC = 12\n" \
+           "  CLK_1, CLK_2, CLK_3 = (1..3).map { |i| i * RP2A03_CC }\n" \
+           "  def tick(n)\n" \
+           "    n == 1 ? CLK_1 : n == 2 ? CLK_2 : CLK_3\n" \
+           "  end\n" \
+           "end\n" \
+           "p CPU.new.tick(2)"
+    result = minify_at_level(code, 4)
+    assert_equal 'class E;A=12;B,C,D=(1..3).map{_1*A};def tick(a) =a==1?B : a==2?C : D;end;p E.new.tick(2)',
+                 result.code
+  end
 end
