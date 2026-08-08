@@ -17,7 +17,7 @@ module RubyMinify
       next unless event == :enter
       next unless node.is_a?(TypeProf::Core::AST::AliasGlobalVariableNode)
 
-      raw = node.instance_variable_get(:@raw_node)
+      raw = AstUtils.prism_node(node)
       new_name = raw.new_name.slice.to_sym
       old_name = raw.old_name.slice.to_sym
       @gvar_rename_mapping.exclude_name(new_name)

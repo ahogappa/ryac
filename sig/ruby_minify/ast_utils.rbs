@@ -23,6 +23,7 @@ module RubyMinify
     def self.can_omit_parens?: (Prism::CallNode node, ?String? method_name) -> bool
     def self.first_arg_is_regex?: (Prism::Node arg) -> bool
     def self.contains_bare_block?: (Prism::Node node) -> bool
+    def self.prism_node: (TypeProf::Core::AST::Node node) -> Prism::Node?
     def self.location_key: (Prism::Node | TypeProf::Core::AST::Node node) -> location_key
   end
 end

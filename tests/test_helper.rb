@@ -62,12 +62,9 @@ end
 # Fake node for unit testing rename mapping classes.
 # Simulates code_range for RubyMinify.location_key.
 module FakeNodeSupport
-  FakePosition = Struct.new(:lineno, :column)
-
-  FakeCodeRange = Struct.new(:id) do
-    def first = FakeNodeSupport::FakePosition.new(id, 0)
-    def last = FakeNodeSupport::FakePosition.new(id, 0)
-  end
+  # Stands in for Prism::Location: AstUtils.location_key keys everything by
+  # byte offsets, so a double only has to offer those.
+  FakeLocation = Struct.new(:start_offset, :end_offset)
 
   FAKE_CREF_CACHE = {}
 
@@ -86,7 +83,7 @@ module FakeNodeSupport
       super(id: id, cref_id: cref_id)
     end
 
-    def code_range = FakeNodeSupport::FakeCodeRange.new(id)
+    def location = FakeNodeSupport::FakeLocation.new(id, id)
 
     def lenv
       return nil unless cref_id
@@ -95,5 +92,5 @@ module FakeNodeSupport
   end
 
   def fake_node(id, **kw) = FakeNode.new(id, **kw)
-  def loc_key(id) = [id << 20, id << 20]
+  def loc_key(id) = [id, id]
 end

@@ -20,7 +20,7 @@ module RubyMinify
         next if attr_backed[cpath]&.include?(node.var)
         @ivar_rename_mapping.add_write_site(cpath, node.var, node)
       when TypeProf::Core::AST::DefinedNode
-        raw = node.instance_variable_get(:@raw_node)
+        raw = AstUtils.prism_node(node)
         next unless raw.is_a?(Prism::DefinedNode) && raw.value.is_a?(Prism::InstanceVariableReadNode)
         ivar_node = raw.value
         cpath = node.lenv.cref.cpath
@@ -151,7 +151,7 @@ module RubyMinify
         cpath = node.lenv.cref.cpath
         ivar_nodes_by_key[[cpath, node.var]] << node
       when TypeProf::Core::AST::DefinedNode
-        raw = node.instance_variable_get(:@raw_node)
+        raw = AstUtils.prism_node(node)
         next unless raw.is_a?(Prism::DefinedNode) && raw.value.is_a?(Prism::InstanceVariableReadNode)
         cpath = node.lenv.cref.cpath
         ivar_nodes_by_key[[cpath, raw.value.name]] << raw.value

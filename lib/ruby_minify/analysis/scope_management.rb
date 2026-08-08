@@ -96,7 +96,7 @@ module RubyMinify
             end
           end
           # Add non-required block params (optional, rest, keyword, block) from Prism AST
-          raw = node.instance_variable_get(:@raw_node)
+          raw = AstUtils.prism_node(node)
           if raw.block.is_a?(Prism::BlockNode) &&
              raw.block.parameters.is_a?(Prism::BlockParametersNode) &&
              raw.block.parameters.parameters

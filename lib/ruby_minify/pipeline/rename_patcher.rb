@@ -27,9 +27,12 @@ module RubyMinify
         children.each { |child| walk_prism(child, &block) }
       end
 
+      # Same key the analysis stored the rename under. Kept as its own name
+      # because the patchers only ever pass Prism nodes, but it must not grow a
+      # second implementation — the two sides sharing one definition is the
+      # point.
       def prism_location_key(node)
-        loc = node.location
-        [loc.start_line << 20 | loc.start_column, loc.end_line << 20 | loc.end_column]
+        AstUtils.location_key(node)
       end
 
       def patch_variable(node, patches, rename_map)

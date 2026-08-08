@@ -552,16 +552,27 @@ class TestAstUtils < Minitest::Test
 
   def test_location_key_with_prism_node
     ast = Prism.parse("foo").value.statements.body.first
-    key = RubyMinify::AstUtils.location_key(ast)
-    assert_equal 2, key.size
-    assert_equal 1 << 20 | 0, key[0]
-    assert_equal 1 << 20 | 3, key[1]
+    assert_equal [0, 3], RubyMinify::AstUtils.location_key(ast)
   end
 
   def test_location_key_with_fake_node
     fake = FakeNodeSupport::FakeNode.new(5)
-    key = RubyMinify::AstUtils.location_key(fake)
-    assert_equal [5 << 20, 5 << 20], key
+    assert_equal [5, 5], RubyMinify::AstUtils.location_key(fake)
+  end
+
+  # TypeProf nodes carry no location of their own — the key comes from the
+  # Prism node behind them.
+  def test_location_key_reads_through_to_the_prism_node
+    prism_node = Prism.parse("bar").value.statements.body.first
+    wrapper = Object.new
+    wrapper.instance_variable_set(:@raw_node, prism_node)
+    assert_equal [0, 3], RubyMinify::AstUtils.location_key(wrapper)
+  end
+
+  # A node nothing can point back at cannot be renamed, so this refuses rather
+  # than inventing a key that would silently never match a patch site.
+  def test_location_key_rejects_a_node_with_no_source_location
+    assert_raises(ArgumentError) { RubyMinify::AstUtils.location_key(Object.new) }
   end
 
   # has_block?

@@ -214,11 +214,11 @@ module RubyMinify
                TypeProf::Core::AST::LocalVariableWriteNode
             map[AstUtils.location_key(node)] = get_mangled_name(node, node.var, scope_mappings)
           when TypeProf::Core::AST::DefNode
-            raw = node.instance_variable_get(:@raw_node)
+            raw = AstUtils.prism_node(node)
             next unless raw.receiver.is_a?(Prism::LocalVariableReadNode)
             map[AstUtils.location_key(raw.receiver)] = get_mangled_name(node, raw.receiver.name, scope_mappings)
           when TypeProf::Core::AST::DefinedNode
-            raw = node.instance_variable_get(:@raw_node)
+            raw = AstUtils.prism_node(node)
             next unless raw.is_a?(Prism::DefinedNode) && raw.value.is_a?(Prism::LocalVariableReadNode)
             lvar_node = raw.value
             map[AstUtils.location_key(lvar_node)] = get_mangled_name(node, lvar_node.name, scope_mappings)
@@ -231,7 +231,7 @@ module RubyMinify
         nodes.traverse do |event, node|
           next unless event == :enter
           next unless node.is_a?(TypeProf::Core::AST::LambdaNode)
-          raw = node.instance_variable_get(:@raw_node)
+          raw = AstUtils.prism_node(node)
           next unless raw.is_a?(Prism::LambdaNode) && raw.body
           cref = node.lenv&.cref
           next unless cref
@@ -303,7 +303,7 @@ module RubyMinify
             param_names[p] = body_node ? get_mangled_name(body_node, p, scope_mappings) : p.to_s
           end
 
-          raw = node.instance_variable_get(:@raw_node)
+          raw = AstUtils.prism_node(node)
           loc = raw.location
           key = [loc.start_line, loc.start_column]
           @syntax_data[key] = {} unless @syntax_data[key]
@@ -316,7 +316,7 @@ module RubyMinify
         nodes.traverse do |event, node|
           next unless event == :enter
           next unless node.is_a?(TypeProf::Core::AST::CallNode)
-          raw = node.instance_variable_get(:@raw_node)
+          raw = AstUtils.prism_node(node)
           has_block_params = node.block_f_args&.any? ||
             (raw.block.is_a?(Prism::BlockNode) &&
              raw.block.parameters.is_a?(Prism::BlockParametersNode) &&
@@ -376,7 +376,7 @@ module RubyMinify
           next unless event == :enter
           next unless node.is_a?(TypeProf::Core::AST::ForNode)
 
-          raw = node.instance_variable_get(:@raw_node)
+          raw = AstUtils.prism_node(node)
           loc = raw.location
           key = [loc.start_line, loc.start_column]
           data = @syntax_data[key]

@@ -11,7 +11,7 @@ module RubyMinify
           cpath = box.cpath
           # TypeProf uses the enclosing scope's cpath for def receivers,
           # not the receiver's cpath. Correct it for constant receivers.
-          raw = node.instance_variable_get(:@raw_node)
+          raw = AstUtils.prism_node(node)
           if raw&.receiver && !raw.receiver.is_a?(Prism::SelfNode)
             corrected = resolve_def_receiver_cpath(raw.receiver, genv)
             cpath = corrected if corrected
