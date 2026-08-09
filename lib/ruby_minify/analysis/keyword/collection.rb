@@ -5,14 +5,10 @@ module RubyMinify
     @keyword_def_node_registry = {}
     @keyword_forwarding_super_keys = Set.new
 
-    Nesting.each(prism_root) do |node, cpath, sclass_singleton, _in_def|
-      next unless node.is_a?(Prism::DefNode)
-
+    Nesting.each_method_definition(prism_root) do |node, method_key|
       keywords = def_keyword_names(node)
       next if keywords.empty?
 
-      singleton = sclass_singleton || !node.receiver.nil?
-      method_key = [cpath, singleton, node.name].freeze
       keywords.each { |sym| @keyword_rename_mapping.add_keyword_def(method_key, sym) }
 
       @keyword_def_node_registry[method_key] ||= []

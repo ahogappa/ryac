@@ -2,20 +2,11 @@
 
 module RubyMinify
   def collect_method_definitions(prism_root)
-    Nesting.each(prism_root) do |node, nesting_cpath, sclass_singleton, _in_def|
-      next unless node.is_a?(Prism::DefNode)
+    Nesting.each_method_definition(prism_root) do |node, method_key|
+      next if EXCLUDED_METHODS.include?(method_key[2])
 
-      singleton = sclass_singleton || !node.receiver.nil?
-      cpath = nesting_cpath
-      if node.receiver && !node.receiver.is_a?(Prism::SelfNode)
-        corrected = resolve_def_receiver_cpath(node.receiver)
-        cpath = corrected if corrected
-      end
-      next if EXCLUDED_METHODS.include?(node.name)
-
-      method_key = [cpath, singleton, node.name].freeze
       @method_rename_mapping.add_method(method_key, node)
-      link_module_function_variant(node, cpath, singleton, node.name, method_key)
+      link_module_function_variant(node, method_key)
     end
 
     # attr_reader/attr_accessor define getters worth renaming; attr_writer's
@@ -63,7 +54,8 @@ module RubyMinify
   # must stay independent. The older "no defs but has call boxes" shape is
   # still accepted: TypeProf only began recording a def for the singleton
   # side of module_function in 0.32.0.
-  def link_module_function_variant(def_node, cpath, singleton, mid, method_key)
+  def link_module_function_variant(def_node, method_key)
+    cpath, singleton, mid = method_key
     return unless @oracle.method_known?(cpath, !singleton, mid)
 
     alt_def_keys = @oracle.method_definition_keys(cpath, !singleton, mid)
@@ -74,32 +66,6 @@ module RubyMinify
     alt_key = [cpath, !singleton, mid].freeze
     @method_rename_mapping.add_method(alt_key, nil)
     @method_rename_mapping.merge_groups(method_key, alt_key)
-  end
-
-  def resolve_def_receiver_cpath(receiver)
-    case receiver
-    when Prism::ConstantReadNode
-      [receiver.name]
-    when Prism::ConstantPathNode
-      build_cpath_from_prism_node(receiver)
-    end
-  end
-
-  def build_cpath_from_prism_node(node)
-    parts = []
-    current = node
-    while current.is_a?(Prism::ConstantPathNode)
-      parts.unshift(current.name)
-      current = current.parent
-    end
-    if current.is_a?(Prism::ConstantReadNode)
-      parts.unshift(current.name)
-    elsif current.nil?
-      # ::Foo::Bar (top-level absolute path)
-    else
-      return nil
-    end
-    parts
   end
 
   def merge_super_groups(super_merges)

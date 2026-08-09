@@ -48,6 +48,25 @@ module RubyMinify
       end
     end
 
+    # Yields every method definition with its [cpath, singleton, name] key:
+    # the receiver form folded in (`def self.x` and defs inside `class <<
+    # self` are singleton; `def Foo.x` defines on Foo wherever it lexically
+    # sits), so every collection computes method identity the same way.
+    def each_method_definition(root)
+      each(root) do |node, cpath, sclass_singleton, _in_def|
+        next unless node.is_a?(Prism::DefNode)
+
+        singleton = sclass_singleton || !node.receiver.nil?
+        key_cpath = cpath
+        receiver = node.receiver
+        if receiver && !receiver.is_a?(Prism::SelfNode)
+          segments, _absolute = path_segments(receiver)
+          key_cpath = segments if segments
+        end
+        yield node, [key_cpath, singleton, node.name].freeze
+      end
+    end
+
     # The path a class/module definition appends to the enclosing nesting.
     # Returns [segments, absolute] — absolute when written `class ::X` —
     # or nil when the path is not statically known.
