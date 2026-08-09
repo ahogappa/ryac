@@ -60,11 +60,25 @@ module RubyMinify
     found
   end
 
+  # Everything call sites decide about keyword renames, in order: literal
+  # keywords register with their method, super-forwarding merges child and
+  # parent groups (or excludes the child when the parent is outside our
+  # control), polymorphic call sites merge every method they can reach,
+  # methods no resolved call reaches are excluded, and unresolved
+  # keyword-writing calls disqualify their method name entirely.
   def collect_keyword_call_sites(prism_root)
+    sites = register_keyword_calls
+    merge_super_forwarding(sites[:super_merges])
+    merge_polymorphic_keyword_groups(sites[:call_node_to_keys])
+    exclude_unreachable_keyword_methods(sites[:zero_call_keys], sites[:super_targets])
+    exclude_unresolved_keyword_calls(prism_root)
+  end
+
+  def register_keyword_calls
     call_node_to_keys = Hash.new { |h, k| h[k] = [] }
     super_merges = []
     zero_call_keys = []
-    has_super_target = Set.new
+    super_targets = Set.new
 
     @keyword_rename_mapping.each_method_key do |key|
       call_count = 0
@@ -74,9 +88,8 @@ module RubyMinify
         next if splat_seen
 
         if info.super
-          child_key = [info.caller_cpath, key[1], key[2]].freeze
-          super_merges << [child_key, key]
-          has_super_target << key
+          super_merges << [[info.caller_cpath, key[1], key[2]].freeze, key]
+          super_targets << key
           next
         end
 
@@ -100,32 +113,43 @@ module RubyMinify
       zero_call_keys << key if !splat_seen && call_count == 0 && @oracle.method_known?(key[0], key[1], key[2])
     end
 
+    { call_node_to_keys: call_node_to_keys, super_merges: super_merges,
+      zero_call_keys: zero_call_keys, super_targets: super_targets }
+  end
+
+  # Supers are discovered from the parent's call boxes, so a `super` whose
+  # parent we never collected produces no merge at all. That parent's
+  # signature is outside our control — Data.define and Struct.new generate
+  # theirs from the member list — and renaming only the child raises
+  # "unknown keywords" at runtime, so leave those keywords alone.
+  def merge_super_forwarding(super_merges)
     super_merges.each do |child_key, parent_key|
       @keyword_rename_mapping.merge_groups(child_key, parent_key)
     end
 
-    # Supers are discovered from the parent's call boxes, so a `super` whose
-    # parent we never collected produces no merge at all. That parent's
-    # signature is outside our control — Data.define and Struct.new generate
-    # theirs from the member list — and renaming only the child raises
-    # "unknown keywords" at runtime, so leave those keywords alone.
     merged_children = Set.new(super_merges.map { |child_key, _| child_key })
     @keyword_forwarding_super_keys.each do |key|
       next if merged_children.include?(key)
       @keyword_rename_mapping.exclude_method(key)
     end
+  end
 
+  def merge_polymorphic_keyword_groups(call_node_to_keys)
     call_node_to_keys.each_value do |keys|
       next if keys.size < 2
       (1...keys.size).each { |i| @keyword_rename_mapping.merge_groups(keys[i - 1], keys[i]) }
     end
+  end
 
+  # A keyword-taking method type analysis knows but connects no call to is
+  # reachable in ways we cannot see; renaming its keywords would strand the
+  # unseen callers. A method reached through super stays: the merge already
+  # ties it to callers we did see.
+  def exclude_unreachable_keyword_methods(zero_call_keys, super_targets)
     zero_call_keys.each do |key|
-      next if has_super_target.include?(key)
+      next if super_targets.include?(key)
       @keyword_rename_mapping.exclude_method(key)
     end
-
-    exclude_unresolved_keyword_calls(prism_root)
   end
 
   # A call to a keyword-taking method that type inference never connected to
