@@ -52,7 +52,7 @@ module RubyMinify
         prism_result, nodes, genv = without_stdout_pollution { setup_typeprof(source) }
         @prism_root = prism_result.value
         @oracle = TypeOracle.new(genv, nodes)
-        @external_require_roots = external_require_roots(source.stdlib_requires)
+        @boot_constant_roots = boot_constant_roots(source.stdlib_requires)
         @syntax_data = collect_syntax_data(@prism_root)
 
         analyze_keywords_and_scopes(@prism_root)
@@ -170,7 +170,7 @@ module RubyMinify
       end
 
       def analyze_constants_phase
-        @constant_mapping = ConstantRenameMapping.new
+        @constant_mapping = ConstantRenameMapping.new(boot_roots: @boot_constant_roots)
         collect_constants(@prism_root)
         exclude_private_constants(@prism_root)
         count_constant_references(@prism_root)

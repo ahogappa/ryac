@@ -39,9 +39,7 @@ module RubyMinify
 
   private
 
-  def link_module_function_variant: (Prism::DefNode def_node, Array[Symbol] cpath, bool singleton, Symbol mid, method_key method_key) -> void
-  def resolve_def_receiver_cpath: (Prism::Node? receiver) -> Array[Symbol]?
-  def build_cpath_from_prism_node: (Prism::Node node) -> Array[Symbol]?
+  def link_module_function_variant: (Prism::DefNode def_node, method_key method_key) -> void
   def merge_super_groups: (Array[[method_key, method_key]] super_merges) -> void
   def merge_polymorphic_groups: (Hash[location_key, Array[method_key]] call_node_to_keys) -> void
   def merge_unresolved_calls: (Set[location_key] resolved_call_keys) -> void
@@ -67,7 +65,10 @@ module RubyMinify
   def external_prefix_for: (Prism::Node node) -> Array[Symbol]?
   def complete_const_chain?: (Prism::Node node) -> bool
   def required_external_root?: (Symbol root) -> bool
-  def external_require_roots: (Array[String] stdlib_requires) -> Set[String]
+  def boot_constant_roots: (Array[String] stdlib_requires) -> Set[Symbol]?
+  def probe_boot_constants: (Array[String] stdlib_requires) -> Set[Symbol]?
+
+  BOOT_CONSTANT_CACHE: Hash[Array[String], Set[Symbol]?]
 
   # --- analysis/ivar/collection.rb ---
   DYNAMIC_IVAR_METHODS: Array[Symbol]

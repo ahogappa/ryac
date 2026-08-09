@@ -26,7 +26,7 @@ module RubyMinify
     attr_reader mappings: Hash[Array[Symbol], ConstantInfo]
     attr_reader used_short_names: Set[String]
 
-    def initialize: () -> void
+    def initialize: (?boot_roots: Set[Symbol]?) -> void
     def empty?: () -> bool
     def finalized?: () -> bool
     def add_definition_with_path: (Array[Symbol] static_cpath, definition_type: Symbol) -> void
@@ -49,6 +49,7 @@ module RubyMinify
 
     private
 
+    def external_class_root?: (Array[Symbol] cpath) -> bool
     def runtime_constant?: (Array[Symbol] cpath) -> bool
     def build_alias_declaration: (ConstantInfo info) -> String?
   end

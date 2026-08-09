@@ -180,6 +180,12 @@ module RubyMinify
       unused_rescue = unused_rescue_vars(node.body)
       kw_mapping = kw_def_map[scope.id]
       hints = var_hints[scope.id] || {}
+      # A hint aimed at a local that is itself a keyword parameter can never
+      # apply — the parameter branch below always wins — so reserving its
+      # value would only burn a short name. Worse, the waste is not a fixed
+      # point: re-minifying the output (where the hinting call already writes
+      # short keywords, so no hint arises) would allocate the burned names.
+      hints = hints.reject { |var, _| keyword_params.include?(var) }
 
       reserved = hints.values.dup
       reserved.concat(kw_mapping.values) if kw_mapping

@@ -50,7 +50,14 @@ module RubyMinify
   class ConstantRenameMapping
     attr_reader :mappings, :used_short_names
 
-    def initialize
+    # boot_roots: the top-level constants that exist when the minified
+    # program boots (core + its own requires), used to spot reopenings of
+    # classes the program didn't create. nil falls back to probing the
+    # minifier's own process, which over-approximates: everything the
+    # minifier has loaded — including, under self-hosting, the analyzed
+    # program itself — then looks like a reopening.
+    def initialize(boot_roots: nil)
+      @boot_roots = boot_roots
       @mappings = {}           # Hash<Array<Symbol>, ConstantInfo> - key is static_cpath
       @by_name = {}            # Hash<Symbol, Array<ConstantInfo>> - lookup by simple name
       @used_short_names = Set.new
@@ -145,7 +152,7 @@ module RubyMinify
 
       @mappings.each_value do |info|
         next if skip_class_modules && info.definition_type != :value
-        next if info.definition_type != :value && runtime_constant?(info.full_path)
+        next if info.definition_type != :value && external_class_root?(info.full_path)
         entries << [info.original_name.to_s.length * (info.usage_count + 1), :internal, info]
       end
 
@@ -282,6 +289,16 @@ module RubyMinify
     end
 
     private
+
+    # A class/module definition whose root the program didn't create is a
+    # reopening (e.g. `class Array`, or `module Prism` adding to the gem) and
+    # must not be renamed. With boot_roots the judgement is exact for the
+    # program's own runtime; without it, fall back to probing this process.
+    def external_class_root?(cpath)
+      return runtime_constant?(cpath) if @boot_roots.nil?
+
+      @boot_roots.include?(cpath.first)
+    end
 
     # Check if a constant path already exists in the Ruby runtime.
     # Used to detect class/module reopenings (e.g., `class Array` adding methods

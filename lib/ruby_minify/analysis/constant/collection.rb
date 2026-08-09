@@ -261,16 +261,35 @@ module RubyMinify
   end
 
   def required_external_root?(root)
-    (@external_require_roots || Set.new).include?(root.to_s)
+    (@boot_constant_roots || Set.new).include?(root)
   end
 
-  # The top-level module names the program's own stdlib/gem requires are
-  # expected to provide, by the usual naming convention ("prism" → Prism).
-  # A gem that names its module differently just misses the fallback and
-  # keeps its full spelling — the conservative direction.
-  def external_require_roots(stdlib_requires)
-    stdlib_requires.to_set do |path|
-      path.split('/').first.split(/[_-]/).map(&:capitalize).join
-    end
+  # The top-level constants that exist when the minified program boots,
+  # before any of its own code runs: Ruby's core names plus whatever its
+  # top-level requires provide. Asking a fresh interpreter is what makes
+  # this exact — no naming-convention guessing, and no contamination from
+  # the constants the minifier process itself happens to have loaded.
+  # nil when the probe fails, so callers can fall back conservatively.
+  def boot_constant_roots(stdlib_requires)
+    key = stdlib_requires.sort
+    return BOOT_CONSTANT_CACHE[key] if BOOT_CONSTANT_CACHE.key?(key)
+
+    BOOT_CONSTANT_CACHE[key] = probe_boot_constants(stdlib_requires)
+  end
+
+  BOOT_CONSTANT_CACHE = {} # : Hash[Array[String], Set[Symbol]?]
+
+  # The probe must run outside the minifier's bundler context: with it, the
+  # subprocess boots bundler, bundler evaluates the analyzed project's
+  # gemspec-style Gemfile, and the program's own constants leak into the
+  # "exists at boot" answer — under self-hosting, RubyMinify itself.
+  def probe_boot_constants(stdlib_requires)
+    requires = stdlib_requires.map { |r| "begin;require #{r.dump};rescue LoadError;end" }.join(';')
+    script = "#{requires};puts Object.constants"
+    popen = -> { IO.popen([{ 'RUBYOPT' => nil }, RbConfig.ruby, '-e', script], &:read) }
+    out = defined?(Bundler) ? Bundler.with_unbundled_env(&popen) : popen.call
+    Process.last_status&.success? ? out.split.map(&:to_sym).to_set : nil
+  rescue StandardError
+    nil
   end
 end

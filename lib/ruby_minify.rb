@@ -2,6 +2,7 @@
 
 require 'typeprof'
 require 'prism'
+require 'rbconfig'
 require_relative "ruby_minify/ast_utils"
 require_relative "ruby_minify/version"
 require_relative "ruby_minify/name_generator"
