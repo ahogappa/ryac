@@ -226,31 +226,14 @@ module RubyMinify
         @class_cpath_map = {}
         @superclass_resolution_map = {}
 
-        Nesting.each(@prism_root) do |node, nesting, _singleton, _in_def|
-          case node
-          when Prism::ConstantReadNode, Prism::ConstantPathNode
+        each_constant_event(@prism_root) do |kind, node, cpath, _singleton, _in_def|
+          case kind
+          when :read
             record_constant_read(node)
-          when *CONST_COMPOUND_WRITE_NODES
-            record_constant_read(node)
-            @const_write_cpath_map[AstUtils.location_key(node)] = nesting + [node.name]
-          when Prism::ConstantWriteNode, Prism::ConstantTargetNode
-            next if struct_definition_write?(node)
-
-            @const_write_cpath_map[AstUtils.location_key(node)] = nesting + [node.name]
-          when Prism::ConstantPathTargetNode
-            record_constant_read(node)
-            cpath = const_write_cpath(node, nesting)
-            @const_write_cpath_map[AstUtils.location_key(node)] = cpath if cpath
-          when *CONST_PATH_WRITE_NODES
-            next if struct_definition_write?(node)
-
-            cpath = const_write_cpath(node, nesting)
-            @const_write_cpath_map[AstUtils.location_key(node)] = cpath if cpath
-          when Prism::ClassNode, Prism::ModuleNode
+          when :write
+            @const_write_cpath_map[AstUtils.location_key(node)] = cpath
+          when :class_def
             key = AstUtils.location_key(node)
-            cpath = class_definition_cpath(node, nesting)
-            next unless cpath
-
             @class_cpath_map[key] = cpath
             if node.is_a?(Prism::ClassNode) && node.superclass
               resolved = resolve_superclass_path(node.superclass, cpath)
@@ -267,38 +250,22 @@ module RubyMinify
         @const_full_path_map[key] = resolved || syntactic_const_segments(node)
       end
 
-      # A call is "meta" — rewritten structurally instead of as a plain call
-      # — under the conditions type analysis uses: statement position, no
-      # receiver, lexically inside a class/module body (or `class << self`),
-      # and outside any def.
+      META_CALL_METHODS = %i[include attr_reader attr_accessor].freeze
+
+      # Calls the renamer rewrites structurally instead of as plain calls.
       def precompute_meta_nodes
         @meta_node_map = {}
-        Nesting.each(@prism_root) do |node, nesting, singleton, in_def|
-          next unless node.is_a?(Prism::StatementsNode)
-          next if in_def
-          # any? rather than empty?: the type-dependent empty? transform does
-          # not reach a fixed point on this code under self-hosting.
-          next unless nesting.any? || singleton
+        Nesting.each_meta_call(@prism_root, META_CALL_METHODS) do |call_node, _cpath, _singleton|
+          case call_node.name
+          when :attr_reader, :attr_accessor
+            arguments = call_node.arguments&.arguments
+            next unless arguments
 
-          node.body.each do |child|
-            next unless child.is_a?(Prism::CallNode)
-            next if child.receiver
-
-            record_meta_node(child)
+            args = arguments.filter_map { |arg| arg.unescaped.to_sym if arg.is_a?(Prism::SymbolNode) }
+            @meta_node_map[AstUtils.location_key(call_node)] = { type: call_node.name, args: args }
+          when :include
+            @meta_node_map[AstUtils.location_key(call_node)] = { type: :include }
           end
-        end
-      end
-
-      def record_meta_node(call_node)
-        case call_node.name
-        when :attr_reader, :attr_accessor
-          arguments = call_node.arguments&.arguments
-          return unless arguments
-
-          args = arguments.filter_map { |arg| arg.unescaped.to_sym if arg.is_a?(Prism::SymbolNode) }
-          @meta_node_map[AstUtils.location_key(call_node)] = { type: call_node.name, args: args }
-        when :include
-          @meta_node_map[AstUtils.location_key(call_node)] = { type: :include }
         end
       end
 

@@ -19,6 +19,35 @@ module RubyMinify
       walk(root, [], false, false, &block)
     end
 
+    # Yields meta-style declarations (`attr_reader :a` / `include M`) under
+    # the conditions type analysis recognizes them: a bare call in statement
+    # position directly in a class or module body (or `class << self`),
+    # outside any def. Passing loose: true drops everything but the bare-call
+    # requirement — for consumers where over-matching is the safe direction.
+    def each_meta_call(root, names, loose: false)
+      if loose
+        each(root) do |node, cpath, singleton, _in_def|
+          next unless node.is_a?(Prism::CallNode) && node.receiver.nil? && names.include?(node.name)
+
+          yield node, cpath, singleton
+        end
+      else
+        each(root) do |node, cpath, singleton, in_def|
+          next unless node.is_a?(Prism::StatementsNode)
+          next if in_def
+          # any? rather than empty?: the type-dependent empty? transform does
+          # not reach a fixed point on this code under self-hosting.
+          next unless cpath.any? || singleton
+
+          node.body.each do |child|
+            next unless child.is_a?(Prism::CallNode) && child.receiver.nil? && names.include?(child.name)
+
+            yield child, cpath, singleton
+          end
+        end
+      end
+    end
+
     # The path a class/module definition appends to the enclosing nesting.
     # Returns [segments, absolute] — absolute when written `class ::X` —
     # or nil when the path is not statically known.

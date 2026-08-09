@@ -21,7 +21,6 @@ module RubyMinify
       def precompute_constant_resolution: () -> void
       def record_constant_read: (Prism::Node node) -> void
       def precompute_meta_nodes: () -> void
-      def record_meta_node: (Prism::CallNode call_node) -> void
       def collect_syntax_data: (Prism::ProgramNode prism_ast) -> Hash[Array[Integer], Hash[Symbol, syntax_value]]
       def traverse_prism: (Prism::Node node, Hash[Array[Integer], Hash[Symbol, syntax_value]] data) -> void
     end

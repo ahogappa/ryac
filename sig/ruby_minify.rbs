@@ -50,13 +50,9 @@ module RubyMinify
   public
 
   # --- analysis/constant/collection.rb ---
-  CONST_SIMPLE_WRITE_NODES: Array[Class]
-  CONST_COMPOUND_WRITE_NODES: Array[Class]
-  CONST_PATH_WRITE_NODES: Array[Class]
-  CONST_READ_LIKE_NODES: Array[Class]
-
+  def each_constant_event: (Prism::Node prism_root) { (Symbol, Prism::Node, Array[Symbol]?, bool, bool) -> void } -> void
   def class_definition_cpath: (Prism::ClassNode | Prism::ModuleNode node, Array[Symbol] nesting) -> Array[Symbol]?
-  def const_write_cpath: (Prism::Node node, Array[Symbol] nesting) -> Array[Symbol]?
+  def qualified_write_cpath: (Prism::Node target, Array[Symbol] nesting, ?strip_doubled_nesting: bool) -> Array[Symbol]?
   def syntactic_const_segments: (Prism::Node node) -> Array[Symbol]
   def struct_definition_write?: (Prism::Node node) -> bool
   def collect_constants: (Prism::Node prism_root) -> void
@@ -67,6 +63,8 @@ module RubyMinify
   def resolve_superclass_path: (Prism::Node superclass_node, Array[Symbol] class_cpath) -> Array[Symbol]?
   def augment_constant_counts_via_oracle: () -> void
   def collect_external_references: (Prism::Node prism_root) -> void
+  def mark_chain_prefixes: (Prism::Node node, Set[Integer] counted_prefix_ids) -> void
+  def external_prefix_for: (Prism::Node node) -> Array[Symbol]?
   def complete_const_chain?: (Prism::Node node) -> bool
   def required_external_root?: (Symbol root) -> bool
   def external_require_roots: (Array[String] stdlib_requires) -> Set[String]

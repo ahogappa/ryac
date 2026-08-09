@@ -238,17 +238,12 @@ module RubyMinify
 
   private
 
-  # attr declarations with meta semantics: a bare `attr_*` in a class or
-  # module body. With require_class_body: false, ones inside method bodies
-  # count too — the attr-backed scan wants those as well, since the methods
-  # they define still read the ivar.
+  # attr declarations with meta semantics, one yield per symbol argument.
+  # With require_class_body: false, bare attr_* calls anywhere count — the
+  # attr-backed scan wants those too, since the methods they define still
+  # read the ivar.
   def each_attr_declaration(prism_root, methods, require_class_body: true)
-    Nesting.each(prism_root) do |node, cpath, singleton, in_def|
-      next unless node.is_a?(Prism::CallNode)
-      next unless methods.include?(node.name)
-      next unless node.receiver.nil?
-      next if require_class_body && in_def
-
+    Nesting.each_meta_call(prism_root, methods, loose: !require_class_body) do |node, cpath, singleton|
       node.arguments&.arguments&.each do |arg|
         next unless arg.is_a?(Prism::SymbolNode)
         yield node, cpath, singleton, arg.unescaped.to_sym

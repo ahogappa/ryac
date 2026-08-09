@@ -2,35 +2,29 @@
 
 module RubyMinify
   def collect_method_definitions(prism_root)
-    Nesting.each(prism_root) do |node, nesting_cpath, sclass_singleton, in_def|
-      case node
-      when Prism::DefNode
-        singleton = sclass_singleton || !node.receiver.nil?
-        cpath = nesting_cpath
-        if node.receiver && !node.receiver.is_a?(Prism::SelfNode)
-          corrected = resolve_def_receiver_cpath(node.receiver)
-          cpath = corrected if corrected
-        end
-        next if EXCLUDED_METHODS.include?(node.name)
+    Nesting.each(prism_root) do |node, nesting_cpath, sclass_singleton, _in_def|
+      next unless node.is_a?(Prism::DefNode)
 
-        method_key = [cpath, singleton, node.name].freeze
-        @method_rename_mapping.add_method(method_key, node)
-        link_module_function_variant(node, cpath, singleton, node.name, method_key)
-      when Prism::CallNode
-        # attr_reader/attr_accessor in a class body define getters worth
-        # renaming; attr_writer's setter is derived from the getter name and
-        # is never registered on its own.
-        next unless %i[attr_reader attr_accessor].include?(node.name)
-        next unless node.receiver.nil?
-        next if in_def
-
-        node.arguments&.arguments&.each do |arg|
-          next unless arg.is_a?(Prism::SymbolNode)
-          mid = arg.unescaped.to_sym
-          next if EXCLUDED_METHODS.include?(mid)
-          @method_rename_mapping.add_method([nesting_cpath, sclass_singleton, mid].freeze, node)
-        end
+      singleton = sclass_singleton || !node.receiver.nil?
+      cpath = nesting_cpath
+      if node.receiver && !node.receiver.is_a?(Prism::SelfNode)
+        corrected = resolve_def_receiver_cpath(node.receiver)
+        cpath = corrected if corrected
       end
+      next if EXCLUDED_METHODS.include?(node.name)
+
+      method_key = [cpath, singleton, node.name].freeze
+      @method_rename_mapping.add_method(method_key, node)
+      link_module_function_variant(node, cpath, singleton, node.name, method_key)
+    end
+
+    # attr_reader/attr_accessor define getters worth renaming; attr_writer's
+    # setter is derived from the getter name and is never registered on its
+    # own.
+    each_attr_declaration(prism_root, %i[attr_reader attr_accessor]) do |node, cpath, singleton, mid|
+      next if EXCLUDED_METHODS.include?(mid)
+
+      @method_rename_mapping.add_method([cpath, singleton, mid].freeze, node)
     end
   end
 
