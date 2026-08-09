@@ -21,7 +21,7 @@ class TestIvarCollection < Minitest::Test
   L4_GROUP_EXPECTED =
     'class A;def initialize(a) =@a=a;def get =@a;end;puts A.new(1).get;' \
     'class B;def initialize(a,b) =(@b=a;@a=b);def sum =@b+@a;end;puts B.new(1,2).sum;' \
-    'class C;attr_reader :value;def initialize(a) =@value=a;end;puts C.new(42).value;' \
+    'class C;attr :value;def initialize(a) =@value=a;end;puts C.new(42).value;' \
     'class D;def initialize(a) =@a=a;def check =defined?(@a);end;puts D.new(1).check;' \
     'class E;def initialize(a) =@value=a;def get(a) =instance_variable_get a;end;puts E.new(1).get(:"@value");' \
     'class F;def initialize(a) =@value=a;def set(a,b) =instance_variable_set a,b;def get =@value;end;puts F.new(1).get;' \

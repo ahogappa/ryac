@@ -17,6 +17,7 @@ require_relative 'pipeline/endless_method'
 require_relative 'pipeline/paren_optimizer'
 require_relative 'pipeline/rename_patcher'
 require_relative 'pipeline/constant_aliaser'
+require_relative 'pipeline/attr_decl_shorten'
 require_relative 'pipeline/variable_renamer'
 require_relative 'pipeline/method_renamer'
 require_relative 'pipeline/unified_renamer'
@@ -58,9 +59,9 @@ module RubyMinify
     STAGES = {
       0 => [],
       1 => [OPTIMIZE],
-      2 => [OPTIMIZE, [Pipeline::ConstantAliaser]],
-      3 => [OPTIMIZE, [Pipeline::ConstantAliaser], [Pipeline::VariableRenamer, { features: { keywords: true } }]],
-      4 => [OPTIMIZE, [Pipeline::ConstantAliaser, { rename_classes: true }], [Pipeline::VariableRenamer, ALL_VAR_FEATURES]],
+      2 => [OPTIMIZE, [Pipeline::ConstantAliaser], [Pipeline::AttrDeclShorten]],
+      3 => [OPTIMIZE, [Pipeline::ConstantAliaser], [Pipeline::AttrDeclShorten], [Pipeline::VariableRenamer, { features: { keywords: true } }]],
+      4 => [OPTIMIZE, [Pipeline::ConstantAliaser, { rename_classes: true }], [Pipeline::AttrDeclShorten], [Pipeline::VariableRenamer, ALL_VAR_FEATURES]],
       5 => [OPTIMIZE, [Pipeline::ConstantAliaser, { rename_classes: true }], [Pipeline::VariableRenamer, ALL_VAR_WITH_ATTR], [Pipeline::MethodRenamer]],
     }.freeze
 

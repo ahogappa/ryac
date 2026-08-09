@@ -1,0 +1,15 @@
+module RubyMinify
+  module Pipeline
+    class AttrDeclShorten
+      include RenamePatcher
+
+      def self.collect_patches_from: (Prism::Node prism_ast, Array[patch_entry] patches, AnalysisResult analysis, ?untyped _kwargs) -> void
+      def self.postprocess: (String result, AnalysisResult _analysis, String aliases_str, String preamble_str) -> [String, String, String]
+      def collect: (Prism::Node node, Array[patch_entry] patches, AnalysisResult analysis) -> void
+
+      private
+
+      def shortened_declaration: (Hash[Symbol, untyped] meta) -> String?
+    end
+  end
+end
