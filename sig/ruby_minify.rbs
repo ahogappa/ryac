@@ -92,6 +92,7 @@ module RubyMinify
   def collect_keyword_call_sites: (Prism::Node prism_root) -> void
   def forwards_parameters_to_super?: (Prism::DefNode def_node) -> bool
   def exclude_unresolved_keyword_calls: (Prism::Node prism_root) -> void
+  def carries_keyword_arguments?: (Prism::CallNode call_node) -> bool
 
   public
 

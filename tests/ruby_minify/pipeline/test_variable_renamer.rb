@@ -95,6 +95,29 @@ class TestVariableRenamer < Minitest::Test
     assert_equal 'class F;def m(a:) =a;end;puts F.new.m(a:?x)', result.code
   end
 
+  # An unresolved call sharing the method's name poisons its keyword renames
+  # only when it actually writes keywords — a keyword-less call is untouched
+  # by the rename no matter which method it reaches. Object.const_get keeps
+  # the receiver opaque to inference, so `x.walk(3)` is genuinely unresolved.
+  def test_keyword_renamed_despite_unresolved_keywordless_namesake
+    code = 'class T;def walk(node,depth:);node.is_a?(Array) ? node.sum{|c|walk(c,depth:depth+1)}:depth;end;end;' \
+           'class L;def walk(steps);steps;end;end;' \
+           'x=Object.const_get(:L).new;puts x.walk(3);puts T.new.walk([[1],2],depth:0)'
+    result = minify_at_level(code, 3)
+    assert_equal 'class T;def walk(b,a:) =b.is_a?(Array)?b.sum{walk _1,a:a+1}:a;end;' \
+                 'class L;def walk(a) =a;end;' \
+                 'a=Object.const_get(:L).new;puts a.walk(3);puts T.new.walk([[1],2],a:0)',
+                 result.code
+  end
+
+  # ...while a keyword-writing unresolved call still disqualifies the name.
+  def test_keyword_kept_when_unresolved_call_writes_keywords
+    code = 'class T;def walk(node,depth:);depth;end;end;' \
+           'x=Object.const_get(:T).new;puts x.walk(1,depth:5)'
+    result = minify_at_level(code, 3)
+    assert_includes result.code, 'def walk(a,depth:)'
+  end
+
   # === L4 group: ivars, cvars, gvars, multi-assign (verify_output: true) ===
 
   L4_GROUP_CODE = [

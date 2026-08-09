@@ -134,7 +134,11 @@ module RubyMinify
 
   # A call to a keyword-taking method that type inference never connected to
   # its target would keep its written keywords while the def's got renamed —
-  # so any such call disqualifies the whole method name.
+  # so any such call disqualifies the whole method name. Only calls that
+  # actually write keywords (literals or a **splat) can go stale, though: a
+  # keyword-less call is untouched by the rename no matter which method it
+  # reaches, and unrelated methods sharing the name would otherwise poison
+  # each other through it.
   def exclude_unresolved_keyword_calls(prism_root)
     keyword_mids = Set.new
     @keyword_rename_mapping.each_method_key { |key| keyword_mids << key[2] }
@@ -148,7 +152,9 @@ module RubyMinify
     unresolved_mids = Set.new
     AstUtils.each_node(prism_root) do |node|
       next unless node.is_a?(Prism::CallNode)
-      if keyword_mids.include?(node.name) && !resolved_site_keys.include?(AstUtils.location_key(node))
+      if keyword_mids.include?(node.name) &&
+         carries_keyword_arguments?(node) &&
+         !resolved_site_keys.include?(AstUtils.location_key(node))
         unresolved_mids << node.name
       end
     end
@@ -158,6 +164,10 @@ module RubyMinify
         @keyword_rename_mapping.exclude_method(key) if key[2] == mid
       end
     end
+  end
+
+  def carries_keyword_arguments?(call_node)
+    call_node.arguments&.arguments&.any? { |arg| arg.is_a?(Prism::KeywordHashNode) } || false
   end
 
   public
