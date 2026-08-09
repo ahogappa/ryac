@@ -82,6 +82,15 @@ module RubyMinify
   def reserve_attr_ivar_names: (Prism::Node prism_root) -> void
   def coordinate_attr_renames: (Prism::Node prism_root, Hash[location_key, String] rename_map, Hash[location_key, String] attr_ivar_entries) -> Hash[location_key, Hash[Symbol, String]]
 
+  type attr_info = Hash[Symbol, untyped]
+
+  def classify_attr_declarations: (Prism::Node prism_root) -> [Array[attr_info], Array[attr_info]]
+  def collect_ivar_nodes_by_key: (Prism::Node prism_root) -> Hash[[Array[Symbol], Symbol], Array[Prism::Node]]
+  def assign_ivar_driven_names: (Array[attr_info] path_b_info, Hash[[Array[Symbol], Symbol], Array[Prism::Node]] ivar_nodes_by_key, Hash[[Array[Symbol], Symbol], String] path_a_mapping, Hash[location_key, String] rename_map) -> [Hash[[Array[Symbol], Symbol], String], Hash[[Array[Symbol], Symbol], Symbol]]
+  def apply_ivar_renames: (Hash[[Array[Symbol], Symbol], Array[Prism::Node]] ivar_nodes_by_key, Hash[[Array[Symbol], Symbol], String] combined_mapping, Hash[location_key, String] attr_ivar_entries) -> void
+  def apply_accessor_call_renames: (Array[attr_info] path_a_info, Array[attr_info] path_b_info, Hash[[Array[Symbol], Symbol], Symbol] path_b_method_mapping, Hash[location_key, String] rename_map) -> void
+  def build_attr_rename_map: (Array[attr_info] path_a_info, Array[attr_info] path_b_info, Hash[[Array[Symbol], Symbol], Symbol] path_b_method_mapping) -> Hash[location_key, Hash[Symbol, String]]
+
   # --- analysis/keyword/collection.rb ---
   def collect_keyword_info: (Prism::Node prism_root) -> void
 

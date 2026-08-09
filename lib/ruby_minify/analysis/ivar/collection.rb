@@ -69,21 +69,33 @@ module RubyMinify
     end
   end
 
+  # attr declarations rename along two paths. Path A (method-driven): the
+  # getter already got a short name from method renaming, and the backing
+  # ivar follows it. Path B (ivar-driven): the getter wasn't renamed, so a
+  # name is chosen from the ivar side and the getter (and setter) follow.
+  # Phase 1 decides every name, phase 2 applies them — declaration, ivar
+  # sites, and accessor call sites — only once all decisions are in.
   def coordinate_attr_renames(prism_root, rename_map, attr_ivar_entries)
-    attr_rename_map = {}
+    path_a_info, path_b_info = classify_attr_declarations(prism_root)
+    return {} unless path_a_info.any? || path_b_info.any?
 
-    # ============================================
-    # Phase 1: Reverse propagation (dest→src)
-    # Determine short names. NO application here.
-    # ============================================
+    path_a_mapping = path_a_info.to_h { |info| [info[:ivar_key], "@#{info[:getter_short]}"] }
+    ivar_nodes_by_key = collect_ivar_nodes_by_key(prism_root)
+    path_b_mapping, path_b_method_mapping =
+      assign_ivar_driven_names(path_b_info, ivar_nodes_by_key, path_a_mapping, rename_map)
 
-    # 1a: Classify each attr as Path A (method-driven) or Path B (ivar-driven)
+    apply_ivar_renames(ivar_nodes_by_key, path_a_mapping.merge(path_b_mapping), attr_ivar_entries)
+    apply_accessor_call_renames(path_a_info, path_b_info, path_b_method_mapping, rename_map)
+    build_attr_rename_map(path_a_info, path_b_info, path_b_method_mapping)
+  end
+
+  private
+
+  def classify_attr_declarations(prism_root)
     path_a_info = []
     path_b_info = []
-
     each_attr_declaration(prism_root, %i[attr_reader attr_accessor]) do |node, cpath, singleton, sym|
-      getter_key = [cpath, singleton, sym].freeze
-      getter_short = @method_rename_mapping.short_name_for_key(getter_key)
+      getter_short = @method_rename_mapping.short_name_for_key([cpath, singleton, sym].freeze)
       info = {
         cpath: cpath, singleton: singleton, mid: sym,
         accessor: node.name == :attr_accessor,
@@ -97,106 +109,84 @@ module RubyMinify
         path_b_info << info
       end
     end
+    [path_a_info, path_b_info]
+  end
 
-    return attr_rename_map unless path_a_info.any? || path_b_info.any?
-
-    # 1b: Build Path A mapping
-    path_a_mapping = {}
-    path_a_info.each do |info|
-      path_a_mapping[info[:ivar_key]] = "@#{info[:getter_short]}"
-    end
-
-    # 1c: Collect ivar nodes from AST (for both Path A apply + Path B counting)
+  def collect_ivar_nodes_by_key(prism_root)
     ivar_nodes_by_key = Hash.new { |h, k| h[k] = [] }
-
     Nesting.each(prism_root) do |node, cpath, _singleton, _in_def|
       case node
       when Prism::InstanceVariableReadNode, *IVAR_WRITE_NODES
         ivar_nodes_by_key[[cpath, node.name]] << node
       end
     end
+    ivar_nodes_by_key
+  end
 
-    # 1d: Path B — assign ivar-driven short names
+  # Path B: pick a fresh @name whose bare form is free as a method name too,
+  # then keep it only when renaming ivar sites plus accessor calls saves
+  # more than it costs.
+  def assign_ivar_driven_names(path_b_info, ivar_nodes_by_key, path_a_mapping, rename_map)
     path_b_mapping = {}
     path_b_method_mapping = {}
+    return [path_b_mapping, path_b_method_mapping] if path_b_info.none?
 
-    if path_b_info.any?
-      used_ivar_names = @ivar_rename_mapping.node_mapping.values.to_set
-      used_ivar_names.merge(path_a_mapping.values)
-      used_method_names = rename_map.values.to_set
+    used_ivar_names = @ivar_rename_mapping.node_mapping.values.to_set
+    used_ivar_names.merge(path_a_mapping.values)
+    used_method_names = rename_map.values.to_set
+    generator = NameGenerator.new([], prefix: "@")
 
-      generator = NameGenerator.new([], prefix: "@")
+    path_b_info
+      .sort_by do |info|
+        ivar_name = info[:ivar_key][1]
+        count = ivar_nodes_by_key[info[:ivar_key]].size
+        -(ivar_name.to_s.length * count)
+      end
+      .each do |info|
+        ivar_key = info[:ivar_key]
+        ivar_name = ivar_key[1]
+        ivar_count = ivar_nodes_by_key[ivar_key].size
+        next if ivar_count == 0
+        next if ivar_name.to_s.length <= 2
 
-      path_b_info
-        .sort_by do |info|
-          ivar_name = info[:ivar_key][1]
-          count = ivar_nodes_by_key[info[:ivar_key]].size
-          -(ivar_name.to_s.length * count)
+        short_name = nil
+        method_short = nil
+        loop do
+          candidate = generator.next_name
+          method_candidate = candidate.delete_prefix("@").to_sym
+
+          next if used_ivar_names.include?(candidate)
+          next if used_method_names.include?(method_candidate.to_s)
+          next if @oracle.method_defined?(info[:cpath], info[:singleton], method_candidate)
+
+          short_name = candidate
+          method_short = method_candidate
+          break
         end
-        .each do |info|
-          ivar_key = info[:ivar_key]
-          ivar_name = ivar_key[1]
-          ivar_count = ivar_nodes_by_key[ivar_key].size
-          next if ivar_count == 0
-          next if ivar_name.to_s.length <= 2
 
-          short_name = nil
-          method_short = nil
-          loop do
-            candidate = generator.next_name
-            method_candidate = candidate.delete_prefix("@").to_sym
-
-            next if used_ivar_names.include?(candidate)
-            next if used_method_names.include?(method_candidate.to_s)
-            next if @oracle.method_defined?(info[:cpath], info[:singleton], method_candidate)
-
-            short_name = candidate
-            method_short = method_candidate
-            break
-          end
-
-          getter_calls = @oracle.method_call_count(info[:cpath], info[:singleton], info[:mid])
-          setter_calls = 0
-          if info[:accessor]
-            setter_calls = @oracle.method_call_count(info[:cpath], info[:singleton], :"#{info[:mid]}=")
-          end
-
-          ivar_savings = (ivar_name.to_s.length - short_name.length) * ivar_count
-          method_savings = (info[:mid].to_s.length - method_short.to_s.length) * (getter_calls + setter_calls + 1)
-          total_savings = ivar_savings + method_savings
-          next unless total_savings > 0
-
-          used_ivar_names << short_name
-          used_method_names << method_short.to_s
-
-          path_b_mapping[ivar_key] = short_name
-          path_b_method_mapping[ivar_key] = method_short
+        getter_calls = @oracle.method_call_count(info[:cpath], info[:singleton], info[:mid])
+        setter_calls = 0
+        if info[:accessor]
+          setter_calls = @oracle.method_call_count(info[:cpath], info[:singleton], :"#{info[:mid]}=")
         end
-    end
 
-    # ============================================
-    # Phase 2: Application (src→all dests)
-    # Apply final short names after all propagation.
-    # ============================================
+        ivar_savings = (ivar_name.to_s.length - short_name.length) * ivar_count
+        method_savings = (info[:mid].to_s.length - method_short.to_s.length) * (getter_calls + setter_calls + 1)
+        next unless ivar_savings + method_savings > 0
 
-    combined_mapping = path_a_mapping.merge(path_b_mapping)
+        used_ivar_names << short_name
+        used_method_names << method_short.to_s
 
-    # 2a: attr declaration renames → attr_rename_map
-    path_a_info.each do |info|
-      renames = attr_rename_map[info[:loc_key]] || {}
-      renames[info[:mid]] = info[:getter_short]
-      attr_rename_map[info[:loc_key]] = renames
-    end
+        path_b_mapping[ivar_key] = short_name
+        path_b_method_mapping[ivar_key] = method_short
+      end
 
-    path_b_info.each do |info|
-      method_short = path_b_method_mapping[info[:ivar_key]]
-      next unless method_short
-      renames = attr_rename_map[info[:loc_key]] || {}
-      renames[info[:mid]] = method_short
-      attr_rename_map[info[:loc_key]] = renames
-    end
+    [path_b_mapping, path_b_method_mapping]
+  end
 
-    # 2b: ivar read/write renames → attr_ivar_entries
+  # Ivar read/write sites take their attr's name; a subclass's sites follow
+  # the ancestor that declared the attr.
+  def apply_ivar_renames(ivar_nodes_by_key, combined_mapping, attr_ivar_entries)
     ivar_nodes_by_key.each do |(cpath, ivar_name), nodes_list|
       short = combined_mapping[[cpath, ivar_name]]
       unless short
@@ -209,8 +199,9 @@ module RubyMinify
       next unless short
       nodes_list.each { |n| attr_ivar_entries[AstUtils.location_key(n)] = short }
     end
+  end
 
-    # 2c: setter call site renames → rename_map (Path A)
+  def apply_accessor_call_renames(path_a_info, path_b_info, path_b_method_mapping, rename_map)
     path_a_info.each do |info|
       next unless info[:accessor]
       @oracle.each_call_site_key(info[:cpath], info[:singleton], :"#{info[:mid]}=") do |key|
@@ -218,7 +209,6 @@ module RubyMinify
       end
     end
 
-    # 2d: getter + setter call site renames → rename_map (Path B)
     path_b_info.each do |info|
       method_short = path_b_method_mapping[info[:ivar_key]]
       next unless method_short
@@ -232,11 +222,20 @@ module RubyMinify
         rename_map[key] = "#{method_short}="
       end
     end
-
-    attr_rename_map
   end
 
-  private
+  def build_attr_rename_map(path_a_info, path_b_info, path_b_method_mapping)
+    attr_rename_map = {}
+    path_a_info.each do |info|
+      (attr_rename_map[info[:loc_key]] ||= {})[info[:mid]] = info[:getter_short]
+    end
+    path_b_info.each do |info|
+      method_short = path_b_method_mapping[info[:ivar_key]]
+      next unless method_short
+      (attr_rename_map[info[:loc_key]] ||= {})[info[:mid]] = method_short
+    end
+    attr_rename_map
+  end
 
   # attr declarations with meta semantics, one yield per symbol argument.
   # With require_class_body: false, bare attr_* calls anywhere count — the
