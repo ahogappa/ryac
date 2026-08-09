@@ -25,25 +25,14 @@ module RubyMinify
           meta = analysis.meta_node_map[prism_location_key(subnode)]
           next unless meta
 
-          replacement = shortened_declaration(meta)
-          next unless replacement
+          args = meta[:args] || []
+          next unless args.any?
+
+          replacement = render_attr_declaration(meta[:type], args)
+          next unless replacement && replacement != subnode.slice
 
           loc = subnode.location
           patches << { start: loc.start_offset, end: loc.end_offset, replacement: replacement }
-        end
-      end
-
-      private
-
-      def shortened_declaration(meta)
-        args = meta[:args] || []
-        return nil if args.empty?
-
-        case meta[:type]
-        when :attr_reader
-          "attr #{args.map { |sym| ":#{sym}" }.join(',')}"
-        when :attr_accessor
-          "attr :#{args.first},!!1" if args.size == 1
         end
       end
     end

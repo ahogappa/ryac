@@ -70,26 +70,26 @@ module RubyMinify
     sites = register_keyword_calls
     merge_super_forwarding(sites[:super_merges])
     merge_polymorphic_keyword_groups(sites[:call_node_to_keys])
-    exclude_unreachable_keyword_methods(sites[:zero_call_keys], sites[:super_targets])
-    exclude_unresolved_keyword_calls(prism_root)
+    exclude_unreachable_keyword_methods(sites[:zero_call_keys], sites[:super_merges])
+    exclude_unresolved_keyword_calls(prism_root, sites[:resolved_site_keys])
   end
 
   def register_keyword_calls
     call_node_to_keys = Hash.new { |h, k| h[k] = [] }
     super_merges = []
     zero_call_keys = []
-    super_targets = Set.new
+    resolved_site_keys = Set.new
 
     @keyword_rename_mapping.each_method_key do |key|
       call_count = 0
       splat_seen = false
 
       @oracle.each_caller(key[0], key[1], key[2]) do |info|
+        resolved_site_keys << AstUtils.location_key(info.prism_node) if info.prism_node
         next if splat_seen
 
         if info.super
           super_merges << [[info.caller_cpath, key[1], key[2]].freeze, key]
-          super_targets << key
           next
         end
 
@@ -110,11 +110,11 @@ module RubyMinify
         call_node_to_keys[AstUtils.location_key(info.prism_node)] << key
       end
 
-      zero_call_keys << key if !splat_seen && call_count == 0 && @oracle.method_known?(key[0], key[1], key[2])
+      zero_call_keys << key if call_count == 0 && @oracle.method_known?(key[0], key[1], key[2])
     end
 
     { call_node_to_keys: call_node_to_keys, super_merges: super_merges,
-      zero_call_keys: zero_call_keys, super_targets: super_targets }
+      zero_call_keys: zero_call_keys, resolved_site_keys: resolved_site_keys }
   end
 
   # Supers are discovered from the parent's call boxes, so a `super` whose
@@ -145,7 +145,8 @@ module RubyMinify
   # reachable in ways we cannot see; renaming its keywords would strand the
   # unseen callers. A method reached through super stays: the merge already
   # ties it to callers we did see.
-  def exclude_unreachable_keyword_methods(zero_call_keys, super_targets)
+  def exclude_unreachable_keyword_methods(zero_call_keys, super_merges)
+    super_targets = super_merges.map(&:last).to_set
     zero_call_keys.each do |key|
       next if super_targets.include?(key)
       @keyword_rename_mapping.exclude_method(key)
@@ -159,15 +160,10 @@ module RubyMinify
   # keyword-less call is untouched by the rename no matter which method it
   # reaches, and unrelated methods sharing the name would otherwise poison
   # each other through it.
-  def exclude_unresolved_keyword_calls(prism_root)
+  def exclude_unresolved_keyword_calls(prism_root, resolved_site_keys)
     keyword_mids = Set.new
     @keyword_rename_mapping.each_method_key { |key| keyword_mids << key[2] }
     return if keyword_mids.empty?
-
-    resolved_site_keys = Set.new
-    @keyword_rename_mapping.each_method_key do |key|
-      @oracle.each_call_site_key(key[0], key[1], key[2]) { |loc| resolved_site_keys << loc }
-    end
 
     unresolved_mids = Set.new
     AstUtils.each_node(prism_root) do |node|

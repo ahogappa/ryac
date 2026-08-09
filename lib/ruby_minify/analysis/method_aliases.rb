@@ -4,6 +4,14 @@ module RubyMinify
   # Method alias mappings: longer method name => shorter equivalent
   # TypeProf verifies at analysis time that the shorter method
   # is available on the receiver type via inheritance chain.
+  #
+  # SELF-HOSTING RULE: because these tables rewrite calls whenever the
+  # receiver type can be proven, and inference over lib/'s own source can
+  # prove a receiver on one self-hosting pass but not the other, code in
+  # lib/ must not use the long side of any entry here where a short synonym
+  # exists — write `size` (never `length`), `any?` (never `empty?`), `[0]`
+  # (never `first`) on our own collections. Otherwise minify(minify(lib))
+  # stops being a fixed point: the transform fires on one pass only.
   METHOD_ALIASES = {
     collect:        :map,
     collect!:       :map!,

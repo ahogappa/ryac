@@ -20,13 +20,19 @@ module RubyMinify
 
     # Yields every ancestor cpath of the class, including its own.
     # Unresolvable classes yield nothing.
-    def each_ancestor_cpath(cpath, singleton)
-      mod = @genv.resolve_cpath(cpath) rescue nil
-      return unless mod
-
-      @genv.each_superclass(mod, singleton) do |ancestor_mod, _singleton|
-        yield ancestor_mod.cpath
+    def each_ancestor_cpath(cpath, singleton, &block)
+      @ancestor_cpaths ||= {}
+      cached = @ancestor_cpaths[[cpath, singleton]] ||= begin
+        list = []
+        mod = @genv.resolve_cpath(cpath) rescue nil
+        if mod
+          @genv.each_superclass(mod, singleton) do |ancestor_mod, _singleton|
+            list << ancestor_mod.cpath
+          end
+        end
+        list
       end
+      cached.each(&block)
     end
 
     # Yields [ancestor_cpath, singleton, method_names] along the ancestor
@@ -129,16 +135,14 @@ module RubyMinify
       return nil unless tp_node
 
       keys = []
-      resolved_any = false
       tp_node.boxes(:mcall) do |box|
         box.resolve(@genv, nil) do |entity, ty, _mid, _orig_ty|
           next unless entity
-          resolved_any = true
           singleton = ty.is_a?(TypeProf::Core::Type::Singleton)
           keys << [ty.mod.cpath, singleton, mid]
         end
       end
-      resolved_any ? keys : nil
+      keys.any? ? keys : nil
     end
 
     # Symbol values inference assigns to the call's first positional argument
@@ -159,15 +163,7 @@ module RubyMinify
     # True when every inferred type of the call's receiver responds to mid —
     # the safety condition for rewriting the call to a stdlib alias.
     def receiver_responds_to?(prism_call_node, mid)
-      recv = tp_call_for(prism_call_node, prism_call_node.name)&.recv
-      return false unless recv.respond_to?(:ret) && recv.ret
-
-      types = recv.ret.types
-      return false if types.empty?
-
-      types.all? do |ty, _|
-        base = ty.base_type(@genv)
-        next false unless base.respond_to?(:mod)
+      every_receiver_base_type(prism_call_node) do |base|
         singleton = base.is_a?(TypeProf::Core::Type::Singleton)
         type_responds_to?(base.mod, singleton, mid)
       end
@@ -175,10 +171,16 @@ module RubyMinify
 
     # Resolves a constant reference to its fully-qualified path, using type
     # analysis to see through lexical-scope lookup and value constants.
-    # nil when the reference is not statically resolvable.
+    # nil when the reference is not statically resolvable. Memoized — the
+    # counting, external-reference, and precompute passes each ask about the
+    # same nodes.
     def resolve_constant_read(prism_node)
+      @const_resolution_cache ||= {}
+      key = AstUtils.location_key(prism_node)
+      return @const_resolution_cache[key] if @const_resolution_cache.key?(key)
+
       tp_node = tp_const_for(prism_node)
-      tp_node ? resolve_tp_const(tp_node) : nil
+      @const_resolution_cache[key] = tp_node ? resolve_tp_const(tp_node) : nil
     end
 
     # How many read sites type analysis records for the constant. Can exceed
@@ -197,18 +199,10 @@ module RubyMinify
     # subclass — the safety condition for type-specific rewrites like
     # `.empty?` → `=={}` on a Hash.
     def receiver_within_type?(prism_call_node, type_name)
-      recv = tp_call_for(prism_call_node, prism_call_node.name)&.recv
-      return false unless recv.respond_to?(:ret) && recv.ret
-
-      types = recv.ret.types
-      return false if types.empty?
-
       target_mod = @genv.resolve_cpath([type_name])
       return false unless target_mod
 
-      types.all? do |ty, _|
-        base = ty.base_type(@genv)
-        next false unless base.respond_to?(:mod)
+      every_receiver_base_type(prism_call_node) do |base|
         mod_is_or_inherits?(base.mod, target_mod)
       end
     end
@@ -216,9 +210,32 @@ module RubyMinify
     private
 
     def resolve_method(cpath, singleton, mid)
-      @genv.resolve_method(cpath, singleton, mid)
-    rescue StandardError
-      nil
+      @method_cache ||= {}
+      key = [cpath, singleton, mid]
+      return @method_cache[key] if @method_cache.key?(key)
+
+      @method_cache[key] = begin
+        @genv.resolve_method(cpath, singleton, mid)
+      rescue StandardError
+        nil
+      end
+    end
+
+    # The shared scaffold of the receiver-safety questions: false unless the
+    # receiver has inferred types at all, then the block must hold for every
+    # type's base.
+    def every_receiver_base_type(prism_call_node)
+      recv = tp_call_for(prism_call_node, prism_call_node.name)&.recv
+      return false unless recv.respond_to?(:ret) && recv.ret
+
+      types = recv.ret.types
+      return false if types.empty?
+
+      types.all? do |ty, _|
+        base = ty.base_type(@genv)
+        next false unless base.respond_to?(:mod)
+        yield base
+      end
     end
 
     def type_responds_to?(mod, singleton, mid)
@@ -252,33 +269,36 @@ module RubyMinify
     # `count` and a write of `count=` — and a question about either name has
     # to reach its own node.
     def tp_call_for(prism_node, mid)
-      @tp_calls_by_loc ||= begin
-        index = Hash.new { |h, k| h[k] = {} }
-        @tp_root.traverse do |event, node|
-          next unless event == :enter
-          case node
-          when *TP_CALL_NODES
-            index[AstUtils.location_key(node)][node.mid] = node
-          end
-        end
-        index
-      end
-      @tp_calls_by_loc[AstUtils.location_key(prism_node)][mid]
+      build_tp_indexes
+      @tp_calls_by_loc[AstUtils.location_key(prism_node)]&.[](mid)
     end
 
     # TypeProf's constant-read node at a given source position. Covers plain
     # reads, every level of a qualified chain, and the read half of compound
     # writes (`X ||= 1` reads at the whole expression's position).
     def tp_const_for(prism_node)
-      @tp_consts_by_loc ||= begin
-        index = {}
-        @tp_root.traverse do |event, node|
-          next unless event == :enter
-          index[AstUtils.location_key(node)] = node if node.is_a?(TypeProf::Core::AST::ConstantReadNode)
-        end
-        index
-      end
+      build_tp_indexes
       @tp_consts_by_loc[AstUtils.location_key(prism_node)]
+    end
+
+    # Both position indexes come from the same walk; a real run always needs
+    # both, so one traversal fills them together.
+    def build_tp_indexes
+      return if @tp_calls_by_loc
+
+      calls = {}
+      consts = {}
+      @tp_root.traverse do |event, node|
+        next unless event == :enter
+        case node
+        when *TP_CALL_NODES
+          (calls[AstUtils.location_key(node)] ||= {})[node.mid] = node
+        when TypeProf::Core::AST::ConstantReadNode
+          consts[AstUtils.location_key(node)] = node
+        end
+      end
+      @tp_calls_by_loc = calls
+      @tp_consts_by_loc = consts
     end
 
     # A class/module reference resolves through its own analysis result; a

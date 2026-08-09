@@ -61,6 +61,8 @@ module RubyMinify
   def resolve_superclass_path: (Prism::Node superclass_node, Array[Symbol] class_cpath) -> Array[Symbol]?
   def augment_constant_counts_via_oracle: () -> void
   def collect_external_references: (Prism::Node prism_root) -> void
+  def precompute_constant_resolution: () -> void
+  def record_constant_read: (Prism::Node node) -> void
   def mark_chain_prefixes: (Prism::Node node, Set[Integer] counted_prefix_ids) -> void
   def external_prefix_for: (Prism::Node node) -> Array[Symbol]?
   def complete_const_chain?: (Prism::Node node) -> bool
@@ -101,7 +103,11 @@ module RubyMinify
   def def_keyword_rest?: (Prism::DefNode def_node) -> bool
   def collect_keyword_call_sites: (Prism::Node prism_root) -> void
   def forwards_parameters_to_super?: (Prism::DefNode def_node) -> bool
-  def exclude_unresolved_keyword_calls: (Prism::Node prism_root) -> void
+  def register_keyword_calls: () -> Hash[Symbol, untyped]
+  def merge_super_forwarding: (Array[[method_key, method_key]] super_merges) -> void
+  def merge_polymorphic_keyword_groups: (Hash[location_key, Array[method_key]] call_node_to_keys) -> void
+  def exclude_unreachable_keyword_methods: (Array[method_key] zero_call_keys, Array[[method_key, method_key]] super_merges) -> void
+  def exclude_unresolved_keyword_calls: (Prism::Node prism_root, Set[location_key] resolved_site_keys) -> void
   def carries_keyword_arguments?: (Prism::CallNode call_node) -> bool
 
   public

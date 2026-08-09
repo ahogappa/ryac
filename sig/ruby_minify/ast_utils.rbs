@@ -1,5 +1,6 @@
 module RubyMinify
   module AstUtils
+    def self?.symbol_arguments: (Prism::CallNode call_node) -> Array[Symbol]
     MIDDLE_METHODS: Array[Symbol]
     TERNARY_SAFE_PREV: Array[Integer]
     COMPARISON_PREV: Array[Integer]

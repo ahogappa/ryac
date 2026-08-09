@@ -145,27 +145,19 @@ module RubyMinify
       end
 
       def patch_attr_reader(node, meta, patches, attr_rename_map)
-        key = prism_location_key(node)
-        args_syms = meta[:args] || []
-        renamed_args = args_syms.map { |sym|
-          attr_rename_map&.dig(key, sym) || sym.to_s
-        }
-        replacement = "attr #{renamed_args.map { |a| ":#{a}" }.join(',')}"
-        loc = node.location
-        patches << { start: loc.start_offset, end: loc.end_offset, replacement: replacement }
+        patch_attr_declaration(node, meta, patches, attr_rename_map, :attr_reader)
       end
 
       def patch_attr_accessor(node, meta, patches, attr_rename_map)
+        patch_attr_declaration(node, meta, patches, attr_rename_map, :attr_accessor)
+      end
+
+      def patch_attr_declaration(node, meta, patches, attr_rename_map, type)
         key = prism_location_key(node)
-        args_syms = meta[:args] || []
-        renamed_args = args_syms.map { |sym|
+        renamed_args = (meta[:args] || []).map { |sym|
           attr_rename_map&.dig(key, sym) || sym.to_s
         }
-        replacement = if renamed_args.size == 1
-          "attr :#{renamed_args.first},!!1"
-        else
-          "attr_accessor #{renamed_args.map { |a| ":#{a}" }.join(',')}"
-        end
+        replacement = render_attr_declaration(type, renamed_args)
         loc = node.location
         patches << { start: loc.start_offset, end: loc.end_offset, replacement: replacement }
       end

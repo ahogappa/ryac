@@ -45,16 +45,10 @@ module RubyMinify
               return
             end
           end
-        when Prism::WhileNode
+        when Prism::WhileNode, Prism::UntilNode
           if node.closing_loc
-            if (replacement = try_while(node, source, statement_position))
-              patches << mk(node, replacement)
-              return
-            end
-          end
-        when Prism::UntilNode
-          if node.closing_loc
-            if (replacement = try_until(node, source, statement_position))
+            keyword = node.is_a?(Prism::WhileNode) ? 'while' : 'until'
+            if (replacement = try_loop(node, source, statement_position, keyword))
               patches << mk(node, replacement)
               return
             end
@@ -173,7 +167,7 @@ module RubyMinify
         end
       end
 
-      def try_while(node, source, statement_position)
+      def try_loop(node, source, statement_position, keyword)
         return nil unless statement_position
         stmts = node.statements
         return nil unless stmts && AstUtils.single_statement_body?(stmts)
@@ -181,23 +175,12 @@ module RubyMinify
         return nil if body.include?(';')
         return nil if in_collection_context?(node, source)
         cond = src(source, node.predicate)
-        "#{body} while #{cond}"
+        "#{body} #{keyword} #{cond}"
       end
 
       def too_complex_for_ternary?(text)
         text && (text.include?(';') ||
           text.match?(/\A(?:return|break|next|yield) /))
-      end
-
-      def try_until(node, source, statement_position)
-        return nil unless statement_position
-        stmts = node.statements
-        return nil unless stmts && AstUtils.single_statement_body?(stmts)
-        body = src(source, stmts)
-        return nil if body.include?(';')
-        return nil if in_collection_context?(node, source)
-        cond = src(source, node.predicate)
-        "#{body} until #{cond}"
       end
 
       # Modifier if/unless/while/until is invalid inside array, hash, or argument

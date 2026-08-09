@@ -109,10 +109,7 @@ module RubyMinify
         static_cpath = analysis.const_write_cpath_map[key]
         return unless static_cpath
 
-        path_str = static_cpath.each_index.map { |i|
-          sub_path = static_cpath[0..i]
-          analysis.constant_mapping.short_name_for_path(sub_path) || static_cpath[i].to_s
-        }.join('::')
+        path_str = render_short_cpath(static_cpath, analysis)
         target_loc = node.target.location
         patches << { start: target_loc.start_offset, end: target_loc.end_offset, replacement: path_str }
         @class_module_cpath_offsets << target_loc.start_offset
@@ -149,21 +146,26 @@ module RubyMinify
       def patch_definition_path(node, patches, class_cpath, analysis)
         return unless class_cpath
 
-        segments, absolute = Nesting.path_segments(node.constant_path)
-        if segments
-          written_len = absolute ? class_cpath.size : segments.size
-          start = class_cpath.size - written_len
-          rendered = (start...class_cpath.size).map { |i|
-            analysis.constant_mapping.short_name_for_path(class_cpath[0..i]) || class_cpath[i].to_s
-          }.join('::')
-          if rendered != node.constant_path.slice
-            cpath_loc = node.constant_path.location
-            patches << { start: cpath_loc.start_offset, end: cpath_loc.end_offset, replacement: rendered }
-          end
+        # class_cpath exists only when path_segments succeeded on this node,
+        # and in the absolute case it equals the segments outright.
+        segments, = Nesting.path_segments(node.constant_path)
+        rendered = render_short_cpath(class_cpath, analysis, from: class_cpath.size - segments.size)
+        if rendered != node.constant_path.slice
+          cpath_loc = node.constant_path.location
+          patches << { start: cpath_loc.start_offset, end: cpath_loc.end_offset, replacement: rendered }
         end
 
         @class_module_cpath_offsets << node.constant_path.location.start_offset
         mark_constant_children(node.constant_path)
+      end
+
+      # Each prefix of the cpath may carry its own short name; render from
+      # `from` onward, falling back to the original segment where none was
+      # assigned.
+      def render_short_cpath(cpath, analysis, from: 0)
+        (from...cpath.size).map { |i|
+          analysis.constant_mapping.short_name_for_path(cpath[0..i]) || cpath[i].to_s
+        }.join('::')
       end
 
       def mark_constant_children(node)
@@ -199,9 +201,7 @@ module RubyMinify
 
       def get_short_cpath(cpath, analysis)
         if analysis.constant_mapping.user_defined_path?(cpath)
-          cpath.each_index.map { |i|
-            analysis.constant_mapping.short_name_for_path(cpath[0..i]) || cpath[i].to_s
-          }.join('::')
+          render_short_cpath(cpath, analysis)
         else
           cpath.map(&:to_s).join('::')
         end

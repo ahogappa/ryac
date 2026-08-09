@@ -50,10 +50,7 @@ module RubyMinify
   # The fully-qualified path a class/module definition creates, or nil when
   # the written path is not static.
   def class_definition_cpath(node, nesting)
-    segments, absolute = Nesting.path_segments(node.constant_path)
-    return nil unless segments
-
-    absolute ? segments : nesting + segments
+    qualified_write_cpath(node.constant_path, nesting)
   end
 
   # The path a qualified assignment target names, or nil when it is not
@@ -130,10 +127,8 @@ module RubyMinify
       next unless node.is_a?(Prism::CallNode)
       next unless %i[private_constant public_constant].include?(node.name)
 
-      node.arguments&.arguments&.each do |arg|
-        next unless arg.is_a?(Prism::SymbolNode)
-
-        @constant_mapping.exclude_path(nesting + [arg.unescaped.to_sym])
+      AstUtils.symbol_arguments(node).each do |sym|
+        @constant_mapping.exclude_path(nesting + [sym])
       end
     end
   end
@@ -188,6 +183,39 @@ module RubyMinify
       current_count = @constant_mapping.usage_count_for_path(cpath)
       @constant_mapping.set_usage_count_by_path(cpath, oracle_count) if oracle_count > current_count
     end
+  end
+
+  # Location-keyed maps the patchers consume: resolution and full path per
+  # read, write cpath per assignment, cpath and superclass per definition.
+  def precompute_constant_resolution
+    @const_resolution_map = {}
+    @const_full_path_map = {}
+    @const_write_cpath_map = {}
+    @class_cpath_map = {}
+    @superclass_resolution_map = {}
+
+    each_constant_event(@prism_root) do |kind, node, cpath, _singleton, _in_def|
+      case kind
+      when :read
+        record_constant_read(node)
+      when :write
+        @const_write_cpath_map[AstUtils.location_key(node)] = cpath
+      when :class_def
+        key = AstUtils.location_key(node)
+        @class_cpath_map[key] = cpath
+        if node.is_a?(Prism::ClassNode) && node.superclass
+          resolved = resolve_superclass_path(node.superclass, cpath)
+          @superclass_resolution_map[key] = resolved if resolved
+        end
+      end
+    end
+  end
+
+  def record_constant_read(node)
+    key = AstUtils.location_key(node)
+    resolved = @oracle.resolve_constant_read(node)
+    @const_resolution_map[key] = resolved
+    @const_full_path_map[key] = resolved || syntactic_const_segments(node)
   end
 
   def collect_external_references(prism_root)
@@ -252,16 +280,14 @@ module RubyMinify
   def complete_const_chain?(node)
     case node
     when Prism::ConstantPathNode, Prism::ConstantPathTargetNode
-      current = node.parent
-      current = current.parent while current.is_a?(Prism::ConstantPathNode)
-      current.nil? || current.is_a?(Prism::ConstantReadNode)
+      !Nesting.path_segments(node).nil?
     else
       false
     end
   end
 
   def required_external_root?(root)
-    (@boot_constant_roots || Set.new).include?(root)
+    @boot_constant_roots&.include?(root) || false
   end
 
   # The top-level constants that exist when the minified program boots,

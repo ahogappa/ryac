@@ -55,7 +55,7 @@ module RubyMinify
         @boot_constant_roots = boot_constant_roots(source.stdlib_requires)
         @syntax_data = collect_syntax_data(@prism_root)
 
-        analyze_keywords_and_scopes(@prism_root)
+        analyze_keywords_and_scopes
         analyze_methods_phase
         method_alias_map, method_transform_map = resolve_method_aliases_and_transforms(@prism_root)
         analyze_variables_phase
@@ -118,11 +118,11 @@ module RubyMinify
         [prism_result, nodes, service.genv]
       end
 
-      def analyze_keywords_and_scopes(prism_root)
-        @local_scopes = LocalScopes.new(prism_root)
+      def analyze_keywords_and_scopes
+        @local_scopes = LocalScopes.new(@prism_root)
 
         @keyword_rename_mapping = KeywordRenameMapping.new
-        collect_keyword_info(prism_root)
+        collect_keyword_info(@prism_root)
         @keyword_rename_mapping.assign_short_names
 
         # Inline rather than through locals: a local passed as the same-named
@@ -219,37 +219,6 @@ module RubyMinify
         )
       end
 
-      def precompute_constant_resolution
-        @const_resolution_map = {}
-        @const_full_path_map = {}
-        @const_write_cpath_map = {}
-        @class_cpath_map = {}
-        @superclass_resolution_map = {}
-
-        each_constant_event(@prism_root) do |kind, node, cpath, _singleton, _in_def|
-          case kind
-          when :read
-            record_constant_read(node)
-          when :write
-            @const_write_cpath_map[AstUtils.location_key(node)] = cpath
-          when :class_def
-            key = AstUtils.location_key(node)
-            @class_cpath_map[key] = cpath
-            if node.is_a?(Prism::ClassNode) && node.superclass
-              resolved = resolve_superclass_path(node.superclass, cpath)
-              @superclass_resolution_map[key] = resolved if resolved
-            end
-          end
-        end
-      end
-
-      def record_constant_read(node)
-        key = AstUtils.location_key(node)
-        resolved = @oracle.resolve_constant_read(node)
-        @const_resolution_map[key] = resolved
-        @const_full_path_map[key] = resolved || syntactic_const_segments(node)
-      end
-
       META_CALL_METHODS = %i[include attr_reader attr_accessor].freeze
 
       # Calls the renamer rewrites structurally instead of as plain calls.
@@ -258,11 +227,10 @@ module RubyMinify
         Nesting.each_meta_call(@prism_root, META_CALL_METHODS) do |call_node, _cpath, _singleton|
           case call_node.name
           when :attr_reader, :attr_accessor
-            arguments = call_node.arguments&.arguments
-            next unless arguments
+            next unless call_node.arguments
 
-            args = arguments.filter_map { |arg| arg.unescaped.to_sym if arg.is_a?(Prism::SymbolNode) }
-            @meta_node_map[AstUtils.location_key(call_node)] = { type: call_node.name, args: args }
+            @meta_node_map[AstUtils.location_key(call_node)] =
+              { type: call_node.name, args: AstUtils.symbol_arguments(call_node) }
           when :include
             @meta_node_map[AstUtils.location_key(call_node)] = { type: :include }
           end

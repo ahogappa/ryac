@@ -7,6 +7,24 @@ module RubyMinify
     module RenamePatcher
       private
 
+      # The compact spelling of an attr declaration: attr_reader collapses to
+      # attr, a single-name attr_accessor takes the two-argument attr form, a
+      # multi-name accessor has no shorter spelling. Both the level-5 method
+      # renamer (with renamed names) and the level-2-4 AttrDeclShorten step
+      # (with the originals) emit through this.
+      def render_attr_declaration(type, names)
+        case type
+        when :attr_reader
+          "attr #{names.map { |n| ":#{n}" }.join(',')}"
+        when :attr_accessor
+          if names.size == 1
+            "attr :#{names[0]},!!1"
+          else
+            "attr_accessor #{names.map { |n| ":#{n}" }.join(',')}"
+          end
+        end
+      end
+
       def apply_patches(source, patches)
         result = source.b.dup
         patches.sort_by { |p| -p[:start] }.each do |patch|

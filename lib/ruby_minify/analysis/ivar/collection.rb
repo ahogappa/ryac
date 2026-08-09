@@ -243,9 +243,8 @@ module RubyMinify
   # read the ivar.
   def each_attr_declaration(prism_root, methods, require_class_body: true)
     Nesting.each_meta_call(prism_root, methods, loose: !require_class_body) do |node, cpath, singleton|
-      node.arguments&.arguments&.each do |arg|
-        next unless arg.is_a?(Prism::SymbolNode)
-        yield node, cpath, singleton, arg.unescaped.to_sym
+      AstUtils.symbol_arguments(node).each do |sym|
+        yield node, cpath, singleton, sym
       end
     end
   end

@@ -187,9 +187,7 @@ module RubyMinify
       next unless node.is_a?(Prism::CallNode)
       next unless VISIBILITY_MODIFIERS.include?(node.name)
 
-      node.arguments&.arguments&.each do |arg|
-        excluded_mids << arg.unescaped.to_sym if arg.is_a?(Prism::SymbolNode)
-      end
+      excluded_mids.merge(AstUtils.symbol_arguments(node))
     end
     @method_rename_mapping.exclude_methods_by_mid(excluded_mids) unless excluded_mids.empty?
   end

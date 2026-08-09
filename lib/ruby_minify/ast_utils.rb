@@ -4,6 +4,14 @@ module RubyMinify
   module AstUtils
     module_function
 
+    # The plain-symbol arguments of a call, as symbols — how attr_*,
+    # private_constant and friends name their subjects.
+    def symbol_arguments(call_node)
+      call_node.arguments&.arguments&.filter_map { |arg|
+        arg.unescaped.to_sym if arg.is_a?(Prism::SymbolNode)
+      } || []
+    end
+
     def unwrap_statements(node)
       return node unless node
       node = node.body if node.is_a?(Prism::ParenthesesNode)

@@ -67,13 +67,14 @@ module RubyMinify
       end
     end
 
-    # The path a class/module definition appends to the enclosing nesting.
-    # Returns [segments, absolute] — absolute when written `class ::X` —
-    # or nil when the path is not statically known.
+    # The written segments of a qualified constant — a class/module name, an
+    # assignment target, a def receiver. Returns [segments, absolute] —
+    # absolute when written `::X` — or nil when the path is not statically
+    # known (`self::X`, `expr::X`).
     def path_segments(constant_path)
       segments = []
       current = constant_path
-      while current.is_a?(Prism::ConstantPathNode)
+      while current.is_a?(Prism::ConstantPathNode) || current.is_a?(Prism::ConstantPathTargetNode)
         segments.unshift(current.name)
         current = current.parent
       end
