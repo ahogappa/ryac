@@ -89,7 +89,7 @@ module RubyMinify
       @methods.each_key { |key| groups[uf_root(key)] << key }
 
       group_entries = build_group_entries(groups)
-      group_entries.sort_by! { |entry| -(entry.original_name.length * entry.total_occurrences) }
+      group_entries.sort_by! { |entry| -(entry.original_name.size * entry.total_occurrences) }
 
       scope_vars = build_scope_vars(scope_mappings)
       existing_methods, hierarchy = oracle ? build_existing_method_names(oracle) : [{}, {}]
@@ -97,7 +97,7 @@ module RubyMinify
       group_entries.each do |entry|
         short_name = find_shortest_name(entry.keys, scope_vars, existing_methods)
 
-        savings_per_use = entry.original_name.length - short_name.length
+        savings_per_use = entry.original_name.size - short_name.size
         next unless savings_per_use > 0
 
         total_savings = savings_per_use * entry.total_occurrences
@@ -169,7 +169,7 @@ module RubyMinify
       groups.each_value do |keys|
         mid = keys.first[2]
         next if EXCLUDED_METHODS.include?(mid)
-        next if mid.to_s.length <= 2
+        next if mid.to_s.size <= 2
 
         total_call_sites = keys.sum { |key| @methods[key][:call_sites].size }
         next if total_call_sites == 0

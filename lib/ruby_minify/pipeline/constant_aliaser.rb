@@ -121,17 +121,7 @@ module RubyMinify
 
       def patch_class_node(node, patches, analysis)
         key = prism_location_key(node)
-        class_cpath = analysis.class_cpath_map[key]
-        if class_cpath
-          short = get_short_cpath(class_cpath, analysis)
-          original = class_cpath.map(&:to_s).join('::')
-          if short != original
-            cpath_loc = node.constant_path.location
-            patches << { start: cpath_loc.start_offset, end: cpath_loc.end_offset, replacement: short }
-          end
-          @class_module_cpath_offsets << node.constant_path.location.start_offset
-          mark_constant_children(node.constant_path)
-        end
+        patch_definition_path(node, patches, analysis.class_cpath_map[key], analysis)
 
         if node.superclass
           superclass_path = analysis.superclass_resolution_map[key]
@@ -147,18 +137,33 @@ module RubyMinify
       end
 
       def patch_module_node(node, patches, analysis)
-        key = prism_location_key(node)
-        module_cpath = analysis.class_cpath_map[key]
-        if module_cpath
-          short = get_short_cpath(module_cpath, analysis)
-          original = module_cpath.map(&:to_s).join('::')
-          if short != original
+        patch_definition_path(node, patches, analysis.class_cpath_map[prism_location_key(node)], analysis)
+      end
+
+      # A definition's written path names the class relative to its lexical
+      # nesting, and the enclosing modules are renamed right along with it —
+      # so the renamed spelling only needs the written segments' short names.
+      # Re-qualifying with the full path (`module A; class A::B`) costs bytes
+      # and says nothing the nesting doesn't already say: `class B` inside
+      # `module A` creates and reopens exactly A::B.
+      def patch_definition_path(node, patches, class_cpath, analysis)
+        return unless class_cpath
+
+        segments, absolute = Nesting.path_segments(node.constant_path)
+        if segments
+          written_len = absolute ? class_cpath.size : segments.size
+          start = class_cpath.size - written_len
+          rendered = (start...class_cpath.size).map { |i|
+            analysis.constant_mapping.short_name_for_path(class_cpath[0..i]) || class_cpath[i].to_s
+          }.join('::')
+          if rendered != node.constant_path.slice
             cpath_loc = node.constant_path.location
-            patches << { start: cpath_loc.start_offset, end: cpath_loc.end_offset, replacement: short }
+            patches << { start: cpath_loc.start_offset, end: cpath_loc.end_offset, replacement: rendered }
           end
-          @class_module_cpath_offsets << node.constant_path.location.start_offset
-          mark_constant_children(node.constant_path)
         end
+
+        @class_module_cpath_offsets << node.constant_path.location.start_offset
+        mark_constant_children(node.constant_path)
       end
 
       def mark_constant_children(node)

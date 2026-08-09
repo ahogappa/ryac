@@ -431,11 +431,11 @@ module RubyMinify
       def escape_regexp_slash(content)
         result = +""
         i = 0
-        while i < content.length
+        while i < content.size
           if content[i] == '\\'
             result << content[i]
             i += 1
-            result << content[i] if i < content.length
+            result << content[i] if i < content.size
             i += 1
           elsif content[i] == '/'
             result << '\\/'
@@ -550,7 +550,7 @@ module RubyMinify
       def escape_for_dquote(str)
         result = +""
         i = 0
-        while i < str.length
+        while i < str.size
           c = str[i]
           case c
           when '\\' then result << '\\\\'
@@ -560,7 +560,7 @@ module RubyMinify
           when "\r" then result << '\\r'
           when "\0" then result << '\\0'
           when '#'
-            if i + 1 < str.length && '{@$'.include?(str[i + 1])
+            if i + 1 < str.size && '{@$'.include?(str[i + 1])
               result << '\\#'
             else
               result << '#'
@@ -945,7 +945,7 @@ module RubyMinify
 
       def setter_call?(node)
         name = node.name.to_s
-        node.receiver && name.end_with?('=') && name.length > 1 &&
+        node.receiver && name.end_with?('=') && name.size > 1 &&
           !%w[== != <= >= ===].include?(name) && name != '[]='
       end
 

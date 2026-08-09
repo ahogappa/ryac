@@ -61,22 +61,22 @@ module RubyMinify
 
         existing_names = Set.new
         cvars.each_key do |name|
-          existing_names << name.to_s if name.to_s.length <= 3
+          existing_names << name.to_s if name.to_s.size <= 3
         end
 
         generator = NameGenerator.new([], prefix: "@@")
         sorted_cvars = cvars.sort_by do |name, data|
           total = data[:read_nodes].size + data[:write_nodes].size
-          -(name.to_s.length * total)
+          -(name.to_s.size * total)
         end
 
         sorted_cvars.each do |name, data|
-          next if name.to_s.length <= 3
+          next if name.to_s.size <= 3
 
           short_name = generator.next_name
           short_name = generator.next_name while existing_names.include?(short_name)
           total = data[:read_nodes].size + data[:write_nodes].size
-          savings = (name.to_s.length - short_name.length) * total
+          savings = (name.to_s.size - short_name.size) * total
           next unless savings > 0
 
           data[:read_nodes].each { |n| @node_short_names[AstUtils.location_key(n)] = short_name }

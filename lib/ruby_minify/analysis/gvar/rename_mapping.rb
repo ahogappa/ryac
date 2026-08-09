@@ -31,21 +31,21 @@ module RubyMinify
     def assign_short_names
       existing_names = Set.new
       @gvars.each_key do |name|
-        existing_names << name.to_s if name.to_s.length <= 2
+        existing_names << name.to_s if name.to_s.size <= 2
       end
 
       generator = NameGenerator.new([], prefix: "$")
       sorted_gvars = @gvars.sort_by do |name, nodes|
-        -(name.to_s.length * nodes.size)
+        -(name.to_s.size * nodes.size)
       end
 
       sorted_gvars.each do |name, nodes|
         next if @excluded_names.include?(name)
-        next if name.to_s.length <= 2
+        next if name.to_s.size <= 2
 
         short_name = generator.next_name
         short_name = generator.next_name while existing_names.include?(short_name)
-        savings = (name.to_s.length - short_name.length) * nodes.size
+        savings = (name.to_s.size - short_name.size) * nodes.size
         next unless savings > 0
 
         nodes.each { |n| @node_short_names[AstUtils.location_key(n)] = short_name }

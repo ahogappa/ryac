@@ -69,7 +69,7 @@ module RubyMinify
 
         existing_names = Set.new
         ivars.each_key do |name|
-          existing_names << name.to_s if name.to_s.length <= 2
+          existing_names << name.to_s if name.to_s.size <= 2
         end
         reserved = @reserved_names[cpath]
         existing_names.merge(reserved) if reserved
@@ -77,16 +77,16 @@ module RubyMinify
         generator = NameGenerator.new([], prefix: "@")
         sorted_ivars = ivars.sort_by do |name, data|
           total = data[:read_nodes].size + data[:write_nodes].size
-          -(name.to_s.length * total)
+          -(name.to_s.size * total)
         end
 
         sorted_ivars.each do |name, data|
-          next if name.to_s.length <= 2
+          next if name.to_s.size <= 2
 
           short_name = generator.next_name
           short_name = generator.next_name while existing_names.include?(short_name)
           total = data[:read_nodes].size + data[:write_nodes].size
-          savings = (name.to_s.length - short_name.length) * total
+          savings = (name.to_s.size - short_name.size) * total
           next unless savings > 0
 
           data[:read_nodes].each { |n| @node_short_names[AstUtils.location_key(n)] = short_name }

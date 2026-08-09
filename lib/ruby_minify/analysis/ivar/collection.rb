@@ -140,14 +140,14 @@ module RubyMinify
       .sort_by do |info|
         ivar_name = info[:ivar_key][1]
         count = ivar_nodes_by_key[info[:ivar_key]].size
-        -(ivar_name.to_s.length * count)
+        -(ivar_name.to_s.size * count)
       end
       .each do |info|
         ivar_key = info[:ivar_key]
         ivar_name = ivar_key[1]
         ivar_count = ivar_nodes_by_key[ivar_key].size
         next if ivar_count == 0
-        next if ivar_name.to_s.length <= 2
+        next if ivar_name.to_s.size <= 2
 
         short_name = nil
         method_short = nil
@@ -170,8 +170,8 @@ module RubyMinify
           setter_calls = @oracle.method_call_count(info[:cpath], info[:singleton], :"#{info[:mid]}=")
         end
 
-        ivar_savings = (ivar_name.to_s.length - short_name.length) * ivar_count
-        method_savings = (info[:mid].to_s.length - method_short.to_s.length) * (getter_calls + setter_calls + 1)
+        ivar_savings = (ivar_name.to_s.size - short_name.size) * ivar_count
+        method_savings = (info[:mid].to_s.size - method_short.to_s.size) * (getter_calls + setter_calls + 1)
         next unless ivar_savings + method_savings > 0
 
         used_ivar_names << short_name

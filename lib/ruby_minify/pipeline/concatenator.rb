@@ -182,7 +182,7 @@ module RubyMinify
               dep_content = cleaned_cache[dep_path] || graph[dep_path].content
               stripped = strip_outer_nesting(dep_content)
               # Only consume trailing semicolons (not newlines) for inline
-              while end_pos < result.length && result[end_pos] == ';'
+              while end_pos < result.size && result[end_pos] == ';'
                 end_pos += 1
               end
               result[start_pos...end_pos] = stripped
@@ -196,7 +196,7 @@ module RubyMinify
           next if node[:type] == :require_stdlib && node[:in_method]
 
           # For removal: consume trailing semicolons and newlines
-          while end_pos < result.length && (result[end_pos] == ';' || result[end_pos] == "\n")
+          while end_pos < result.size && (result[end_pos] == ';' || result[end_pos] == "\n")
             end_pos += 1
           end
           result[start_pos...end_pos] = ''

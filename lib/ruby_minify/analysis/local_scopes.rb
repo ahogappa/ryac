@@ -375,7 +375,7 @@ module RubyMinify
       mangled = f_args.map { generator.next_name }
       pipe_overhead = 2 + mangled.sum(&:length) + mangled.size - 1
       reference_overhead = f_args.each_with_index.sum do |param, idx|
-        ("_#{idx + 1}".length - mangled[idx].length) * ref_counts[param]
+        ("_#{idx + 1}".size - mangled[idx].size) * ref_counts[param]
       end
       pipe_overhead - reference_overhead > 0
     end

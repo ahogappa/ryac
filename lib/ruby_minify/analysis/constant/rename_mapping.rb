@@ -153,13 +153,13 @@ module RubyMinify
       @mappings.each_value do |info|
         next if skip_class_modules && info.definition_type != :value
         next if info.definition_type != :value && external_class_root?(info.full_path)
-        entries << [info.original_name.to_s.length * (info.usage_count + 1), :internal, info]
+        entries << [info.original_name.to_s.size * (info.usage_count + 1), :internal, info]
       end
 
       prefix_counts.each do |prefix, count|
         prefix_string = prefix.map(&:to_s).join('::')
         info = ExternalPrefixInfo.new(prefix_path: prefix, prefix_string: prefix_string, usage_count: count)
-        entries << [prefix_string.length * count, :external, info]
+        entries << [prefix_string.size * count, :external, info]
       end
 
       entries.sort_by! { |e| -e[0] }
@@ -174,14 +174,20 @@ module RubyMinify
 
         case kind
         when :internal
-          next unless info.original_name.to_s.length - candidate.length > 0
+          # Names of one or two characters are left alone, matching the
+          # method and ivar renamers. Beyond the negligible savings, this is
+          # what makes re-minification a fixed point: the names this pass
+          # assigns are themselves 1-2 characters, and a second pass must
+          # not shuffle them again.
+          next if info.original_name.to_s.size <= 2
+          next unless info.original_name.to_s.size - candidate.size > 0
           info.short_name = candidate
           @used_short_names << candidate
 
         when :external
-          saved_per_use = info.prefix_string.length - candidate.length
+          saved_per_use = info.prefix_string.size - candidate.size
           next unless saved_per_use > 0
-          declaration_cost = candidate.length + 1 + info.prefix_string.length + 1
+          declaration_cost = candidate.size + 1 + info.prefix_string.size + 1
           net_savings = (saved_per_use * info.usage_count) - declaration_cost
           next unless net_savings > 0
           info.short_name = candidate

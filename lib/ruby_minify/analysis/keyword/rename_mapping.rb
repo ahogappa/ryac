@@ -54,12 +54,12 @@ module RubyMinify
 
         generator = NameGenerator.new
         keyword_map = {}
-        all_keywords.sort_by { |sym| -sym.to_s.length }.each do |sym|
-          next if sym.to_s.length <= 2
+        all_keywords.sort_by { |sym| -sym.to_s.size }.each do |sym|
+          next if sym.to_s.size <= 2
 
           short = generator.next_name
           occurrences = count_occurrences(keys, sym)
-          savings = (sym.to_s.length - short.length) * occurrences
+          savings = (sym.to_s.size - short.size) * occurrences
           next unless savings > 2
 
           keyword_map[sym] = short
@@ -124,7 +124,7 @@ module RubyMinify
           # Use renamed name if available; for already-short keywords (≤2 chars),
           # use original name to preserve idempotency across re-minification passes
           final_name = keyword_map[keyword_sym]
-          final_name ||= keyword_sym.to_s if keyword_sym.to_s.length <= 2
+          final_name ||= keyword_sym.to_s if keyword_sym.to_s.size <= 2
           next unless final_name
 
           entries.each do |entry|
