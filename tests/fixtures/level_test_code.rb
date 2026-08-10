@@ -311,6 +311,102 @@ class Formatter
   end
 end
 
+# === Latent-path hazards: sites type inference cannot see ===
+
+# Dead-path accessor calls: nobody invokes these tuner methods, so inference
+# never types `target` — the attr symbols must survive minification or the
+# dead sites break the day the paths first run.
+class TimeoutConfig
+  attr_accessor :timeout_ms
+  attr_reader :retry_limit
+
+  def initialize
+    @timeout_ms = 100
+    @retry_limit = 3
+  end
+end
+
+class TimeoutTuner
+  def bump_timeout(target)
+    target.timeout_ms = 500
+  end
+
+  def raise_timeout(target)
+    target.timeout_ms += 250
+  end
+
+  def show_retries(target)
+    puts target.retry_limit
+  end
+end
+
+# Comparable dispatches to <=> from outside the closed world, so `other` is
+# never typed and its getter call cannot be resolved.
+class VersionTag
+  include Comparable
+  attr_reader :version_number
+
+  def initialize(number)
+    @version_number = number
+  end
+
+  def <=>(other)
+    version_number <=> other.version_number
+  end
+end
+
+# attr_writer's declaration never renames; the reader sharing its symbol
+# must stay with it or the pair splits across two ivars.
+class Payload
+  attr_reader :payload_data
+  attr_writer :payload_data
+
+  def initialize
+    @payload_data = 1
+  end
+end
+
+# Ivars reached through another object's instance_eval and through
+# reflection with a computed name.
+class SecretHolder
+  def initialize
+    @secret_value = 42
+  end
+
+  def peek_into(other)
+    other.instance_eval { @secret_value }
+  end
+
+  def fetch_by_name(name)
+    instance_variable_get("@" + name)
+  end
+end
+
+# define_method body reading an ivar the initializer writes.
+class LabeledWidget
+  def initialize
+    @widget_label = "w"
+  end
+
+  define_method(:show_label) { @widget_label }
+end
+
+# One call site dispatching over classes held in data — inference can miss
+# a member, and every same-named def must rename in lockstep.
+class AddStep
+  def self.apply_step(value)
+    value + 10
+  end
+end
+
+class DoubleStep
+  def self.apply_step(value)
+    value * 2
+  end
+end
+
+PIPELINE_STEPS = [AddStep, DoubleStep].freeze
+
 # Main execution
 calc = Calculator.new(10, label: "main")
 calc.add_number(5, verbose: true)
@@ -386,3 +482,18 @@ puts Process::Status.name
 puts Process::Sys.name
 puts Process::UID.name
 puts Process::GID.name
+
+# Latent-path hazards: live halves only — the tuner methods stay uncalled
+config = TimeoutConfig.new
+TimeoutTuner.new
+puts config.timeout_ms
+puts config.retry_limit
+puts VersionTag.new(1) < VersionTag.new(2)
+payload = Payload.new
+payload.payload_data = 9
+puts payload.payload_data
+holder = SecretHolder.new
+puts holder.peek_into(SecretHolder.new)
+puts holder.fetch_by_name("secret_value")
+puts LabeledWidget.new.show_label
+puts PIPELINE_STEPS.reduce(5) { |acc, step| step.apply_step(acc) }
