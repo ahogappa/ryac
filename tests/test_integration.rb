@@ -19,7 +19,7 @@ class TestIntegration < Minitest::Test
 
     # Step 1: Minify the minifier source using original minifier (multi-file mode)
     original_minifier = RubyMinify::Minifier.new
-    result1 = original_minifier.call(entry_path, level: 5)
+    result1 = original_minifier.call(entry_path, level: :unstable)
 
     # Verify minified code is valid Ruby
     require 'prism'
@@ -42,7 +42,7 @@ class TestIntegration < Minitest::Test
         require '#{minified_minifier_path}'
         require '#{aliases_path}'
         minifier = RubyMinify::Minifier.new
-        result = minifier.call('#{entry_path}', level: 5)
+        result = minifier.call('#{entry_path}', level: :unstable)
         puts result.content
       RUBY
 
@@ -57,7 +57,7 @@ class TestIntegration < Minitest::Test
 
       # Step 4: Re-minification should be idempotent (same size)
       re_minifier = RubyMinify::Minifier.new
-      result3 = re_minifier.call(minified_minifier_path, level: 5)
+      result3 = re_minifier.call(minified_minifier_path, level: :unstable)
       RubyVM::InstructionSequence.compile(result3.content)
       assert_equal result1.content, result3.content,
              "Re-minification should be idempotent " \

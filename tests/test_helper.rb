@@ -14,6 +14,23 @@ require 'rbconfig'
 require_relative '../lib/ruby_minify'
 
 module MinifyTestHelper
+  # Sub-pipeline recipes for unit tests. The public surface has exactly two
+  # presets (:stable / :unstable); tests additionally pin the behavior of
+  # individual stages by composing steps directly — the supported way to run
+  # a partial pipeline. The historical numbers survive here only as recipe
+  # names, so stage-focused tests can keep saying which slice they exercise.
+  STAGE_RECIPES = {
+    0 => [],
+    1 => [RubyMinify::Minifier::OPTIMIZE],
+    2 => [RubyMinify::Minifier::OPTIMIZE,
+          [RubyMinify::Pipeline::ConstantAliaser], [RubyMinify::Pipeline::AttrDeclShorten]],
+    3 => [RubyMinify::Minifier::OPTIMIZE,
+          [RubyMinify::Pipeline::ConstantAliaser], [RubyMinify::Pipeline::AttrDeclShorten],
+          [RubyMinify::Pipeline::VariableRenamer, { features: { keywords: true } }]],
+    4 => RubyMinify::Minifier::STAGES[:stable],
+    5 => RubyMinify::Minifier::STAGES[:unstable]
+  }.freeze
+
   def minify_code(code, _options = {}, rbs_files: {})
     minify_at_level(code, RubyMinify::Minifier::DEFAULT_LEVEL, rbs_files: rbs_files)
   end
@@ -29,7 +46,7 @@ module MinifyTestHelper
     source = RubyMinify::Pipeline::Preprocessor.new.call(source)
 
     compacted = RubyMinify::Pipeline::Compactor.new.call(source.content)
-    stages = RubyMinify::Minifier::STAGES[level] || RubyMinify::Minifier::STAGES[RubyMinify::Minifier::DEFAULT_LEVEL]
+    stages = level.is_a?(Symbol) ? RubyMinify::Minifier::STAGES.fetch(level) : STAGE_RECIPES.fetch(level)
     result = RubyMinify::Minifier.run_stages(compacted, stages, rbs_files: rbs_files)
 
     assert_output_preserved(code, result) if verify_output

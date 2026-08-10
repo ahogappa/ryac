@@ -26,7 +26,7 @@ parser = OptionParser.new do |opts|
     options[:gems] = names.split(',').map(&:strip).reject(&:empty?)
   end
 
-  opts.on("-c", "--compress LEVEL", "Set compression level (0-5 or alias: min, stable, unstable, max)") do |value|
+  opts.on("-c", "--compress LEVEL", "Set compression level (stable or unstable)") do |value|
     begin
       options[:level] = RubyMinify::Minifier.resolve_level(value)
     rescue ArgumentError => e

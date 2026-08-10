@@ -16,7 +16,7 @@ class TestMinifier < Minitest::Test
     File.write(path, "def hello\n  puts \"hello\"\nend\nhello\n")
 
     minifier = RubyMinify::Minifier.new
-    result = minifier.call(path, level: 0)
+    result = minifier.call(path, level: [])
 
     assert_equal 'def hello;puts("hello");end;hello', result.content
     assert_equal '', result.aliases
@@ -32,7 +32,7 @@ class TestMinifier < Minitest::Test
     File.write(path, "require \"json\"\nputs JSON.generate({a: 1})\n")
 
     minifier = RubyMinify::Minifier.new
-    result = minifier.call(path, level: 0)
+    result = minifier.call(path, level: [])
 
     assert_equal "require \"json\";puts(JSON.generate({a:1}))", result.content
     assert_equal 42, result.stats.original_size

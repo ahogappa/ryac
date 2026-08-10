@@ -71,7 +71,7 @@ class TestConstantAliaserPipeline < Minitest::Test
     Dir.mktmpdir('aliaser') do |dir|
       path = File.join(dir, 'scanner.rb')
       File.write(path, code)
-      result = RubyMinify::Minifier.new.call(path, level: 2)
+      result = RubyMinify::Minifier.new.call(path, level: MinifyTestHelper::STAGE_RECIPES[2])
       assert result.content.start_with?('require "prism";A=Prism;'),
              "requires must precede the alias declaration:\n#{result.content[0, 120]}"
       assert_includes result.content, 'A::CallNode'
@@ -101,7 +101,7 @@ class TestConstantAliaserPipeline < Minitest::Test
     Dir.mktmpdir('aliaser') do |dir|
       path = File.join(dir, 'worker.rb')
       File.write(path, code)
-      result = RubyMinify::Minifier.new.call(path, level: 2)
+      result = RubyMinify::Minifier.new.call(path, level: MinifyTestHelper::STAGE_RECIPES[2])
       assert_includes result.content, 'LazyGem::Config'
       refute_includes result.content, '=LazyGem'
     end

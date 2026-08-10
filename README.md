@@ -33,9 +33,9 @@ gem 'ruby-minify'
 # Minify a file (follows require_relative automatically)
 bin/minify path/to/entry.rb
 
-# Specify compression level (0-5 or alias: min, stable, unstable, max)
-bin/minify path/to/entry.rb -c 5
-bin/minify path/to/entry.rb -c max
+# Specify compression level (stable or unstable)
+bin/minify path/to/entry.rb -c stable
+bin/minify path/to/entry.rb -c unstable
 
 # Write to output file
 bin/minify path/to/entry.rb -o minified.rb
@@ -75,27 +75,25 @@ result = minifier.call('path/to/entry.rb', level: 5)
 
 ## Optimization Levels
 
-The default level is **3** (`stable`). Levels 0-3 are safe transformations that preserve all public interfaces. Levels 4-5 are aggressive and may break code that relies on reflection or name inspection.
+There are exactly two levels, named for their promise. The default is **`stable`**.
 
-| Level | Alias | Transformations | Safety |
-|-------|-------|----------------|--------|
-| 0 | `min` | Whitespace/comment removal (AST rebuild) | Safe |
-| 1 | | + AST transformations (boolean/char/constant folding, control flow, endless methods, paren removal) | Safe |
-| 2 | | + Constant aliasing, external prefix aliasing | Safe |
-| 3 | `stable` | + Local variable & keyword argument renaming | Safe |
-| 4 | `unstable` | + Class/module renaming, instance/class/global variable renaming | Aggressive |
-| 5 | `max` | + Method renaming, attr-backed ivar coordination | Aggressive |
+| Level | Transformations | Promise |
+|-------|----------------|---------|
+| `stable` | AST compaction and folding, constant/class/module renaming with compatibility aliases, external prefix aliasing, local/keyword/instance/class/global variable renaming | Verified frame-for-frame on a real program (Optcarrot). Sound under closed-world analysis; reflection over *names the program renames* is the caveat. |
+| `unstable` | + Method renaming, attr-backed ivar coordination | A program can defeat method renaming by construction (names inside strings, `eval`'d source, `send(computed)`), so this works only when the program plays along. Verified by self-hosting. |
 
-See [`tests/ruby_minify/pipeline/`](tests/ruby_minify/pipeline/) for per-stage transformation examples, and [`tests/ruby_minify/levels/`](tests/ruby_minify/levels/) for end-to-end compression examples at each level.
+Finer configurations are not levels: the pipeline is built from steps, and callers can pass an explicit stage list in place of a level name (`Minifier#call(path, level: [...stage defs...])`). The unit tests pin each step's behavior through exactly that mechanism.
 
-### What the aggressive levels are verified against
+See [`tests/ruby_minify/pipeline/`](tests/ruby_minify/pipeline/) for per-stage transformation examples, and [`tests/ruby_minify/levels/`](tests/ruby_minify/levels/) for end-to-end compression examples.
+
+### What the levels are verified against
 
 The supported boundary is defined by two programs, both verified in CI:
 
-- **This minifier itself at L5** — the minified minifier re-minifies the original source to identical output ([`tests/test_integration.rb`](tests/test_integration.rb))
-- **[Optcarrot](https://github.com/mame/optcarrot) at L4** — the minified emulator renders 180 frames from a real ROM with a checksum identical to the original ([`tests/test_optcarrot.rb`](tests/test_optcarrot.rb))
+- **[Optcarrot](https://github.com/mame/optcarrot) at `stable`** — the minified emulator matches the original frame-for-frame across the 180-frame demo and three scripted play scenarios (1,820 frames of title menus, piece rotation, pausing and button mashing) ([`tests/test_optcarrot.rb`](tests/test_optcarrot.rb))
+- **This minifier itself at `unstable`** — the minified minifier re-minifies the original source to identical output, and minifying its own output is a byte-identical fixed point ([`tests/test_integration.rb`](tests/test_integration.rb))
 
-How far a given program gets past L3 depends on the program. Optcarrot stops at L4 because it defeats method renaming by construction: it builds its CPU/PPU cores as source strings and `eval`s them, scans that text for `@ivar` names with a regexp, and dispatches through `send(computed_symbol)` — method names survive inside strings, out of reach of static analysis. The sinatra and rubocop suites run in CI as regression canaries at L3, but they sit outside this boundary and do not define it.
+Whether `unstable` holds for a given program depends on the program. Optcarrot stops at `stable` because it defeats method renaming by construction: it builds its CPU/PPU cores as source strings and `eval`s them, scans that text for `@ivar` names with a regexp, and dispatches through `send(computed_symbol)` — method names survive inside strings, out of reach of static analysis. The sinatra and rubocop suites run in CI as regression canaries on a keyword-only step composition, but they sit outside this boundary and do not define it.
 
 ## Development
 

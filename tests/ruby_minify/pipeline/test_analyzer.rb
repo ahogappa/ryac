@@ -54,7 +54,7 @@ class TestAnalyzer < Minitest::Test
     code = "class Calc\n  def add(a, b)\n    a + b\n  end\nend\nputs Calc.new.add(1, 2)\n"
     rbs = "class Calc\n  def add: (Integer, Integer) -> Integer\nend\n"
     result = minify_code(code, rbs_files: { "calc.rbs" => rbs })
-    assert_equal "class Calc;def add(a,b) =a+b;end;puts Calc.new.add(1,2)", result.code
+    assert_equal "class A;def add(a,b) =a+b;end;puts A.new.add(1,2)", result.code
   end
 
   # --- defined? with local variable (lines 208-209) ---

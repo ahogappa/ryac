@@ -6,7 +6,7 @@ class TestCLIGemOption < Minitest::Test
   MINIFY_BIN = File.expand_path('../../bin/minify', __dir__)
 
   def test_gem_flag_resolves_and_minifies
-    stdout, stderr, status = Open3.capture3(RbConfig.ruby, MINIFY_BIN, '--gem', 'json', '-c', '0')
+    stdout, stderr, status = Open3.capture3(RbConfig.ruby, MINIFY_BIN, '--gem', 'json', '-c', 'stable')
     assert status.success?, "minify --gem json failed: #{stderr}"
     refute stdout.empty?, "Output should not be empty"
     assert_match(/Compression:/, stderr)
@@ -28,7 +28,7 @@ class TestCLIGemOption < Minitest::Test
   end
 
   def test_gem_flag_comma_separated_multiple_gems
-    stdout, stderr, status = Open3.capture3(RbConfig.ruby, MINIFY_BIN, '--gem', 'json,csv', '-c', '0')
+    stdout, stderr, status = Open3.capture3(RbConfig.ruby, MINIFY_BIN, '--gem', 'json,csv', '-c', 'stable')
     assert status.success?, "minify --gem json,csv failed: #{stderr}"
     refute stdout.empty?, "Output should not be empty"
     # Should process files from both gems

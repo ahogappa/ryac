@@ -33,7 +33,7 @@ class TestOptcarrot < Minitest::Test
 
   # The level Optcarrot is expected to survive. Raise this only when the
   # program itself stops defeating the transformation.
-  SUPPORTED_LEVEL = 4
+  SUPPORTED_LEVEL = :stable
 
   # Pad bit positions, mirroring Optcarrot::Pad.
   PAD_A      = 1 << 0
@@ -129,9 +129,9 @@ class TestOptcarrot < Minitest::Test
       minified = run_ruby([runner])
       minified_checksum = minified[:stdout][/^checksum:\s*(\d+)/, 1]
       refute_nil minified_checksum,
-                 "minified optcarrot produced no checksum at L#{SUPPORTED_LEVEL}\n#{minified[:stderr][0, 800]}"
+                 "minified optcarrot produced no checksum at #{SUPPORTED_LEVEL}\n#{minified[:stderr][0, 800]}"
       assert_equal baseline_checksum, minified_checksum,
-                   "L#{SUPPORTED_LEVEL} changed the rendered output"
+                   "#{SUPPORTED_LEVEL} minification changed the rendered output"
     end
 
     assert_operator result.stats.compression_ratio, :<, 0.75,

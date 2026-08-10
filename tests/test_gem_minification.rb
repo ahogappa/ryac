@@ -57,8 +57,6 @@ class TestGemMinification < Minitest::Test
       lib_name: 'sinatra/base',
       extra_includes: ['sinatra/rack-protection/lib'],
       copy_files: %w[sinatra/lib/sinatra/middleware sinatra/lib/sinatra/version.rb sinatra/lib/sinatra/show_exceptions.rb sinatra/lib/sinatra/indifferent_hash.rb],
-      min_level: 3,
-      max_level: 3,  # L4+ has class/method renaming issues with sinatra
     },
     rubocop: {
       source: 'rubocop/lib/rubocop.rb',
@@ -81,16 +79,24 @@ class TestGemMinification < Minitest::Test
       copy_files: %w[rubocop/lib/rubocop/cop/internal_affairs rubocop/lib/rubocop/cop/internal_affairs.rb rubocop/lib/rubocop/server.rb rubocop/lib/rubocop/server rubocop/lib/rubocop/rspec],
       file_depth: 2,
       project_files: %w[rubocop/config],
-      min_level: 3,
-      max_level: 3  # L4+ constant aliasing breaks rubocop's cop registry
     }
   }.freeze
 
+  # The canaries sit outside the supported boundary: :stable's class and
+  # variable renaming breaks sinatra and rubocop (registries and reflection),
+  # so they run a keyword-only step composition instead — enough pipeline to
+  # catch regressions on large real code without asserting a promise the
+  # levels don't make.
+  CANARY_STAGES = [
+    RubyMinify::Minifier::OPTIMIZE,
+    [RubyMinify::Pipeline::ConstantAliaser],
+    [RubyMinify::Pipeline::AttrDeclShorten],
+    [RubyMinify::Pipeline::VariableRenamer, { features: { keywords: true } }]
+  ].freeze
+
   GEMS.each do |gem_name, config|
-    min_level = config[:min_level] || 0
-    max_level = config[:max_level] || 5
-    (min_level..max_level).each do |level|
-      define_method(:"test_#{gem_name}_level#{level}") do
+    [CANARY_STAGES].each do |level|
+      define_method(:"test_#{gem_name}_canary") do
         source_path = File.join(GEM_TESTS_DIR, config[:source])
         test_files = Array(config[:test_files] || config[:test_file]).map { |f| File.join(GEM_TESTS_DIR, f) }
         if config[:test_file_patterns]
@@ -168,12 +174,12 @@ class TestGemMinification < Minitest::Test
       minified = run_gem_tests(test_files, actual_lib_dir, extra_includes: extra_includes, test_runner: test_runner, gem_dir: gem_dir)
       minified_count = parse_test_count(minified[:stdout])
       assert minified_count,
-        "#{gem_name} L#{level}: no test summary found (minified code likely crashed)\nstderr: #{minified[:stderr][0, 300]}"
-      assert minified_count > 0, "#{gem_name} L#{level}: 0 tests ran"
+        "#{gem_name} canary: no test summary found (minified code likely crashed)\nstderr: #{minified[:stderr][0, 300]}"
+      assert minified_count > 0, "#{gem_name} canary: 0 tests ran"
       minified_failures = parse_test_result(minified[:stdout])
       new_failures = minified_failures - baseline_failures
       assert new_failures.empty?,
-        "#{gem_name} L#{level}: #{new_failures.size} new failure(s) (not in baseline):\n#{new_failures.join("\n")}"
+        "#{gem_name} canary: #{new_failures.size} new failure(s) (not in baseline):\n#{new_failures.join("\n")}"
     end
   end
 

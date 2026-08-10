@@ -33,36 +33,36 @@ module RubyMinify
       Pipeline::ParenOptimizer => 0,
     }.freeze
 
-    DEFAULT_LEVEL = 3
-
-    LEVEL_ALIASES = {
-      'min' => 0,
-      'stable' => 3,
-      'unstable' => 4,
-      'max' => 5
-    }.freeze
+    DEFAULT_LEVEL = :stable
 
     def self.resolve_level(value)
-      if LEVEL_ALIASES.key?(value)
-        LEVEL_ALIASES[value]
-      elsif value.match?(/\A\d+\z/) && STAGES.key?(value.to_i)
-        value.to_i
-      else
-        valid = (STAGES.keys.map(&:to_s) + LEVEL_ALIASES.keys).join(', ')
-        raise ArgumentError, "Invalid compress level: #{value} (valid: #{valid})"
-      end
+      level = value.to_sym
+      return level if STAGES.key?(level)
+
+      raise ArgumentError, "Invalid compress level: #{value} (valid: #{STAGES.keys.join(', ')})"
     end
 
     ALL_VAR_FEATURES = { features: { keywords: true, ivars: true, cvars: true, gvars: true } }.freeze
     ALL_VAR_WITH_ATTR = { features: { keywords: true, ivars: true, cvars: true, gvars: true, attr_ivars: true } }.freeze
 
+    # The two levels, named for their promise rather than a number.
+    #
+    # :stable is the boundary the optcarrot test certifies frame-for-frame on
+    # a real program: everything up to class, constant and variable renaming,
+    # which closed-world analysis can keep sound.
+    #
+    # :unstable adds method renaming, which a program can defeat by
+    # construction — names survive inside strings, eval'd source and computed
+    # send targets, out of reach of any static analysis. It is certified by
+    # self-hosting and works only when the program plays along.
+    #
+    # Finer configurations are not levels: individual steps stay composable
+    # by passing an explicit stage list in place of a level name.
     STAGES = {
-      0 => [],
-      1 => [OPTIMIZE],
-      2 => [OPTIMIZE, [Pipeline::ConstantAliaser], [Pipeline::AttrDeclShorten]],
-      3 => [OPTIMIZE, [Pipeline::ConstantAliaser], [Pipeline::AttrDeclShorten], [Pipeline::VariableRenamer, { features: { keywords: true } }]],
-      4 => [OPTIMIZE, [Pipeline::ConstantAliaser, { rename_classes: true }], [Pipeline::AttrDeclShorten], [Pipeline::VariableRenamer, ALL_VAR_FEATURES]],
-      5 => [OPTIMIZE, [Pipeline::ConstantAliaser, { rename_classes: true }], [Pipeline::VariableRenamer, ALL_VAR_WITH_ATTR], [Pipeline::MethodRenamer]],
+      stable: [OPTIMIZE, [Pipeline::ConstantAliaser, { rename_classes: true }], [Pipeline::AttrDeclShorten],
+               [Pipeline::VariableRenamer, ALL_VAR_FEATURES]],
+      unstable: [OPTIMIZE, [Pipeline::ConstantAliaser, { rename_classes: true }],
+                 [Pipeline::VariableRenamer, ALL_VAR_WITH_ATTR], [Pipeline::MethodRenamer]],
     }.freeze
 
     def self.run_stages(code, stages, file_boundaries: [], stdlib_requires: [], rbs_files: {})
@@ -130,8 +130,14 @@ module RubyMinify
 
     private
 
+    def resolve_level_value(level)
+      self.class.resolve_level(level)
+    end
+
+    # target_level is a preset name, or — for callers composing their own
+    # pipeline out of steps — an explicit stage list.
     def run_pipeline(source, target_level)
-      stages = STAGES[target_level] || STAGES[DEFAULT_LEVEL]
+      stages = target_level.is_a?(Array) ? target_level : STAGES.fetch(resolve_level_value(target_level))
       compacted = Pipeline::Compactor.new.call(source.content)
       self.class.run_stages(compacted, stages,
         file_boundaries: source.file_boundaries,
