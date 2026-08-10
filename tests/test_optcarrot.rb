@@ -6,6 +6,7 @@ require 'tempfile'
 require 'fileutils'
 require 'rbconfig'
 require_relative '../lib/ruby_minify'
+require_relative 'support/constant_audit'
 
 # Optcarrot is what defines the aggressive end of the supported range: a real
 # program, minified at L4, has to keep producing the same frames.
@@ -142,6 +143,18 @@ class TestOptcarrot < Minitest::Test
     define_method(:"test_scripted_#{name}_renders_identical_frames") do
       assert_scenario_frames_identical(name)
     end
+  end
+
+  # Frame comparison only certifies the paths the scenarios execute; a
+  # constant reference broken on an unexercised path (a debug flag, an
+  # alternate video backend) would stay latent. Statically, every constant
+  # reference in the artifact must resolve somewhere — its own definitions
+  # or the constants its requires provide.
+  def test_every_constant_reference_in_the_artifact_resolves
+    result = self.class.minified_result
+    issues = ConstantAudit.unresolved(result.content, extra_source: result.aliases)
+    assert_empty issues.map { |path, line| "#{path} (line #{line})" },
+                 'constant references in the minified optcarrot resolve nowhere — latent NameError'
   end
 
   # The button script must visibly change the run at all, or the scenario

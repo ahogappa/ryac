@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'test_helper'
+require_relative 'support/constant_audit'
 require 'open3'
 require 'tmpdir'
 
@@ -84,6 +85,18 @@ class TestIntegration < Minitest::Test
   # keywords, and the RBS input path (also dead during self-hosting, whose
   # rbs_files are empty).
 
+  # Executing the artifact certifies the paths that run; a constant
+  # reference broken on a path nothing executes (an error branch, an unused
+  # level's stage list) stays latent. Statically, every constant reference
+  # in the artifact must resolve somewhere — its own definitions, the
+  # aliases file, or the constants its requires provide.
+  def test_every_constant_reference_in_the_artifact_resolves
+    artifact = self.class.unstable_artifact
+    issues = ConstantAudit.unresolved(artifact.content, extra_source: artifact.aliases)
+    assert_empty issues.map { |path, line| "#{path} (line #{line})" },
+                 'constant references in the minified minifier resolve nowhere — latent NameError'
+  end
+
   CROSS_LEVEL_FIXTURE = <<~RUBY
     module Engine
       LIMIT = 50
@@ -137,6 +150,9 @@ class TestIntegration < Minitest::Test
 
       RubyMinify::Minifier::STAGES.each_key do |level|
         expected = RubyMinify::Minifier.new.call(fixture_path, level: level, project_root: fixture_dir)
+        assert_empty ConstantAudit.unresolved(expected.content, extra_source: expected.aliases)
+                                  .map { |path, line| "#{path} (line #{line})" },
+               "constant references in the :#{level} fixture output resolve nowhere — latent NameError"
 
         runner_code = <<~RUBY
           require '#{minified_path}'
