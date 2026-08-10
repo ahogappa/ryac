@@ -193,6 +193,60 @@ module RubyMinify
     @method_rename_mapping.exclude_methods_by_mid(excluded_mids) unless excluded_mids.empty?
   end
 
+  # attr_accessor's setter def is derived from the declared symbol and never
+  # registered as a method of its own, so a setter call site type inference
+  # missed is invisible to every other exclusion pass — renaming the
+  # declaration would strand that site on the old name until the path runs.
+  # Find such sites directly and keep their symbols. attr_writer never
+  # renames its declaration at all, so a reader sharing its symbol must stay
+  # too: renaming the reader side would split the getter from the ivar the
+  # writer-defined setter still assigns.
+  def collect_attr_write_exclusions(prism_root)
+    accessor_owners = Hash.new { |h, k| h[k] = [] }
+    reader_syms = Set.new
+    writer_syms = Set.new
+    each_attr_declaration(prism_root, ATTR_DECLARATION_METHODS, require_class_body: false) do |node, cpath, singleton, sym|
+      case node.name
+      when :attr_accessor then accessor_owners[sym] << [cpath, singleton]
+      when :attr_reader then reader_syms << sym
+      when :attr_writer then writer_syms << sym
+      end
+    end
+
+    excluded = writer_syms & (reader_syms | accessor_owners.keys.to_set)
+
+    known_setter_sites = Set.new
+    accessor_owners.each do |sym, owners|
+      owners.each do |cpath, singleton|
+        @oracle.each_call_site_key(cpath, singleton, :"#{sym}=") do |key|
+          known_setter_sites << [sym, key]
+        end
+      end
+    end
+
+    AstUtils.each_node(prism_root) do |node|
+      write_name = case node
+      when Prism::CallNode
+        node.name
+      when Prism::CallOperatorWriteNode, Prism::CallOrWriteNode, Prism::CallAndWriteNode
+        node.write_name
+      else
+        next
+      end
+
+      name = write_name.to_s
+      next unless name.end_with?('=') && !%w[== != <= >= ===].include?(name)
+
+      sym = name.chomp('=').to_sym
+      next unless accessor_owners.key?(sym)
+      next if known_setter_sites.include?([sym, AstUtils.location_key(node)])
+
+      excluded << sym
+    end
+
+    @method_rename_mapping.exclude_methods_by_mid(excluded) if excluded.any?
+  end
+
   def collect_alias_undef_methods(prism_root)
     excluded_mids = Set.new
     AstUtils.each_node(prism_root) do |node|

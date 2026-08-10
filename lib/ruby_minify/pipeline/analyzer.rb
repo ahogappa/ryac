@@ -145,6 +145,7 @@ module RubyMinify
         collect_alias_undef_methods(@prism_root)
         scan_dynamic_method_references(@prism_root)
         collect_visibility_modifier_methods(@prism_root)
+        collect_attr_write_exclusions(@prism_root)
         @method_rename_mapping.assign_short_names(@scope_mappings, @oracle)
       end
 

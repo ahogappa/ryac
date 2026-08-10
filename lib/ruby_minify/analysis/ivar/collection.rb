@@ -95,17 +95,24 @@ module RubyMinify
     path_a_info = []
     path_b_info = []
     each_attr_declaration(prism_root, %i[attr_reader attr_accessor]) do |node, cpath, singleton, sym|
-      getter_short = @method_rename_mapping.short_name_for_key([cpath, singleton, sym].freeze)
+      method_key = [cpath, singleton, sym].freeze
+      getter_short = @method_rename_mapping.short_name_for_key(method_key)
       info = {
         cpath: cpath, singleton: singleton, mid: sym,
         accessor: node.name == :attr_accessor,
         loc_key: AstUtils.location_key(node),
-        ivar_key: [cpath, :"@#{sym}"]
+        ivar_key: [cpath, :"@#{sym}"],
+        method_key: method_key
       }
       if getter_short
         info[:getter_short] = getter_short
         path_a_info << info
-      else
+      elsif @method_rename_mapping.has_method?(method_key) &&
+            @method_rename_mapping.group_keys(method_key) == [method_key]
+        # An excluded mid (dynamic dispatch, unresolved call, hidden attr
+        # write, ...) was left alone for a reason — the ivar side must not
+        # rename it either. A group spanning other keys means the mid's
+        # sites are shared with defs this declaration does not cover.
         path_b_info << info
       end
     end
@@ -134,6 +141,7 @@ module RubyMinify
     used_ivar_names = @ivar_rename_mapping.node_mapping.values.to_set
     used_ivar_names.merge(path_a_mapping.values)
     used_method_names = rename_map.values.to_set
+    scope_vars = build_attr_scope_vars
     generator = NameGenerator.new([], prefix: "@")
 
     path_b_info
@@ -149,6 +157,13 @@ module RubyMinify
         next if ivar_count == 0
         next if ivar_name.to_s.size <= 2
 
+        getter_calls = 0
+        implicit_scope_ids = []
+        @method_rename_mapping.each_group_call_site(info[:method_key]) do |_site, scope_id|
+          getter_calls += 1
+          implicit_scope_ids << scope_id if scope_id
+        end
+
         short_name = nil
         method_short = nil
         loop do
@@ -158,13 +173,15 @@ module RubyMinify
           next if used_ivar_names.include?(candidate)
           next if used_method_names.include?(method_candidate.to_s)
           next if @oracle.method_defined?(info[:cpath], info[:singleton], method_candidate)
+          # A bare renamed getter call would parse as the local if a visible
+          # local already owns the candidate at an implicit-receiver site.
+          next if implicit_scope_ids.any? { |sid| scope_vars[sid]&.include?(method_candidate.to_s) }
 
           short_name = candidate
           method_short = method_candidate
           break
         end
 
-        getter_calls = @oracle.method_call_count(info[:cpath], info[:singleton], info[:mid])
         setter_calls = 0
         if info[:accessor]
           setter_calls = @oracle.method_call_count(info[:cpath], info[:singleton], :"#{info[:mid]}=")
@@ -182,6 +199,14 @@ module RubyMinify
       end
 
     [path_b_mapping, path_b_method_mapping]
+  end
+
+  def build_attr_scope_vars
+    scope_vars = Hash.new { |h, k| h[k] = Set.new }
+    (@scope_mappings || {}).each do |cref_id, mapping|
+      mapping.each_value { |mangled| scope_vars[cref_id] << mangled }
+    end
+    scope_vars
   end
 
   # Ivar read/write sites take their attr's name; a subclass's sites follow
@@ -213,8 +238,11 @@ module RubyMinify
       method_short = path_b_method_mapping[info[:ivar_key]]
       next unless method_short
 
-      @oracle.each_call_site_key(info[:cpath], info[:singleton], info[:mid]) do |key|
-        rename_map[key] = method_short.to_s
+      # The mapping's group sites, not the oracle's: sites attached by the
+      # unresolved-call pass exist only in the mapping, and missing one here
+      # would leave it calling the old name.
+      @method_rename_mapping.each_group_call_site(info[:method_key]) do |site, _scope_id|
+        rename_map[AstUtils.location_key(site)] = method_short.to_s
       end
 
       next unless info[:accessor]

@@ -102,4 +102,49 @@ class TestIvarCollection < Minitest::Test
   def test_attr_path_b_getter_and_setter_call_site_rename
     assert_equal L5_GROUP_EXPECTED, l5_group.code
   end
+
+  # === Latent-path safety: sites inference cannot see must pin the symbol ===
+  #
+  # A setter or getter call inside a never-invoked method is invisible to
+  # type inference (nothing types the receiver), and attr_accessor's setter
+  # def is derived from the declared symbol rather than registered as a
+  # method. Renaming the declaration would strand such a site on the old
+  # name — a NoMethodError that only fires the first time the dead path
+  # actually runs. The declaration must keep its symbols instead.
+
+  def test_attr_with_hidden_setter_site_not_renamed
+    code = 'class Config;attr_accessor :timeout_ms;def initialize;@timeout_ms=100;end;end;' \
+           'class Tuner;def bump(target);target.timeout_ms=500;end;end;puts Config.new.timeout_ms'
+    result = minify_at_level(code, 5)
+    assert_includes result.code, 'attr :timeout_ms,!!1'
+    assert_includes result.code, '.timeout_ms=500'
+  end
+
+  def test_attr_with_hidden_getter_site_not_renamed
+    code = 'class Config;attr_reader :timeout_ms;def initialize;@timeout_ms=100;end;end;' \
+           'class Reporter;def show(target);puts target.timeout_ms;end;end;puts Config.new.timeout_ms'
+    result = minify_at_level(code, 5)
+    assert_includes result.code, 'attr :timeout_ms'
+    assert_includes result.code, '.timeout_ms'
+  end
+
+  def test_attr_with_hidden_operator_write_not_renamed
+    code = 'class Counter;attr_accessor :hit_count;def initialize;@hit_count=0;end;end;' \
+           'class Driver;def punch(target);target.hit_count+=7;end;end;puts Counter.new.hit_count'
+    result = minify_at_level(code, 5)
+    assert_includes result.code, 'attr :hit_count,!!1'
+    assert_includes result.code, '.hit_count+=7'
+  end
+
+  # attr_writer never renames its declaration, so a reader sharing its
+  # symbol must not rename either: the writer-defined setter would keep
+  # assigning the original ivar while the renamed reader reads the new one —
+  # silently wrong values, not even an error.
+  def test_attr_reader_sharing_attr_writer_symbol_not_renamed
+    code = 'class Pack;attr_reader :payload_data;attr_writer :payload_data;def initialize;@payload_data=1;end;end;' \
+           'pack=Pack.new;pack.payload_data=9;puts pack.payload_data'
+    result = minify_at_level(code, 5)
+    assert_includes result.code, 'attr :payload_data'
+    assert_includes result.code, 'attr_writer :payload_data'
+  end
 end

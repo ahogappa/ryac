@@ -105,6 +105,23 @@ module RubyMinify
       call_nodes.each { |node| add_call_site(node, target_key, has_receiver: true) }
     end
 
+    def group_keys(method_key)
+      root = uf_root(method_key)
+      @methods.keys.select { |k| uf_root(k) == root }
+    end
+
+    # Every call site registered for the key's whole rename group — including
+    # sites attached by the unresolved-call pass, which type inference alone
+    # does not report. Yields the scope id for implicit-receiver sites, nil
+    # otherwise.
+    def each_group_call_site(method_key)
+      group_keys(method_key).each do |key|
+        @methods[key][:call_sites].each do |node|
+          yield node, @implicit_receiver_sites[node.object_id]
+        end
+      end
+    end
+
     def assign_short_names(scope_mappings, oracle = nil)
       groups = Hash.new { |h, k| h[k] = [] }
       @methods.each_key { |key| groups[uf_root(key)] << key }

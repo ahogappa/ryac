@@ -40,6 +40,10 @@ module RubyMinify
 
     def add_unresolved_sites_for_mid: (Symbol mid, Array[Prism::Node] call_nodes) -> void
 
+    def group_keys: (method_key method_key) -> Array[method_key]
+
+    def each_group_call_site: (method_key method_key) { (Prism::Node, scope_id?) -> void } -> void
+
     def assign_short_names: (scope_mapping_table scope_mappings, ?TypeOracle? oracle) -> void
     def verify_no_shadowing!: () -> void
 
