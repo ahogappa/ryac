@@ -73,10 +73,14 @@ class TestIvarCollection < Minitest::Test
     'class M;attr_accessor :xy;def initialize(v);@xy=v;end;def check;xy;end;def set(v);self.xy=v;end;end;puts M.new(42).check',
   ].join(';')
 
+  # L declares `attr_reader :value` but nothing calls L's getter — inference
+  # sees a def with no call sites. J's and K's `value` getters are called, so
+  # the mid is renamed; the blind-def lockstep rule pulls L's getter into the
+  # same group, and `a` lands on all three declarations.
   L5_GROUP_EXPECTED =
     'class J;attr :a;def initialize(a) =@a=a;end;puts J.new(42).a;' \
     'class K;attr :a,!!1;def initialize(a) =@a=a;end;a=K.new 42;a.a=10;puts a.a;' \
-    'class L;attr :b;def initialize(a) =@b=a;def a =@b;end;puts L.new(42).a;' \
+    'class L;attr :a;def initialize(a) =@a=a;def b =@a;end;puts L.new(42).b;' \
     'class M;attr :c,!!1;def initialize(a) =@c=a;def a =c;def set(a) =self.c=a;end;puts M.new(42).a'
 
   def l5_group

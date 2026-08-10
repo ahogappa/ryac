@@ -300,4 +300,35 @@ class TestMethodRenameMapping < Minitest::Test
 
     assert_nil @mapping.short_name_for(loc_key(100))
   end
+
+  # A def inference never saw called, while the same mid is called (and so
+  # renamed) through another class: dispatch does not share the blind spot,
+  # so the blind def must take the same short name.
+  def test_merge_blind_def_groups_renames_blind_def_in_lockstep
+    called = [:ClassA, false, :do_work].freeze
+    blind = [:ClassB, false, :do_work].freeze
+    @mapping.add_method(called, fake_node(100))
+    @mapping.add_method(blind, fake_node(200))
+    3.times { |i| @mapping.add_call_site(fake_node(300 + i), called, has_receiver: true) }
+
+    @mapping.merge_blind_def_groups
+    @mapping.assign_short_names({})
+
+    assert_equal "a", @mapping.short_name_for(loc_key(100))
+    assert_equal "a", @mapping.short_name_for(loc_key(200))
+  end
+
+  def test_merge_blind_def_groups_leaves_uncalled_mids_alone
+    key1 = [:ClassA, false, :never_called].freeze
+    key2 = [:ClassB, false, :never_called].freeze
+    @mapping.add_method(key1, fake_node(100))
+    @mapping.add_method(key2, fake_node(200))
+
+    @mapping.merge_blind_def_groups
+    @mapping.assign_short_names({})
+
+    assert_nil @mapping.short_name_for(loc_key(100))
+    assert_nil @mapping.short_name_for(loc_key(200))
+  end
+
 end

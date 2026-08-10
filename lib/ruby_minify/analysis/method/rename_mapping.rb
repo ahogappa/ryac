@@ -78,6 +78,27 @@ module RubyMinify
       keys[1..].each { |k| merge_groups(keys[0], k) }
     end
 
+    # Inference can silently miss a caller, leaving a def in a group with no
+    # call sites while its mid is called — and therefore renamed — through
+    # another group. Runtime dispatch does not share the blind spot: a call
+    # site patched to the short name can still land on the def that kept its
+    # long one. Any mid renamed anywhere must cover every def of that mid, so
+    # the blind groups merge in and rename in lockstep.
+    def merge_blind_def_groups
+      groups = Hash.new { |h, k| h[k] = [] }
+      @methods.each_key { |key| groups[uf_root(key)] << key }
+
+      sited_mids = Set.new
+      blind_mids = Set.new
+      groups.each_value do |keys|
+        sites = keys.sum { |key| @methods[key][:call_sites].size }
+        target = sites > 0 ? sited_mids : blind_mids
+        keys.each { |key| target << key[2] }
+      end
+
+      (blind_mids & sited_mids).each { |mid| merge_all_by_mid(mid) }
+    end
+
     def add_unresolved_sites_for_mid(mid, call_nodes)
       target_key = @methods.keys.find { |k| k[2] == mid }
       return unless target_key

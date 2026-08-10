@@ -56,10 +56,9 @@ module RubyMinify
     # send targets, out of reach of any static analysis. It is certified by
     # self-hosting and works only when the program plays along.
     #
-    # :unstable is a strict superset of :stable's compression. It looks like
-    # it drops AttrDeclShorten, but the method renamer performs that same
-    # rewrite itself (through the shared render_attr_declaration) while
-    # renaming the symbols — listing both would double-patch the same nodes.
+    # :unstable is a strict superset of :stable: the same stage list with the
+    # attr declarations and attr-backed ivars renamed as they are rewritten,
+    # plus the method renamer.
     #
     # Finer configurations are not levels: individual steps stay composable
     # by passing an explicit stage list in place of a level name.
@@ -67,6 +66,7 @@ module RubyMinify
       stable: [OPTIMIZE, [Pipeline::ConstantAliaser, { rename_classes: true }], [Pipeline::AttrDeclShorten],
                [Pipeline::VariableRenamer, ALL_VAR_FEATURES]],
       unstable: [OPTIMIZE, [Pipeline::ConstantAliaser, { rename_classes: true }],
+                 [Pipeline::AttrDeclShorten, { rename_attrs: true }],
                  [Pipeline::VariableRenamer, ALL_VAR_WITH_ATTR], [Pipeline::MethodRenamer]],
     }.freeze
 

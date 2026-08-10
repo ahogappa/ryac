@@ -17,28 +17,27 @@ module RubyMinify
       def run_collect(prism_ast, patches, analysis)
         rename_map = analysis.rename_map
         method_alias_map = analysis.method_alias_map
-        attr_rename_map = analysis.attr_rename_map
         @negated_transforms = {}
         @source_bytes = analysis.source.content
-        collect_patches(prism_ast, patches, analysis, rename_map, method_alias_map, attr_rename_map)
+        collect_patches(prism_ast, patches, analysis, rename_map, method_alias_map)
       end
 
       private
 
-      def collect_patches(node, patches, analysis, rename_map, method_alias_map, attr_rename_map)
+      def collect_patches(node, patches, analysis, rename_map, method_alias_map)
         callback = proc { |subnode|
-          handle_node(subnode, patches, analysis, rename_map, method_alias_map, attr_rename_map)
+          handle_node(subnode, patches, analysis, rename_map, method_alias_map)
         }
         walk_prism(node, &callback)
       end
 
-      def handle_node(subnode, patches, analysis, rename_map, method_alias_map, attr_rename_map)
+      def handle_node(subnode, patches, analysis, rename_map, method_alias_map)
         case subnode
         when Prism::DefNode
           patch_def_name(subnode, patches, rename_map)
 
         when Prism::CallNode
-          patch_call_node(subnode, patches, rename_map, method_alias_map, attr_rename_map, analysis)
+          patch_call_node(subnode, patches, rename_map, method_alias_map, analysis)
 
         when Prism::CallOperatorWriteNode,
              Prism::CallOrWriteNode,
@@ -56,7 +55,7 @@ module RubyMinify
         patches << { start: name_loc.start_offset, end: name_loc.end_offset, replacement: short }
       end
 
-      def patch_call_node(node, patches, rename_map, method_alias_map, attr_rename_map, analysis)
+      def patch_call_node(node, patches, rename_map, method_alias_map, analysis)
         # Detect negated transforms: !receiver.empty? → receiver!=[]
         # The ! CallNode is visited before its children, so we mark the inner
         # node here and negate the transform when it's applied later.
@@ -71,12 +70,11 @@ module RubyMinify
         end
 
         key = prism_location_key(node)
-        meta = analysis.meta_node_map[key]
 
-        if meta
-          patch_meta_node(node, meta, patches, rename_map, attr_rename_map, analysis)
-          return
-        end
+        # Meta calls are structural, not plain calls: attr declarations are
+        # rewritten wholesale by AttrDeclShorten, and include must keep its
+        # name. Renaming or transforming them here would corrupt them.
+        return if analysis.meta_node_map[key]
 
         # Structural transforms (e.g. .first → [0], .empty? → ==[])
         transform = analysis.method_transform_map[key]
@@ -133,33 +131,6 @@ module RubyMinify
         return unless short
         short = short.chomp('=') if short.end_with?('=') && !short.end_with?('==')
         patches << { start: node.message_loc.start_offset, end: node.message_loc.end_offset, replacement: short }
-      end
-
-      def patch_meta_node(node, meta, patches, rename_map, attr_rename_map, analysis)
-        case meta[:type]
-        when :attr_reader
-          patch_attr_reader(node, meta, patches, attr_rename_map)
-        when :attr_accessor
-          patch_attr_accessor(node, meta, patches, attr_rename_map)
-        end
-      end
-
-      def patch_attr_reader(node, meta, patches, attr_rename_map)
-        patch_attr_declaration(node, meta, patches, attr_rename_map, :attr_reader)
-      end
-
-      def patch_attr_accessor(node, meta, patches, attr_rename_map)
-        patch_attr_declaration(node, meta, patches, attr_rename_map, :attr_accessor)
-      end
-
-      def patch_attr_declaration(node, meta, patches, attr_rename_map, type)
-        key = prism_location_key(node)
-        renamed_args = (meta[:args] || []).map { |sym|
-          attr_rename_map&.dig(key, sym) || sym.to_s
-        }
-        replacement = render_attr_declaration(type, renamed_args)
-        loc = node.location
-        patches << { start: loc.start_offset, end: loc.end_offset, replacement: replacement }
       end
     end
   end

@@ -11,15 +11,12 @@ module RubyMinify
 
       private
 
-      def collect_patches: (Prism::Node node, Array[patch_entry] patches, AnalysisResult analysis, Hash[location_key, String] rename_map, Hash[location_key, Symbol] method_alias_map, Hash[location_key, Hash[Symbol, String]] attr_rename_map) -> void
-      def handle_node: (Prism::Node subnode, Array[patch_entry] patches, AnalysisResult analysis, Hash[location_key, String] rename_map, Hash[location_key, Symbol] method_alias_map, Hash[location_key, Hash[Symbol, String]] attr_rename_map) -> void
+      def collect_patches: (Prism::Node node, Array[patch_entry] patches, AnalysisResult analysis, Hash[location_key, String] rename_map, Hash[location_key, Symbol] method_alias_map) -> void
+      def handle_node: (Prism::Node subnode, Array[patch_entry] patches, AnalysisResult analysis, Hash[location_key, String] rename_map, Hash[location_key, Symbol] method_alias_map) -> void
       def patch_def_name: (Prism::DefNode node, Array[patch_entry] patches, Hash[location_key, String] rename_map) -> void
-      def patch_call_node: (Prism::CallNode node, Array[patch_entry] patches, Hash[location_key, String] rename_map, Hash[location_key, Symbol] method_alias_map, Hash[location_key, Hash[Symbol, String]] attr_rename_map, AnalysisResult analysis) -> void
+      def patch_call_node: (Prism::CallNode node, Array[patch_entry] patches, Hash[location_key, String] rename_map, Hash[location_key, Symbol] method_alias_map, AnalysisResult analysis) -> void
       def patch_send_symbol: (Prism::CallNode node, Array[patch_entry] patches, String short_name) -> void
       def patch_call_operator_write: (Prism::Node node, Array[patch_entry] patches, Hash[location_key, String] rename_map, Hash[location_key, Symbol] method_alias_map) -> void
-      def patch_meta_node: (Prism::CallNode node, { type: Symbol, args: Array[Symbol] } meta, Array[patch_entry] patches, Hash[location_key, String] rename_map, Hash[location_key, Hash[Symbol, String]] attr_rename_map, AnalysisResult analysis) -> void
-      def patch_attr_reader: (Prism::CallNode node, { type: Symbol, args: Array[Symbol] } meta, Array[patch_entry] patches, Hash[location_key, Hash[Symbol, String]] attr_rename_map) -> void
-      def patch_attr_accessor: (Prism::CallNode node, { type: Symbol, args: Array[Symbol] } meta, Array[patch_entry] patches, Hash[location_key, Hash[Symbol, String]] attr_rename_map) -> void
     end
   end
 end

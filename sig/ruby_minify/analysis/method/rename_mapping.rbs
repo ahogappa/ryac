@@ -36,6 +36,8 @@ module RubyMinify
 
     def merge_all_by_mid: (Symbol mid) -> void
 
+    def merge_blind_def_groups: () -> void
+
     def add_unresolved_sites_for_mid: (Symbol mid, Array[Prism::Node] call_nodes) -> void
 
     def assign_short_names: (scope_mapping_table scope_mappings, ?TypeOracle? oracle) -> void

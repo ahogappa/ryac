@@ -42,6 +42,7 @@ module RubyMinify
     merge_super_groups(super_merges)
     merge_polymorphic_groups(call_node_to_keys)
     merge_unresolved_calls(resolved_call_keys)
+    @method_rename_mapping.merge_blind_def_groups
   end
 
   private
