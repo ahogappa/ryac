@@ -108,6 +108,16 @@ module RubyMinify
           raise SyntaxError, "at #{path}:#{error.location.start_line}:#{error.location.start_column}: #{error.message}"
         end
 
+        # TypeProf 0.32 crashes ingesting find patterns (`in [*, x, *post]`)
+        # with a bare NoMethodError from deep inside its AST conversion; name
+        # the limitation instead.
+        AstUtils.each_node(prism_result.value) do |n|
+          next unless n.is_a?(Prism::FindPatternNode)
+          raise MinifyError,
+                "find patterns (`in [*, x, *rest]`) are not supported: type analysis " \
+                "cannot ingest them (#{path}:#{n.location.start_line})"
+        end
+
         service = TypeProf::Core::Service.new({})
         source.rbs_files.each do |rbs_path, rbs_content|
           service.update_rbs_file(rbs_path, rbs_content)
@@ -146,6 +156,7 @@ module RubyMinify
         scan_dynamic_method_references(@prism_root)
         collect_visibility_modifier_methods(@prism_root)
         collect_attr_write_exclusions(@prism_root)
+        collect_shorthand_pun_methods(@prism_root)
         @method_rename_mapping.assign_short_names(@scope_mappings, @oracle)
       end
 

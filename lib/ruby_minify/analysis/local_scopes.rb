@@ -164,9 +164,12 @@ module RubyMinify
       return unless locals.any?
 
       unsafe = dynamic_scope?(scope.node.statements)
-      generator = NameGenerator.new([])
+      pinned = pinned_local_names(scope.node.statements)
+      generator = NameGenerator.new(pinned.map(&:to_s))
       mapping = {}
-      locals.each { |var| mapping[var] = unsafe ? var.to_s : generator.next_name }
+      locals.each do |var|
+        mapping[var] = unsafe || pinned.include?(var) ? var.to_s : generator.next_name
+      end
       verify_injective!(mapping, 'top-level')
       scope.mapping = mapping
     end
@@ -187,8 +190,10 @@ module RubyMinify
       # short keywords, so no hint arises) would allocate the burned names.
       hints = hints.reject { |var, _| keyword_params.include?(var) }
 
+      pinned = pinned_local_names(node.body)
       reserved = hints.values.dup
       reserved.concat(kw_mapping.values) if kw_mapping
+      reserved.concat(pinned.map(&:to_s))
       keyword_names = {}
       keyword_params.each do |kw|
         keyword_names[kw] = kw_mapping&.[](kw) || kw.to_s
@@ -200,7 +205,10 @@ module RubyMinify
       claimed = Set.new(keyword_names.values)
       node.locals.each do |var|
         next if unused_rescue.include?(var)
-        if keyword_names.key?(var)
+        if pinned.include?(var)
+          mapping[var] = var.to_s
+          claimed << var.to_s
+        elsif keyword_names.key?(var)
           mapping[var] = keyword_names[var]
         elsif !unsafe && hints.key?(var) && !claimed.include?(hints[var])
           mapping[var] = hints[var]
@@ -220,6 +228,7 @@ module RubyMinify
       return unless node.body
 
       unsafe = dynamic_scope?(node.body)
+      pinned = pinned_local_names(node.body)
       f_args = block_formal_names(node)
       parent_names = ancestor_mapping_values(scope)
 
@@ -227,25 +236,25 @@ module RubyMinify
         mapping = {}
         f_args.each_with_index { |param, idx| mapping[param] = "_#{idx + 1}" }
       else
-        generator = NameGenerator.new(parent_names)
+        generator = NameGenerator.new(parent_names + pinned.map(&:to_s))
         mapping = {}
         f_args.each do |param|
           next unless param
           next if param.to_s.match?(/\A_\d*\z/)
-          mapping[param] = unsafe ? param.to_s : generator.next_name
+          mapping[param] = unsafe || pinned.include?(param) ? param.to_s : generator.next_name
         end
         block_multi_targets(node).each do |mt|
           collect_multi_target_names(mt).each do |name|
-            mapping[name] = unsafe ? name.to_s : generator.next_name
+            mapping[name] = unsafe || pinned.include?(name) ? name.to_s : generator.next_name
           end
         end
       end
 
       if (params = block_parameters(node))
-        generator ||= NameGenerator.new(parent_names)
+        generator ||= NameGenerator.new(parent_names + pinned.map(&:to_s))
         collect_extra_block_param_names(params).each do |name|
           next if mapping.key?(name)
-          mapping[name] = unsafe ? name.to_s : generator.next_name
+          mapping[name] = unsafe || pinned.include?(name) ? name.to_s : generator.next_name
         end
 
         # Numbered parameters cannot coexist with optionals, rest, keywords
@@ -286,6 +295,28 @@ module RubyMinify
         found = true if n.is_a?(Prism::CallNode) && DYNAMIC_VARIABLE_METHODS.include?(n.name)
       end
       found
+    end
+
+    # Locals whose names carry meaning beyond the variable itself and can
+    # never be renamed: a regex named capture writes the local named after
+    # the group, and a hash-pattern shorthand (`in { value: }`) binds the
+    # local named after the key it matches. Renaming breaks the pairing the
+    # name encodes — the regex/pattern half keeps the original.
+    def pinned_local_names(body)
+      pinned = Set.new
+      walk_all(body) do |n|
+        case n
+        when Prism::MatchWriteNode
+          n.targets.each { |t| pinned << t.name if t.is_a?(Prism::LocalVariableTargetNode) }
+        when Prism::HashPatternNode
+          n.elements.each do |e|
+            next unless e.is_a?(Prism::AssocNode) && e.value.is_a?(Prism::ImplicitNode)
+            target = e.value.value
+            pinned << target.name if target.is_a?(Prism::LocalVariableTargetNode)
+          end
+        end
+      end
+      pinned
     end
 
     def unused_rescue_vars(body)

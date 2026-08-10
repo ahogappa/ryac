@@ -127,7 +127,7 @@ module RubyMinify
              Prism::RedoNode, Prism::RetryNode, Prism::ForwardingSuperNode,
              Prism::ItLocalVariableReadNode, Prism::NumberedReferenceReadNode,
              Prism::SourceEncodingNode, Prism::SourceFileNode, Prism::SourceLineNode,
-             Prism::LocalVariableReadNode,
+             Prism::LocalVariableReadNode, Prism::LocalVariableTargetNode,
              Prism::InstanceVariableReadNode, Prism::GlobalVariableReadNode,
              Prism::ClassVariableReadNode, Prism::ConstantReadNode,
              Prism::RationalNode, Prism::ImaginaryNode, Prism::MatchLastLineNode,
@@ -345,12 +345,26 @@ module RubyMinify
       def r_case_match(node)
         body = "case #{r(node.predicate)};"
         body += node.conditions.map { |in_node|
-          "in #{r(in_node.pattern)}#{fmt_body(r_stmt(in_node.statements))}"
+          "in #{r_in_pattern(in_node.pattern)}#{fmt_body(r_stmt(in_node.statements))}"
         }.join(";")
         if node.else_clause
           body += ";else#{fmt_body(r_stmt(node.else_clause.statements))}"
         end
         body + ";end"
+      end
+
+      # `in PATTERN if GUARD` parses with the guard as an If/Unless node
+      # wrapping the pattern — rendering that as a statement-if corrupts the
+      # clause into `in if guard;pattern;end`.
+      def r_in_pattern(pattern)
+        case pattern
+        when Prism::IfNode
+          "#{r_in_pattern(pattern.statements.body[0])} if #{r(pattern.predicate)}"
+        when Prism::UnlessNode
+          "#{r_in_pattern(pattern.statements.body[0])} unless #{r(pattern.predicate)}"
+        else
+          r(pattern)
+        end
       end
 
       def r_for(node)
@@ -856,9 +870,12 @@ module RubyMinify
         return '' if recv_node.nil?
         recv_str = r(recv_node)
         inner = AstUtils.unwrap_statements(recv_node)
+        # Unary calls must keep their parens under a chain: `(-vec).to_a`
+        # stripped to `-vec.to_a` rebinds as `-(vec.to_a)` — String#-@ even
+        # makes that run silently instead of failing.
         needs_wrap = binary_operator_call?(inner) || AstUtils.logical_op?(inner) ||
                      inner.is_a?(Prism::TrueNode) || inner.is_a?(Prism::FalseNode) ||
-                     (inner.is_a?(Prism::CallNode) && inner.name == :'!')
+                     (inner.is_a?(Prism::CallNode) && %i[! -@ +@].include?(inner.name))
         needs_wrap ? "(#{recv_str})#{call_op}" : "#{recv_str}#{call_op}"
       end
 
@@ -867,6 +884,10 @@ module RubyMinify
         str = r(node)
         inner = AstUtils.unwrap_statements(node)
         return ["(#{str})", true] if AstUtils.logical_op?(inner)
+        # ** binds tighter than unary minus: `(-a)**b` must not become -a**b.
+        if parent_op == :** && inner.is_a?(Prism::CallNode) && %i[-@ +@].include?(inner.name)
+          return ["(#{str})", true]
+        end
         if binary_operator_call?(inner)
           pp = OPERATOR_PRECEDENCE[parent_op]
           cp = OPERATOR_PRECEDENCE[inner.name]
@@ -924,12 +945,19 @@ module RubyMinify
         *COMPOUND_WRITE_NODES,
       ].freeze
 
+      # Match nodes keep parens like assignments do: an endless def body of
+      # `(value in pattern)` stripped bare rebinds the `in` to the def
+      # statement itself and no longer parses.
+      PARENS_KEPT_NODES = [
+        *ASSIGNMENT_NODES, Prism::MatchPredicateNode, Prism::MatchRequiredNode,
+      ].freeze
+
       def r_parens(node)
         body = r_stmt(node.body)
         inner = AstUtils.unwrap_statements(node)
         if node.body.is_a?(Prism::StatementsNode) && node.body.body.size > 1
           "(#{body})"
-        elsif ASSIGNMENT_NODES.any? { |t| inner.is_a?(t) }
+        elsif PARENS_KEPT_NODES.any? { |t| inner.is_a?(t) }
           "(#{body})"
         else
           body

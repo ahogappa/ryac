@@ -180,6 +180,23 @@ module RubyMinify
     method define_method respond_to? instance_method
   ].freeze
 
+  # A hash/keyword shorthand can pun on a METHOD (`f(unit_label:)` calls
+  # unit_label for its value); the one identifier is both the key and the
+  # call, so renaming the method would rewrite the key with it. Those
+  # methods keep their names.
+  def collect_shorthand_pun_methods(prism_root)
+    punned = Set.new
+    AstUtils.each_node(prism_root) do |node|
+      next unless node.is_a?(Prism::KeywordHashNode) || node.is_a?(Prism::HashNode)
+      node.elements.each do |el|
+        next unless el.is_a?(Prism::AssocNode) && el.value.is_a?(Prism::ImplicitNode)
+        inner = el.value.value
+        punned << inner.name if inner.is_a?(Prism::CallNode)
+      end
+    end
+    @method_rename_mapping.exclude_methods_by_mid(punned) if punned.any?
+  end
+
   VISIBILITY_MODIFIERS = %i[private protected public module_function].freeze
 
   def collect_visibility_modifier_methods(prism_root)

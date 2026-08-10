@@ -44,7 +44,10 @@ module RubyMinify
         if stmts.size > 1
           body = "(#{body})"
         elsif (stmt = stmts.first)
-          if keyword_logical?(stmt, source) || AstUtils.modifier_control_flow?(stmt)
+          # Pattern matches need the parens too: `def f =expr in pat` parses
+          # as `(def f =expr) in pat` — the match rebinds to the def itself.
+          if keyword_logical?(stmt, source) || AstUtils.modifier_control_flow?(stmt) ||
+             stmt.is_a?(Prism::MatchPredicateNode) || stmt.is_a?(Prism::MatchRequiredNode)
             body = "(#{body})"
           end
         end

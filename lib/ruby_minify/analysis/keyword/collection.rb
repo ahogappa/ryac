@@ -72,6 +72,7 @@ module RubyMinify
     merge_polymorphic_keyword_groups(sites[:call_node_to_keys])
     exclude_unreachable_keyword_methods(sites[:zero_call_keys], sites[:super_merges])
     exclude_unresolved_keyword_calls(prism_root, sites[:resolved_site_keys])
+    exclude_method_valued_shorthand_calls(prism_root)
   end
 
   def register_keyword_calls
@@ -179,6 +180,29 @@ module RubyMinify
       @keyword_rename_mapping.each_method_key do |key|
         @keyword_rename_mapping.exclude_method(key) if key[2] == mid
       end
+    end
+  end
+
+  # A keyword shorthand can pun on a METHOD, not a local: `n(label:)` calls
+  # `label` for its value. Renaming the keyword rewrites the pun and with it
+  # the method the value resolves to — methods called with such a pun keep
+  # their keywords.
+  def exclude_method_valued_shorthand_calls(prism_root)
+    punned_mids = Set.new
+    AstUtils.each_node(prism_root) do |node|
+      next unless node.is_a?(Prism::CallNode)
+      node.arguments&.arguments&.each do |arg|
+        next unless arg.is_a?(Prism::KeywordHashNode)
+        arg.elements.each do |el|
+          next unless el.is_a?(Prism::AssocNode) && el.value.is_a?(Prism::ImplicitNode)
+          punned_mids << node.name unless el.value.value.is_a?(Prism::LocalVariableReadNode)
+        end
+      end
+    end
+    return if punned_mids.none?
+
+    @keyword_rename_mapping.each_method_key do |key|
+      @keyword_rename_mapping.exclude_method(key) if punned_mids.include?(key[2])
     end
   end
 

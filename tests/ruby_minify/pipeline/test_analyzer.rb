@@ -85,6 +85,22 @@ class TestAnalyzer < Minitest::Test
     assert_equal 'module M;def hello =puts "hi";end;class C;include M;end;C.new.hello', result.code
   end
 
+  # --- find pattern guard ---
+
+  # TypeProf 0.32 cannot ingest find patterns; the analyzer names the
+  # limitation instead of crashing inside the gem.
+  def test_find_pattern_raises_named_error
+    content = "case [1];in [*, x, *rest];puts x;end"
+    source = RubyMinify::Pipeline::ConcatenatedSource.new(
+      content: content,
+      file_boundaries: [], original_size: content.bytesize, stdlib_requires: [], rbs_files: {}
+    )
+    err = assert_raises(RubyMinify::MinifyError) do
+      RubyMinify::Pipeline::Analyzer.new.call(source)
+    end
+    assert_includes err.message, 'find patterns'
+  end
+
   # --- lambda with outer scope variable (lines 227-228, 235-241) ---
 
   def test_lambda_outer_scope_variable

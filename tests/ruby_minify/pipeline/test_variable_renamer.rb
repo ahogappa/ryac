@@ -205,26 +205,29 @@ class TestVariableRenamer < Minitest::Test
     assert_equal 'class F;def m(*a,b) =b;def n(a:) =q(a:);def q(a:) =a;end;puts F.new.m(1,2,3);puts F.new.n(a:?x)', result.code
   end
 
-  # === L3 verify_output: false group ===
+  # === Named captures + keyword shorthand (L3) ===
 
-  L3_NO_VERIFY_CODE = [
+  L3_MATCH_WRITE_CODE = [
     'class M;def m(str);/(?<name>\w+)/ =~ str;name;end;end;puts M.new.m("hello")',
     'class N;def label;"x";end;def m;n(label:);end;def n(label:);label;end;end;puts N.new.m',
   ].join(';')
 
-  L3_NO_VERIFY_EXPECTED = 'class M;def m(a) =(/(?<name>\w+)/=~a;b);end;puts M.new.m("hello");' \
-    'class N;def label =?x;def m =n(a:);def n(a:) =a;end;puts N.new.m'
+  # `name` is written by the regex group and must keep its name on the read
+  # side too, and `n(label:)` puns on METHOD label — renaming either half
+  # once produced NameErrors this group could only pin with verification off.
+  L3_MATCH_WRITE_EXPECTED = 'class M;def m(a) =(/(?<name>\w+)/=~a;name);end;puts M.new.m("hello");' \
+    'class N;def label =?x;def m =n(label:);def n(label:) =label;end;puts N.new.m'
 
-  def l3_no_verify_group
-    @l3_no_verify_group ||= minify_at_level(L3_NO_VERIFY_CODE, 3, verify_output: false)
+  def l3_match_write_group
+    @l3_match_write_group ||= minify_at_level(L3_MATCH_WRITE_CODE, 3)
   end
 
   def test_match_write_node_walk
-    assert_equal L3_NO_VERIFY_EXPECTED, l3_no_verify_group.code
+    assert_equal L3_MATCH_WRITE_EXPECTED, l3_match_write_group.code
   end
 
   def test_implicit_method_in_keyword_arg
-    assert_equal L3_NO_VERIFY_EXPECTED, l3_no_verify_group.code
+    assert_equal L3_MATCH_WRITE_EXPECTED, l3_match_write_group.code
   end
 
   # === Duplicated argument name regression ===
