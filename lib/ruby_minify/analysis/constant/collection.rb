@@ -12,8 +12,7 @@ module RubyMinify
   #
   # A compound write (`X ||= 1`) and a qualified target in multiple
   # assignment (`Foo::A, b = ary`) read as well as write, so they yield
-  # both a :read and a :write. Writes with no static path and
-  # Struct.new/Data.define definitions yield nothing.
+  # both a :read and a :write. Writes with no static path yield nothing.
   def each_constant_event(prism_root)
     Nesting.each(prism_root) do |node, nesting, singleton, in_def|
       case node
@@ -23,8 +22,6 @@ module RubyMinify
       when Prism::ConstantReadNode, Prism::ConstantPathNode
         yield :read, node, nil, singleton, in_def
       when Prism::ConstantWriteNode
-        next if struct_definition_write?(node)
-
         yield :write, node, nesting + [node.name], singleton, in_def
       when Prism::ConstantTargetNode
         yield :write, node, nesting + [node.name], singleton, in_def
@@ -36,8 +33,6 @@ module RubyMinify
         cpath = qualified_write_cpath(node, nesting)
         yield :write, node, cpath, singleton, in_def if cpath
       when Prism::ConstantPathWriteNode
-        next if struct_definition_write?(node)
-
         cpath = qualified_write_cpath(node.target, nesting, strip_doubled_nesting: true)
         yield :write, node, cpath, singleton, in_def if cpath
       when Prism::ConstantPathOperatorWriteNode, Prism::ConstantPathOrWriteNode, Prism::ConstantPathAndWriteNode
@@ -86,22 +81,20 @@ module RubyMinify
     end
   end
 
-  # `X = Struct.new(:a)` / `X = Data.define(:a)` with all-symbol arguments is
-  # a class definition to type analysis, not a value assignment; such
-  # constants are left entirely alone (not registered, counted, or renamed).
+  # `X = Struct.new(...)` / `X = Data.define(...)` assigns a class, so the
+  # constant registers as a class definition: it renames exactly when class
+  # renaming is on, and reopenings resolve through the same machinery.
   def struct_definition_write?(node)
+    return false unless node.is_a?(Prism::ConstantWriteNode) || node.is_a?(Prism::ConstantPathWriteNode)
+
     value = node.value
     return false unless value.is_a?(Prism::CallNode)
 
     receiver = value.receiver
     return false unless receiver.is_a?(Prism::ConstantReadNode)
-    return false unless (value.name == :new && receiver.name == :Struct) ||
-                        (value.name == :define && receiver.name == :Data)
 
-    arguments = value.arguments&.arguments
-    return false unless arguments
-
-    arguments.all? { |arg| arg.is_a?(Prism::SymbolNode) }
+    (value.name == :new && receiver.name == :Struct) ||
+      (value.name == :define && receiver.name == :Data)
   end
 
   def collect_constants(prism_root)
@@ -117,7 +110,8 @@ module RubyMinify
         # plain assignment and still registers.)
         next if singleton && !in_def
 
-        @constant_mapping.add_definition_with_path(cpath, definition_type: :value)
+        type = struct_definition_write?(node) ? :class : :value
+        @constant_mapping.add_definition_with_path(cpath, definition_type: type)
       end
     end
   end

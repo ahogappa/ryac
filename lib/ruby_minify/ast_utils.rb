@@ -223,6 +223,8 @@ module RubyMinify
 
     def can_omit_parens?(node, method_name = nil)
       return false if has_block?(node)
+      # `.()` proc-call sugar has no message; its parens ARE the call.
+      return false if node.message_loc.nil?
       raw_args = node.arguments&.arguments || []
       positional_args = raw_args.reject { |a| a.is_a?(Prism::KeywordHashNode) }
       return false if positional_args.empty?

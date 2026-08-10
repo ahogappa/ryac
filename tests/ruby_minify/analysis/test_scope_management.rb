@@ -20,7 +20,7 @@ class TestScopeManagement < Minitest::Test
     'class Sc9;def m;fn=->(val){val*2};fn.call(21);end;end;puts Sc9.new.m',
     'class Sc10;def m;secret=42;binding;end;end;Sc10.new.m',
     'class Sc11;def m;[1,2,3].each{|first,*rest|puts first};end;end;Sc11.new.m',
-    'class Sc12;def m;proc{|a,b=1|a+b}.call(2);end;end;puts Sc12.new.m',
+    'class Sc12;def m;proc{|a,b=1|a+b}.(2);end;end;puts Sc12.new.m',
     'class Sc13;def m;[1].each{|x,&blk|puts x};end;end;Sc13.new.m',
     'class Sc14;def m;[1].map{|x|x=x+1;x};end;end;puts Sc14.new.m.inspect',
     'class Sc15;def m;[[1,2]].map{|a,b|a};end;end;puts Sc15.new.m.inspect',
@@ -40,10 +40,10 @@ class TestScopeManagement < Minitest::Test
     'class Sc6;def m =begin;1/0;rescue ZeroDivisionError;0;end;end;puts Sc6.new.m;' \
     'class Sc7;def m =begin;1/0;rescue ZeroDivisionError=>a;puts a.message;0;end;end;Sc7.new.m;' \
     'class Sc8;def m ={[:a,1]=>?x}.each{|(b,c),a|puts b};end;Sc8.new.m;' \
-    'class Sc9;def m =(a=->(val){val*2};a.call 21);end;puts Sc9.new.m;' \
+    'class Sc9;def m =(a=->(val){val*2};a.(21));end;puts Sc9.new.m;' \
     'class Sc10;def m =(secret=42;binding);end;Sc10.new.m;' \
     'class Sc11;def m =[1,2,3].each{|b,*a|puts b};end;Sc11.new.m;' \
-    'class Sc12;def m =proc{|a,b=1|a+b}.call 2;end;puts Sc12.new.m;' \
+    'class Sc12;def m =proc{|a,b=1|a+b}.(2);end;puts Sc12.new.m;' \
     'class Sc13;def m =[1].each{|b,&a|puts b};end;Sc13.new.m;' \
     'class Sc14;def m =[1].map{|a|a=a+1;a};end;puts Sc14.new.m.inspect;' \
     'class Sc15;def m =[[1,2]].map{|a,b|a};end;puts Sc15.new.m.inspect;' \

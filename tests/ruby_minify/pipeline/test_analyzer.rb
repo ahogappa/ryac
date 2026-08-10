@@ -105,6 +105,6 @@ class TestAnalyzer < Minitest::Test
 
   def test_lambda_outer_scope_variable
     result = minify_at_level("def foo\n  x = 1\n  f = ->(a) { puts x }\n  f.call(2)\nend\nfoo\n", RubyMinify::Minifier::DEFAULT_LEVEL, verify_output: false)
-    assert_equal 'def foo =(a=1;b=->(a){puts a};b.call 2);foo', result.code
+    assert_equal 'def foo =(a=1;b=->(a){puts a};b.(2));foo', result.code
   end
 end

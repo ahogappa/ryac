@@ -35,7 +35,7 @@ class TestMethodCollection < Minitest::Test
     'class G;def a =1;end;class H<G;def a =super+1;end;puts H.new.a;' \
     'module I;def helper_method =1;module_function :helper_method;end;puts I.helper_method;' \
     'class J;def greet_world =1;def a =respond_to?(:greet_world);end;puts J.new.a;' \
-    'class K;def greet_friend =1;def a =method :greet_friend;end;puts K.new.a.call;' \
+    'class K;def greet_friend =1;def a =method :greet_friend;end;puts K.new.a.();' \
     'class L;def b =a;private;def a =42;end;puts L.new.b;' \
     'class M;def original_method =1;alias aliased_method original_method;end;puts M.new.aliased_method;' \
     'class N;def a =1;end;class O;def work =a;end;puts N.new.a;' \

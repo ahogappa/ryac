@@ -33,6 +33,7 @@ module RubyMinify
       def call(input_string)
         @prism_ast = Prism.parse(input_string).value
         @inside_singleton_class = false
+        @standard_error_redefined = redefines_standard_error?(@prism_ast)
         rebuild.join(";")
       end
 
@@ -183,6 +184,13 @@ module RubyMinify
         return r_index_assign(node) if node.name == :'[]='
         return r_unary(node, '!') if node.name == :'!'
         return r_unary(node, node.name == :'-@' ? '-' : '+') if node.name == :'-@' || node.name == :'+@'
+        # `x.call(args)` has proc-call sugar: `x.(args)` dispatches to the
+        # exact same method on any receiver.
+        if node.name == :call && node.receiver
+          raw_args = node.arguments&.arguments || []
+          proc_op = node.safe_navigation? ? '&.' : '.'
+          return "#{recv_with_op(node.receiver, proc_op)}(#{raw_args.map { |a| r(a) }.join(',')})"
+        end
         method_name = node.name
         call_op = node.safe_navigation? ? '&.' : '.'
         if setter_call?(node)
@@ -636,8 +644,12 @@ module RubyMinify
         rescue_node = node.rescue_clause
         while rescue_node
           rp = ';rescue'
-          if rescue_node.exceptions && !rescue_node.exceptions.empty?
-            rp += " #{rescue_node.exceptions.map { |e| r(e) }.join(',')}"
+          exceptions = rescue_node.exceptions || []
+          # `rescue StandardError` is what a bare rescue already means —
+          # unless the program redefines StandardError, when the bare form
+          # would resolve differently.
+          unless exceptions.empty? || (bare_standard_error?(exceptions) && !@standard_error_redefined)
+            rp += " #{exceptions.map { |e| r(e) }.join(',')}"
           end
           if rescue_node.reference && rescue_var_used?(rescue_node)
             rp += "=>#{rescue_node.reference.name}"
@@ -649,6 +661,28 @@ module RubyMinify
         parts << ";ensure#{fmt_body(r_stmt(node.ensure_clause.statements))}" if node.ensure_clause
         parts << ';end'
         parts.join
+      end
+
+      def bare_standard_error?(exceptions)
+        exceptions.size == 1 &&
+          exceptions[0].is_a?(Prism::ConstantReadNode) &&
+          exceptions[0].name == :StandardError
+      end
+
+      def redefines_standard_error?(root)
+        found = false
+        walk = lambda do |node|
+          return if found
+          case node
+          when Prism::ClassNode
+            found = true if node.constant_path.is_a?(Prism::ConstantReadNode) && node.constant_path.name == :StandardError
+          when Prism::ConstantWriteNode, Prism::ConstantTargetNode
+            found = true if node.name == :StandardError
+          end
+          node.compact_child_nodes.each { |child| walk.call(child) }
+        end
+        walk.call(root)
+        found
       end
 
       # --- Other ---

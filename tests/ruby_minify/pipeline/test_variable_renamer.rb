@@ -29,7 +29,7 @@ class TestVariableRenamer < Minitest::Test
     'class V5;def m(a=10) =a;end;puts V5.new.m;' \
     'class V6;def m(*a) =a.size;end;puts V6.new.m(1,2);' \
     'class V7;def m(**a) =a.size;end;puts V7.new.m(a:1);' \
-    'class V8;def m(&a) =a.call;end;puts(V8.new.m{42});' \
+    'class V8;def m(&a) =a.();end;puts(V8.new.m{42});' \
     'class V10;def m =[1,2].map{_1*2};end;puts V10.new.m.inspect;' \
     'class V11;def m =[1,2,3].select{|a,b=true|b};end;puts V11.new.m.inspect;' \
     'class V12;def m =(a=0;for b in [1,2,3];a+=b;end;a);end;puts V12.new.m;' \
