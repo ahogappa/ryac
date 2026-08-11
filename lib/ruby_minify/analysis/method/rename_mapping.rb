@@ -85,12 +85,9 @@ module RubyMinify
     # long one. Any mid renamed anywhere must cover every def of that mid, so
     # the blind groups merge in and rename in lockstep.
     def merge_blind_def_groups
-      groups = Hash.new { |h, k| h[k] = [] }
-      @methods.each_key { |key| groups[uf_root(key)] << key }
-
       sited_mids = Set.new
       blind_mids = Set.new
-      groups.each_value do |keys|
+      groups_by_root.each_value do |keys|
         sites = keys.sum { |key| @methods[key][:call_sites].size }
         target = sites > 0 ? sited_mids : blind_mids
         keys.each { |key| target << key[2] }
@@ -106,8 +103,7 @@ module RubyMinify
     end
 
     def group_keys(method_key)
-      root = uf_root(method_key)
-      @methods.keys.select { |k| uf_root(k) == root }
+      groups_by_root[uf_root(method_key)]
     end
 
     # Every call site registered for the key's whole rename group — including
@@ -123,13 +119,10 @@ module RubyMinify
     end
 
     def assign_short_names(scope_mappings, oracle = nil)
-      groups = Hash.new { |h, k| h[k] = [] }
-      @methods.each_key { |key| groups[uf_root(key)] << key }
-
-      group_entries = build_group_entries(groups)
+      group_entries = build_group_entries(groups_by_root)
       group_entries.sort_by! { |entry| -(entry.original_name.size * entry.total_occurrences) }
 
-      scope_vars = build_scope_vars(scope_mappings)
+      scope_vars = self.class.build_scope_vars(scope_mappings)
       existing_methods, hierarchy = oracle ? build_existing_method_names(oracle) : [{}, {}]
 
       group_entries.each do |entry|
@@ -222,12 +215,20 @@ module RubyMinify
       result
     end
 
-    def build_scope_vars(scope_mappings)
+    # Class method: the attr coordination inverts scope_mappings the same
+    # way for its own collision check, so there is exactly one inversion.
+    def self.build_scope_vars(scope_mappings)
       scope_vars = Hash.new { |h, k| h[k] = Set.new }
       scope_mappings.each do |cref_id, mapping|
         mapping.each_value { |mangled| scope_vars[cref_id] << mangled }
       end
       scope_vars
+    end
+
+    def groups_by_root
+      groups = Hash.new { |h, k| h[k] = [] }
+      @methods.each_key { |key| groups[uf_root(key)] << key }
+      groups
     end
 
     def build_existing_method_names(oracle)

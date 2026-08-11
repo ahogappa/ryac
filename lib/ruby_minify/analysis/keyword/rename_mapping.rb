@@ -31,6 +31,12 @@ module RubyMinify
       end
     end
 
+    def exclude_methods_by_mid(mids)
+      @methods.keys.each do |key|
+        exclude_method(key) if mids.include?(key[2])
+      end
+    end
+
     def merge_groups(key1, key2)
       init_method(key1)
       init_method(key2)

@@ -63,7 +63,9 @@ module RubyMinify
 
     def build_group_entries: (Hash[method_key, Array[method_key]] groups) -> Array[MethodGroupEntry]
 
-    def build_scope_vars: (scope_mapping_table scope_mappings) -> Hash[scope_id, Set[String]]
+    def self.build_scope_vars: (scope_mapping_table scope_mappings) -> Hash[scope_id, Set[String]]
+
+    def groups_by_root: () -> Hash[method_key, Array[method_key]]
 
     def build_existing_method_names: (TypeOracle oracle) -> [Hash[class_key, Set[String]], Hash[Symbol, Hash[class_key, Set[class_key]]]]
 

@@ -51,7 +51,7 @@ class TestIntegration < Minitest::Test
         puts result.content
       RUBY
 
-      result2_content, stderr, status = Open3.capture3('ruby', '-e', runner_code)
+      result2_content, stderr, status = Open3.capture3(RbConfig.ruby, '-e', runner_code)
 
       assert status.success?,
              "Minified minifier should be able to minify original source: #{stderr}"
@@ -131,6 +131,7 @@ class TestIntegration < Minitest::Test
   RBS
 
   SPLIT_MARKER = "\n--8<--\n"
+  LEVEL_MARKER = "\n==8<==LEVEL==\n"
 
   def test_minified_minifier_reproduces_every_level
     artifact = self.class.unstable_artifact
@@ -148,27 +149,41 @@ class TestIntegration < Minitest::Test
       Dir.mkdir(File.join(fixture_dir, 'sig'))
       File.write(File.join(fixture_dir, 'sig', 'app.rbs'), CROSS_LEVEL_RBS)
 
-      RubyMinify::Minifier::STAGES.each_key do |level|
-        expected = RubyMinify::Minifier.new.call(fixture_path, level: level, project_root: fixture_dir)
+      levels = RubyMinify::Minifier::STAGES.keys
+      expected_by_level = levels.to_h do |level|
+        [level, RubyMinify::Minifier.new.call(fixture_path, level: level, project_root: fixture_dir)]
+      end
+      expected_by_level.each do |level, expected|
         assert_empty ConstantAudit.unresolved(expected.content, extra_source: expected.aliases)
                                   .map { |path, line| "#{path} (line #{line})" },
                "constant references in the :#{level} fixture output resolve nowhere — latent NameError"
+      end
 
-        runner_code = <<~RUBY
-          require '#{minified_path}'
-          require '#{aliases_path}'
-          result = RubyMinify::Minifier.new.call('#{fixture_path}', level: :#{level}, project_root: '#{fixture_dir}')
+      # One subprocess for all levels: booting the artifact (and its heavy
+      # requires) dominates, and it is the same artifact every time.
+      runner_code = <<~RUBY
+        require '#{minified_path}'
+        require '#{aliases_path}'
+        #{levels.inspect}.each do |level|
+          result = RubyMinify::Minifier.new.call('#{fixture_path}', level: level, project_root: '#{fixture_dir}')
+          print #{LEVEL_MARKER.dump}
           print result.content
           print #{SPLIT_MARKER.dump}
           print result.aliases
           print #{SPLIT_MARKER.dump}
           print result.preamble
-        RUBY
-        out, stderr, status = Open3.capture3('ruby', '-e', runner_code)
-        assert status.success?,
-               "minified minifier must run the :#{level} pipeline: #{stderr}"
+        end
+      RUBY
+      out, stderr, status = Open3.capture3(RbConfig.ruby, '-e', runner_code)
+      assert status.success?, "minified minifier must run every pipeline: #{stderr}"
 
-        content, aliases, preamble = out.split(SPLIT_MARKER, 3)
+      blocks = out.split(LEVEL_MARKER)
+      blocks.shift # text before the first marker is empty
+      assert_equal levels.size, blocks.size, 'one output block per level'
+
+      levels.zip(blocks) do |level, block|
+        expected = expected_by_level[level]
+        content, aliases, preamble = block.split(SPLIT_MARKER, 3)
         assert_equal expected.content, content,
                "minified minifier's :#{level} content must match the original's"
         assert_equal expected.aliases, aliases,

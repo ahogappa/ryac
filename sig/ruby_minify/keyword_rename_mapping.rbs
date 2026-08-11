@@ -6,6 +6,8 @@ module RubyMinify
     def add_keyword_def: (method_key method_key, Symbol keyword_sym) -> void
     def add_keyword_call: (method_key method_key, Symbol keyword_sym, Prism::SymbolNode symbol_node, Prism::Node val_node) -> void
     def exclude_method: (method_key method_key) -> void
+
+    def exclude_methods_by_mid: (Enumerable[Symbol] mids) -> void
     def merge_groups: (method_key key1, method_key key2) -> void
     def each_method_key: () { (method_key) -> void } -> void
     def assign_short_names: () -> void

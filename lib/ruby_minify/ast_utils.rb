@@ -269,6 +269,29 @@ module RubyMinify
       node.compact_child_nodes.each { |child| each_node(child, &block) }
     end
 
+    # Expressions that rebind to the surrounding statement when their parens
+    # are stripped: `def f =expr in pat` parses as `(def f =expr) in pat`.
+    # Every "needs parens" list must include these.
+    MATCH_REBIND_NODES = [Prism::MatchPredicateNode, Prism::MatchRequiredNode].freeze
+
+    def self.match_rebind?(node)
+      MATCH_REBIND_NODES.any? { |t| node.is_a?(t) }
+    end
+
+    # The shorthand-pun values of a hash-ish node: implicit assoc values that
+    # are NOT plain local reads (`{ label: }` calling method label). The one
+    # definition of "pun" shared by the keyword and method exclusion passes.
+    def self.shorthand_pun_values(node)
+      return [] unless node.is_a?(Prism::KeywordHashNode) || node.is_a?(Prism::HashNode)
+
+      node.elements.filter_map do |el|
+        next unless el.is_a?(Prism::AssocNode) && el.value.is_a?(Prism::ImplicitNode)
+
+        inner = el.value.value
+        inner unless inner.is_a?(Prism::LocalVariableReadNode)
+      end
+    end
+
     # The Prism node a TypeProf node was built from — the other half of the
     # seam between the two trees, and the only supported way across it.
     #

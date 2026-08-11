@@ -141,7 +141,7 @@ module RubyMinify
     used_ivar_names = @ivar_rename_mapping.node_mapping.values.to_set
     used_ivar_names.merge(path_a_mapping.values)
     used_method_names = rename_map.values.to_set
-    scope_vars = build_attr_scope_vars
+    scope_vars = MethodRenameMapping.build_scope_vars(@scope_mappings)
     generator = NameGenerator.new([], prefix: "@")
 
     path_b_info
@@ -175,7 +175,7 @@ module RubyMinify
           next if @oracle.method_defined?(info[:cpath], info[:singleton], method_candidate)
           # A bare renamed getter call would parse as the local if a visible
           # local already owns the candidate at an implicit-receiver site.
-          next if implicit_scope_ids.any? { |sid| scope_vars[sid]&.include?(method_candidate.to_s) }
+          next if implicit_scope_ids.any? { |sid| scope_vars[sid].include?(method_candidate.to_s) }
 
           short_name = candidate
           method_short = method_candidate
@@ -201,13 +201,6 @@ module RubyMinify
     [path_b_mapping, path_b_method_mapping]
   end
 
-  def build_attr_scope_vars
-    scope_vars = Hash.new { |h, k| h[k] = Set.new }
-    (@scope_mappings || {}).each do |cref_id, mapping|
-      mapping.each_value { |mangled| scope_vars[cref_id] << mangled }
-    end
-    scope_vars
-  end
 
   # Ivar read/write sites take their attr's name; a subclass's sites follow
   # the ancestor that declared the attr.

@@ -65,6 +65,10 @@ module RubyMinify
     STAGES = {
       stable: [OPTIMIZE, [Pipeline::ConstantAliaser, { rename_classes: true }], [Pipeline::AttrDeclShorten],
                [Pipeline::VariableRenamer, ALL_VAR_FEATURES]],
+      # "attrs renamed" is one fact spelled by three co-moving entries:
+      # AttrDeclShorten rename_attrs (declarations), attr_ivars (backing
+      # ivars) and MethodRenamer (call sites). A composed list must flip
+      # all three together or none.
       unstable: [OPTIMIZE, [Pipeline::ConstantAliaser, { rename_classes: true }],
                  [Pipeline::AttrDeclShorten, { rename_attrs: true }],
                  [Pipeline::VariableRenamer, ALL_VAR_WITH_ATTR], [Pipeline::MethodRenamer]],

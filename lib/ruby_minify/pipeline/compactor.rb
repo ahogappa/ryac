@@ -33,7 +33,7 @@ module RubyMinify
       def call(input_string)
         @prism_ast = Prism.parse(input_string).value
         @inside_singleton_class = false
-        @standard_error_redefined = redefines_standard_error?(@prism_ast)
+        @standard_error_redefined = nil
         rebuild.join(";")
       end
 
@@ -184,15 +184,16 @@ module RubyMinify
         return r_index_assign(node) if node.name == :'[]='
         return r_unary(node, '!') if node.name == :'!'
         return r_unary(node, node.name == :'-@' ? '-' : '+') if node.name == :'-@' || node.name == :'+@'
+        call_op = node.safe_navigation? ? '&.' : '.'
         # `x.call(args)` has proc-call sugar: `x.(args)` dispatches to the
-        # exact same method on any receiver.
+        # exact same method on any receiver. Erasing the message this early
+        # is sound only because :call sits in EXCLUDED_METHODS — no renamer
+        # ever needs to find these sites by name.
         if node.name == :call && node.receiver
           raw_args = node.arguments&.arguments || []
-          proc_op = node.safe_navigation? ? '&.' : '.'
-          return "#{recv_with_op(node.receiver, proc_op)}(#{raw_args.map { |a| r(a) }.join(',')})"
+          return "#{recv_with_op(node.receiver, call_op)}(#{raw_args.map { |a| r(a) }.join(',')})"
         end
         method_name = node.name
-        call_op = node.safe_navigation? ? '&.' : '.'
         if setter_call?(node)
           "#{recv_with_op(node.receiver, call_op)}#{method_name}#{r(node.arguments.arguments.first)}"
         else
@@ -363,13 +364,13 @@ module RubyMinify
 
       # `in PATTERN if GUARD` parses with the guard as an If/Unless node
       # wrapping the pattern — rendering that as a statement-if corrupts the
-      # clause into `in if guard;pattern;end`.
+      # clause into `in if guard;pattern;end`. Guards cannot nest, so the
+      # wrapped node is always a plain pattern.
       def r_in_pattern(pattern)
         case pattern
-        when Prism::IfNode
-          "#{r_in_pattern(pattern.statements.body[0])} if #{r(pattern.predicate)}"
-        when Prism::UnlessNode
-          "#{r_in_pattern(pattern.statements.body[0])} unless #{r(pattern.predicate)}"
+        when Prism::IfNode, Prism::UnlessNode
+          keyword = pattern.is_a?(Prism::IfNode) ? 'if' : 'unless'
+          "#{r(pattern.statements.body[0])} #{keyword} #{r(pattern.predicate)}"
         else
           r(pattern)
         end
@@ -648,7 +649,7 @@ module RubyMinify
           # `rescue StandardError` is what a bare rescue already means —
           # unless the program redefines StandardError, when the bare form
           # would resolve differently.
-          unless exceptions.empty? || (bare_standard_error?(exceptions) && !@standard_error_redefined)
+          unless exceptions.empty? || (bare_standard_error?(exceptions) && !standard_error_redefined?)
             rp += " #{exceptions.map { |e| r(e) }.join(',')}"
           end
           if rescue_node.reference && rescue_var_used?(rescue_node)
@@ -669,20 +670,29 @@ module RubyMinify
           exceptions[0].name == :StandardError
       end
 
-      def redefines_standard_error?(root)
+      # Lazy: only a literal `rescue StandardError` clause ever needs the
+      # answer, so most programs never pay for the walk. Any definition-ish
+      # node whose written name is StandardError counts — over-matching a
+      # nested Foo::StandardError only forgoes a few bytes.
+      def standard_error_redefined?
+        return @standard_error_redefined unless @standard_error_redefined.nil?
+
         found = false
-        walk = lambda do |node|
-          return if found
+        AstUtils.each_node(@prism_ast) do |node|
           case node
           when Prism::ClassNode
-            found = true if node.constant_path.is_a?(Prism::ConstantReadNode) && node.constant_path.name == :StandardError
+            path = node.constant_path
+            name = path.is_a?(Prism::ConstantReadNode) || path.is_a?(Prism::ConstantPathNode) ? path.name : nil
+            found = true if name == :StandardError
           when Prism::ConstantWriteNode, Prism::ConstantTargetNode
             found = true if node.name == :StandardError
+          when Prism::ConstantPathWriteNode
+            found = true if node.target.name == :StandardError
+          when Prism::ConstantPathTargetNode
+            found = true if node.name == :StandardError
           end
-          node.compact_child_nodes.each { |child| walk.call(child) }
         end
-        walk.call(root)
-        found
+        @standard_error_redefined = found
       end
 
       # --- Other ---
@@ -982,9 +992,7 @@ module RubyMinify
       # Match nodes keep parens like assignments do: an endless def body of
       # `(value in pattern)` stripped bare rebinds the `in` to the def
       # statement itself and no longer parses.
-      PARENS_KEPT_NODES = [
-        *ASSIGNMENT_NODES, Prism::MatchPredicateNode, Prism::MatchRequiredNode,
-      ].freeze
+      PARENS_KEPT_NODES = [*ASSIGNMENT_NODES, *AstUtils::MATCH_REBIND_NODES].freeze
 
       def r_parens(node)
         body = r_stmt(node.body)

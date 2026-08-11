@@ -176,11 +176,7 @@ module RubyMinify
       end
     end
 
-    unresolved_mids.each do |mid|
-      @keyword_rename_mapping.each_method_key do |key|
-        @keyword_rename_mapping.exclude_method(key) if key[2] == mid
-      end
-    end
+    @keyword_rename_mapping.exclude_methods_by_mid(unresolved_mids)
   end
 
   # A keyword shorthand can pun on a METHOD, not a local: `n(label:)` calls
@@ -192,18 +188,10 @@ module RubyMinify
     AstUtils.each_node(prism_root) do |node|
       next unless node.is_a?(Prism::CallNode)
       node.arguments&.arguments&.each do |arg|
-        next unless arg.is_a?(Prism::KeywordHashNode)
-        arg.elements.each do |el|
-          next unless el.is_a?(Prism::AssocNode) && el.value.is_a?(Prism::ImplicitNode)
-          punned_mids << node.name unless el.value.value.is_a?(Prism::LocalVariableReadNode)
-        end
+        punned_mids << node.name if AstUtils.shorthand_pun_values(arg).any?
       end
     end
-    return if punned_mids.none?
-
-    @keyword_rename_mapping.each_method_key do |key|
-      @keyword_rename_mapping.exclude_method(key) if punned_mids.include?(key[2])
-    end
+    @keyword_rename_mapping.exclude_methods_by_mid(punned_mids) if punned_mids.any?
   end
 
   def carries_keyword_arguments?(call_node)

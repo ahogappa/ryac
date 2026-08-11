@@ -163,12 +163,11 @@ module RubyMinify
       locals = scope.node.locals
       return unless locals.any?
 
-      unsafe = dynamic_scope?(scope.node.statements)
-      pinned = pinned_local_names(scope.node.statements)
+      unsafe, pinned = scope_constraints(scope.node.statements)
       generator = NameGenerator.new(pinned.map(&:to_s))
       mapping = {}
       locals.each do |var|
-        mapping[var] = unsafe || pinned.include?(var) ? var.to_s : generator.next_name
+        mapping[var] = allocated_name(var, unsafe, pinned, generator)
       end
       verify_injective!(mapping, 'top-level')
       scope.mapping = mapping
@@ -178,7 +177,7 @@ module RubyMinify
       node = scope.node
       return unless node.body
 
-      unsafe = dynamic_scope?(node.body)
+      unsafe, pinned = scope_constraints(node.body)
       keyword_params = keyword_param_names(node)
       unused_rescue = unused_rescue_vars(node.body)
       kw_mapping = kw_def_map[scope.id]
@@ -190,7 +189,6 @@ module RubyMinify
       # short keywords, so no hint arises) would allocate the burned names.
       hints = hints.reject { |var, _| keyword_params.include?(var) }
 
-      pinned = pinned_local_names(node.body)
       reserved = hints.values.dup
       reserved.concat(kw_mapping.values) if kw_mapping
       reserved.concat(pinned.map(&:to_s))
@@ -227,34 +225,34 @@ module RubyMinify
       node = scope.node
       return unless node.body
 
-      unsafe = dynamic_scope?(node.body)
-      pinned = pinned_local_names(node.body)
+      unsafe, pinned = scope_constraints(node.body)
       f_args = block_formal_names(node)
       parent_names = ancestor_mapping_values(scope)
+      reserved = parent_names + pinned.map(&:to_s)
 
       if !unsafe && use_numbered_params?(node, f_args, parent_names)
         mapping = {}
         f_args.each_with_index { |param, idx| mapping[param] = "_#{idx + 1}" }
       else
-        generator = NameGenerator.new(parent_names + pinned.map(&:to_s))
+        generator = NameGenerator.new(reserved)
         mapping = {}
         f_args.each do |param|
           next unless param
           next if param.to_s.match?(/\A_\d*\z/)
-          mapping[param] = unsafe || pinned.include?(param) ? param.to_s : generator.next_name
+          mapping[param] = allocated_name(param, unsafe, pinned, generator)
         end
         block_multi_targets(node).each do |mt|
           collect_multi_target_names(mt).each do |name|
-            mapping[name] = unsafe || pinned.include?(name) ? name.to_s : generator.next_name
+            mapping[name] = allocated_name(name, unsafe, pinned, generator)
           end
         end
       end
 
       if (params = block_parameters(node))
-        generator ||= NameGenerator.new(parent_names + pinned.map(&:to_s))
+        generator ||= NameGenerator.new(reserved)
         collect_extra_block_param_names(params).each do |name|
           next if mapping.key?(name)
-          mapping[name] = unsafe || pinned.include?(name) ? name.to_s : generator.next_name
+          mapping[name] = allocated_name(name, unsafe, pinned, generator)
         end
 
         # Numbered parameters cannot coexist with optionals, rest, keywords
@@ -289,23 +287,20 @@ module RubyMinify
       names
     end
 
-    def dynamic_scope?(body)
-      found = false
-      walk_all(body) do |n|
-        found = true if n.is_a?(Prism::CallNode) && DYNAMIC_VARIABLE_METHODS.include?(n.name)
-      end
-      found
-    end
-
-    # Locals whose names carry meaning beyond the variable itself and can
-    # never be renamed: a regex named capture writes the local named after
-    # the group, and a hash-pattern shorthand (`in { value: }`) binds the
-    # local named after the key it matches. Renaming breaks the pairing the
-    # name encodes — the regex/pattern half keeps the original.
-    def pinned_local_names(body)
+    # One walk answers both per-scope safety questions: whether the scope
+    # defeats renaming entirely (eval and friends can read any local by its
+    # original name) and which locals are name-pinned — a regex named
+    # capture writes the local named after the group, and a hash-pattern
+    # shorthand (`in { value: }`) binds the local named after the key it
+    # matches. Renaming a pinned local breaks the pairing the name encodes;
+    # the regex/pattern half keeps the original.
+    def scope_constraints(body)
+      unsafe = false
       pinned = Set.new
       walk_all(body) do |n|
         case n
+        when Prism::CallNode
+          unsafe = true if DYNAMIC_VARIABLE_METHODS.include?(n.name)
         when Prism::MatchWriteNode
           n.targets.each { |t| pinned << t.name if t.is_a?(Prism::LocalVariableTargetNode) }
         when Prism::HashPatternNode
@@ -316,7 +311,12 @@ module RubyMinify
           end
         end
       end
-      pinned
+      [unsafe, pinned]
+    end
+
+    # The unsafe/pinned/generator decision every allocator makes per name.
+    def allocated_name(var, unsafe, pinned, generator)
+      unsafe || pinned.include?(var) ? var.to_s : generator.next_name
     end
 
     def unused_rescue_vars(body)

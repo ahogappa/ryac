@@ -187,10 +187,7 @@ module RubyMinify
   def collect_shorthand_pun_methods(prism_root)
     punned = Set.new
     AstUtils.each_node(prism_root) do |node|
-      next unless node.is_a?(Prism::KeywordHashNode) || node.is_a?(Prism::HashNode)
-      node.elements.each do |el|
-        next unless el.is_a?(Prism::AssocNode) && el.value.is_a?(Prism::ImplicitNode)
-        inner = el.value.value
+      AstUtils.shorthand_pun_values(node).each do |inner|
         punned << inner.name if inner.is_a?(Prism::CallNode)
       end
     end
@@ -230,35 +227,36 @@ module RubyMinify
       end
     end
 
-    excluded = writer_syms & (reader_syms | accessor_owners.keys.to_set)
+    excluded = writer_syms & (reader_syms | accessor_owners.keys)
 
-    known_setter_sites = Set.new
-    accessor_owners.each do |sym, owners|
-      owners.each do |cpath, singleton|
-        @oracle.each_call_site_key(cpath, singleton, :"#{sym}=") do |key|
-          known_setter_sites << [sym, key]
+    if accessor_owners.any?
+      known_setter_sites = Set.new
+      accessor_owners.each do |sym, owners|
+        owners.each do |cpath, singleton|
+          @oracle.each_call_site_key(cpath, singleton, :"#{sym}=") do |key|
+            known_setter_sites << key
+          end
         end
       end
-    end
 
-    AstUtils.each_node(prism_root) do |node|
-      write_name = case node
-      when Prism::CallNode
-        node.name
-      when Prism::CallOperatorWriteNode, Prism::CallOrWriteNode, Prism::CallAndWriteNode
-        node.write_name
-      else
-        next
+      AstUtils.each_node(prism_root) do |node|
+        write_name = case node
+        when Prism::CallNode
+          node.name
+        when Prism::CallOperatorWriteNode, Prism::CallOrWriteNode, Prism::CallAndWriteNode
+          node.write_name
+        else
+          next
+        end
+
+        next unless AstUtils.setter_def_name?(write_name)
+
+        sym = write_name.to_s.chomp('=').to_sym
+        next unless accessor_owners.key?(sym)
+        next if known_setter_sites.include?(AstUtils.location_key(node))
+
+        excluded << sym
       end
-
-      name = write_name.to_s
-      next unless name.end_with?('=') && !%w[== != <= >= ===].include?(name)
-
-      sym = name.chomp('=').to_sym
-      next unless accessor_owners.key?(sym)
-      next if known_setter_sites.include?([sym, AstUtils.location_key(node)])
-
-      excluded << sym
     end
 
     @method_rename_mapping.exclude_methods_by_mid(excluded) if excluded.any?

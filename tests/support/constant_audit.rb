@@ -24,7 +24,7 @@ module ConstantAudit
   # extra_source (e.g. an aliases file) contributes definitions and is
   # audited too; external lookups load only ruby_source's requires.
   def unresolved(ruby_source, extra_source: '')
-    ctx = { defined: Set.new, aliases: {}, ancestors: Hash.new { |h, k| h[k] = [] }, reads: [] }
+    ctx = { defined: Set.new, aliases: {}, ancestors: Hash.new { |h, k| h[k] = [] }, reads: [], requires: [] }
     [ruby_source, extra_source].each do |src|
       next if src.to_s.empty?
       result = Prism.parse(src)
@@ -35,13 +35,13 @@ module ConstantAudit
     end
 
     pending = ctx[:reads].reject { |read| internally_resolved?(read, ctx) }
-    return [] if pending.any? == false
+    return [] if pending.none?
 
-    known = externally_defined(pending.flat_map { |r| external_candidates(r, ctx) },
-                               requires_in(ruby_source))
-    pending
-      .reject { |read| external_candidates(read, ctx).any? { |c| known.include?(c) } }
-      .map { |read| [read[:segs].join('::'), read[:line]] }
+    candidates = pending.map { |read| [read, external_candidates(read, ctx)] }
+    known = externally_defined(candidates.flat_map { |_, c| c }, ctx[:requires].uniq)
+    candidates
+      .reject { |_, c| c.any? { |candidate| known.include?(candidate) } }
+      .map { |read, _| [read[:segs].join('::'), read[:line]] }
   end
 
   def collect(node, stack, ctx)
@@ -95,7 +95,7 @@ module ConstantAudit
       if segs
         add_read(segs, absolute, node, stack, ctx)
       else
-        collect_children_of(node, stack, ctx) # dynamic root (expr::CONST) — audit the expr
+        collect_children(node, stack, ctx) # dynamic root (expr::CONST) — audit the expr
       end
 
     when Prism::ConstantReadNode
@@ -112,19 +112,19 @@ module ConstantAudit
           ctx[:ancestors][stack.flatten] << [asegs, aabs, lexical_prefixes(stack)] if asegs
         end
       end
-      collect_children_of(node, stack, ctx)
+      if node.receiver.nil? && node.name == :require
+        arg = node.arguments&.arguments&.[](0)
+        ctx[:requires] << arg.unescaped if arg.is_a?(Prism::StringNode)
+      end
+      collect_children(node, stack, ctx)
 
     else
-      collect_children_of(node, stack, ctx) if node
+      collect_children(node, stack, ctx)
     end
   end
 
-  def collect_children(body, stack, ctx)
-    return unless body
-    body.child_nodes.each { |child| collect(child, stack, ctx) if child }
-  end
-
-  def collect_children_of(node, stack, ctx)
+  def collect_children(node, stack, ctx)
+    return unless node
     node.compact_child_nodes.each { |child| collect(child, stack, ctx) }
   end
 
@@ -158,18 +158,10 @@ module ConstantAudit
     prefixes
   end
 
+  # Same contract as the pipeline's own path walker; the requiring tests
+  # load lib/ruby_minify first, so delegate instead of keeping a copy.
   def path_segments(node)
-    segs = []
-    current = node
-    while current.is_a?(Prism::ConstantPathNode) || current.is_a?(Prism::ConstantPathTargetNode)
-      segs.unshift(current.name)
-      current = current.parent
-    end
-    case current
-    when Prism::ConstantReadNode then [segs.unshift(current.name), false]
-    when nil then [segs, true] # ::X — absolute
-    else [nil, false]
-    end
+    RubyMinify::Nesting.path_segments(node)
   end
 
   def internally_resolved?(read, ctx)
@@ -215,23 +207,6 @@ module ConstantAudit
     candidates.uniq
   end
 
-  # Every literal require anywhere in the program, not just at the top:
-  # lazily required libraries (a profiler behind a flag, zlib behind an
-  # output format) legitimately back constant references on the paths that
-  # perform the require first.
-  def requires_in(ruby_source)
-    libs = []
-    walk_requires = lambda do |node|
-      if node.is_a?(Prism::CallNode) && node.name == :require && node.receiver.nil?
-        arg = node.arguments&.arguments&.first
-        libs << arg.unescaped if arg.is_a?(Prism::StringNode)
-      end
-      node.compact_child_nodes.each { |child| walk_requires.call(child) }
-    end
-    walk_requires.call(Prism.parse(ruby_source).value)
-    libs.uniq
-  end
-
   def externally_defined(candidates, requires)
     candidates = candidates.uniq.select { |c| c.match?(/\A[A-Z][A-Za-z0-9_:]*\z/) }
     return Set.new if candidates.none?
@@ -242,13 +217,8 @@ module ConstantAudit
     # Unbundled, like the pipeline's own boot probe: the audited program's
     # lazy requires may name gems outside the test Gemfile, and bundler's
     # environment would hide them from the probe.
-    out = if defined?(Bundler)
-      Bundler.with_unbundled_env do
-        Open3.capture3({ 'RUBYOPT' => nil }, RbConfig.ruby, '-e', probe, stdin_data: candidates.join("\n"))[0]
-      end
-    else
-      Open3.capture3(RbConfig.ruby, '-e', probe, stdin_data: candidates.join("\n"))[0]
-    end
+    run = -> { Open3.capture3({ 'RUBYOPT' => nil }, RbConfig.ruby, '-e', probe, stdin_data: candidates.join("\n"))[0] }
+    out = defined?(Bundler) ? Bundler.with_unbundled_env(&run) : run.call
     out.split("\n").to_set
   end
 end

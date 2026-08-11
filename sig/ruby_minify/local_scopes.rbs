@@ -46,7 +46,9 @@ module RubyMinify
     def allocate_def: (Scope scope, Hash[location_key, Hash[Symbol, String]] kw_def_map, Hash[scope_id, Hash[Symbol, String]] var_hints) -> void
     def allocate_block: (Scope scope) -> void
     def ancestor_mapping_values: (Scope scope) -> Array[String]
-    def dynamic_scope?: (Prism::Node? body) -> bool
+    def scope_constraints: (Prism::Node? body) -> [bool, Set[Symbol]]
+
+    def allocated_name: (Symbol var, bool unsafe, Set[Symbol] pinned, NameGenerator generator) -> String
     def unused_rescue_vars: (Prism::Node? body) -> Set[Symbol]
     def keyword_param_names: (Prism::DefNode def_node) -> Array[Symbol]
     def block_parameters: (Prism::BlockNode block_node) -> Prism::ParametersNode?
