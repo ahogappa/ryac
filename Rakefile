@@ -32,10 +32,10 @@ end
 desc "Show self-hosting compression ratio"
 task :benchmark do
   $LOAD_PATH.unshift File.expand_path("lib", __dir__)
-  require "ruby_minify"
+  require "ryac"
 
-  entry_path = File.join(__dir__, "lib", "ruby_minify.rb")
-  minifier = RubyMinify::Minifier.new
+  entry_path = File.join(__dir__, "lib", "ryac.rb")
+  minifier = Ryac::Minifier.new
   result = minifier.call(entry_path)
   stats = result.stats
   compression = ((1 - stats.compression_ratio) * 100).round(1)

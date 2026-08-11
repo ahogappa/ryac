@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
 require 'minitest/autorun'
-require_relative '../lib/ruby_minify/pipeline/stage'
-require_relative '../lib/ruby_minify/pipeline/data_types'
-require_relative '../lib/ruby_minify/pipeline/errors'
-require_relative '../lib/ruby_minify/pipeline/file_collector'
+require_relative '../lib/ryac/pipeline/stage'
+require_relative '../lib/ryac/pipeline/data_types'
+require_relative '../lib/ryac/pipeline/errors'
+require_relative '../lib/ryac/pipeline/file_collector'
 
 class TestFileCollector < Minitest::Test
   def setup
-    @collector = RubyMinify::Pipeline::FileCollector.new
+    @collector = Ryac::Pipeline::FileCollector.new
     @fixtures_dir = File.expand_path('fixtures/multi_file', __dir__)
   end
 
@@ -17,7 +17,7 @@ class TestFileCollector < Minitest::Test
     entry_path = File.join(@fixtures_dir, 'entry.rb')
     graph = @collector.call(entry_path)
 
-    assert_instance_of RubyMinify::Pipeline::DependencyGraph, graph
+    assert_instance_of Ryac::Pipeline::DependencyGraph, graph
     refute graph.empty?
     assert graph[entry_path], "Entry file should be in graph"
   end
@@ -57,13 +57,13 @@ class TestFileCollector < Minitest::Test
   def test_raises_error_for_missing_file
     missing_path = File.join(@fixtures_dir, 'nonexistent.rb')
 
-    assert_raises RubyMinify::Pipeline::FileNotFoundError do
+    assert_raises Ryac::Pipeline::FileNotFoundError do
       @collector.call(missing_path)
     end
   end
 
   def test_raises_error_for_nil_entry
-    assert_raises RubyMinify::Pipeline::NoFilesError do
+    assert_raises Ryac::Pipeline::NoFilesError do
       @collector.call(nil)
     end
   end
@@ -123,7 +123,7 @@ class TestFileCollector < Minitest::Test
       File.join(@fixtures_dir, 'nonexistent.rb')
     ]
 
-    assert_raises RubyMinify::Pipeline::FileNotFoundError do
+    assert_raises Ryac::Pipeline::FileNotFoundError do
       @collector.call(paths)
     end
   end

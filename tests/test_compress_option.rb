@@ -4,20 +4,20 @@ require_relative 'test_helper'
 
 class TestResolveLevel < Minitest::Test
   def test_the_two_levels_resolve
-    assert_equal :stable, RubyMinify::Minifier.resolve_level('stable')
-    assert_equal :unstable, RubyMinify::Minifier.resolve_level('unstable')
-    assert_equal :stable, RubyMinify::Minifier.resolve_level(:stable)
+    assert_equal :stable, Ryac::Minifier.resolve_level('stable')
+    assert_equal :unstable, Ryac::Minifier.resolve_level('unstable')
+    assert_equal :stable, Ryac::Minifier.resolve_level(:stable)
   end
 
   def test_numbers_and_old_aliases_are_gone
     %w[0 3 5 min max unknown].each do |value|
-      assert_raises(ArgumentError) { RubyMinify::Minifier.resolve_level(value) }
+      assert_raises(ArgumentError) { Ryac::Minifier.resolve_level(value) }
     end
   end
 end
 
 class TestCompressCLI < Minitest::Test
-  MINIFY_BIN = File.expand_path('../bin/minify', __dir__)
+  MINIFY_BIN = File.expand_path('../bin/ryac', __dir__)
 
   def setup
     @input = Tempfile.new(['test_compress', '.rb'])

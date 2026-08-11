@@ -15,10 +15,10 @@ class TestIntegration < Minitest::Test
     require 'open3'
 
     lib_dir = File.expand_path('../lib', __dir__)
-    entry_path = File.join(lib_dir, 'ruby_minify.rb')
+    entry_path = File.join(lib_dir, 'ryac.rb')
 
     # Step 1: Minify the minifier source using original minifier (multi-file mode)
-    original_minifier = RubyMinify::Minifier.new
+    original_minifier = Ryac::Minifier.new
     result1 = original_minifier.call(entry_path)
 
     # Verify minified code is valid Ruby
@@ -59,7 +59,7 @@ class TestIntegration < Minitest::Test
              "Minified minifier should produce identical output when minifying original source"
 
       # Step 4: Re-minification should be idempotent (same size)
-      re_minifier = RubyMinify::Minifier.new
+      re_minifier = Ryac::Minifier.new
       result3 = re_minifier.call(minified_minifier_path)
       RubyVM::InstructionSequence.compile(result3.content)
       assert_equal result1.content, result3.content,

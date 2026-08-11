@@ -1,0 +1,34 @@
+module Ryac
+  module AstUtils
+    def self?.symbol_arguments: (Prism::CallNode call_node) -> Array[Symbol]
+    MIDDLE_METHODS: Array[Symbol]
+    TERNARY_SAFE_PREV: Array[Integer]
+    COMPARISON_PREV: Array[Integer]
+    PIPE_BREAK_BYTES: Array[Integer]
+
+    def self.unwrap_statements: (Prism::Node? node) -> Prism::Node?
+    def self.middle_method?: (Symbol method) -> bool
+    def self.logical_op?: (Prism::Node node) -> bool
+    def self.has_block?: (Prism::Node node) -> bool
+    def self.single_statement_body?: (Prism::Node? body) -> bool
+    def self.setter_def_name?: (Symbol name) -> bool
+    def self.simple_negatable?: (Prism::Node node) -> bool
+    def self.first_arg_starts_with_brace?: (Prism::Node arg) -> bool
+    def self.ends_with_name_char?: (Prism::Node node) -> bool
+    def self.ends_with_method_suffix?: (Prism::Node node) -> bool
+    def self.needs_ternary_q_space?: (Prism::Node node) -> bool
+    def self.modifier_control_flow?: (Prism::Node node) -> bool
+    def self.modifier_conditional?: (Prism::Node node) -> bool
+    def self.modifier_loop?: (Prism::Node node) -> bool
+    def self.ternary_needs_parens?: (Prism::Node node, String source) -> bool
+    def self.can_omit_parens?: (Prism::CallNode node, ?String? method_name) -> bool
+    def self.first_arg_is_regex?: (Prism::Node arg) -> bool
+    def self.contains_bare_block?: (Prism::Node node) -> bool
+    MATCH_REBIND_NODES: Array[untyped]
+    def self.match_rebind?: (Prism::Node node) -> bool
+    def self.shorthand_pun_values: (Prism::Node node) -> Array[Prism::Node]
+    def self.each_node: (Prism::Node? node) { (Prism::Node) -> void } -> void
+    def self.prism_node: (TypeProf::Core::AST::Node node) -> Prism::Node?
+    def self.location_key: (Prism::Node | TypeProf::Core::AST::Node node) -> location_key
+  end
+end

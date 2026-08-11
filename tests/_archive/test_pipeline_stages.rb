@@ -32,14 +32,14 @@ class TestPipelineStages < Minitest::Test
   def setup_compactor
     @compactor_result ||= begin
       code = "# This is a comment\nx = true\ny = false\nputs(x, y)\n\ndef my_method(my_arg)\n  if my_arg\n    \"hello\"\n  else\n    \"world\"\n  end\nend\nputs my_method(\"a\")\n"
-      source = RubyMinify::Pipeline::ConcatenatedSource.new(
+      source = Ryac::Pipeline::ConcatenatedSource.new(
         content: code,
         file_boundaries: [],
         original_size: code.bytesize,
         stdlib_requires: []
       )
-      preprocessed = RubyMinify::Pipeline::Preprocessor.new.call(source)
-      { code: code, result: RubyMinify::Pipeline::Compactor.new.call(preprocessed.content) }
+      preprocessed = Ryac::Pipeline::Preprocessor.new.call(source)
+      { code: code, result: Ryac::Pipeline::Compactor.new.call(preprocessed.content) }
     end
   end
 
@@ -51,11 +51,11 @@ class TestPipelineStages < Minitest::Test
 
   def test_compactor_preserves_parens
     code = "x = 1\ny = 2\nputs x\nputs(y)\n"
-    source = RubyMinify::Pipeline::ConcatenatedSource.new(
+    source = Ryac::Pipeline::ConcatenatedSource.new(
       content: code, file_boundaries: [], original_size: code.bytesize, stdlib_requires: []
     )
-    preprocessed = RubyMinify::Pipeline::Preprocessor.new.call(source)
-    result = RubyMinify::Pipeline::Compactor.new.call(preprocessed.content)
+    preprocessed = Ryac::Pipeline::Preprocessor.new.call(source)
+    result = Ryac::Pipeline::Compactor.new.call(preprocessed.content)
     expected = minify_at_level(code, 0)
     assert_equal expected.code, result
   end
@@ -65,12 +65,12 @@ class TestPipelineStages < Minitest::Test
   def setup_level1_combined
     @level1_combined ||= begin
       code = "x = true\ny = false\nputs(x, y)\n\ndef my_method(my_arg)\n  if my_arg\n    \"hello\"\n  else\n    \"world\"\n  end\nend\nputs my_method(\"a\")\n"
-      source = RubyMinify::Pipeline::ConcatenatedSource.new(
+      source = Ryac::Pipeline::ConcatenatedSource.new(
         content: code, file_boundaries: [], original_size: code.bytesize, stdlib_requires: []
       )
-      preprocessed = RubyMinify::Pipeline::Preprocessor.new.call(source)
-      compacted = RubyMinify::Pipeline::Compactor.new.call(preprocessed.content)
-      optimized = RubyMinify::Minifier::OPTIMIZE.reduce(compacted) { |r, k| k.new.call(r) }
+      preprocessed = Ryac::Pipeline::Preprocessor.new.call(source)
+      compacted = Ryac::Pipeline::Compactor.new.call(preprocessed.content)
+      optimized = Ryac::Minifier::OPTIMIZE.reduce(compacted) { |r, k| k.new.call(r) }
       { code: code, result: optimized }
     end
   end
@@ -78,12 +78,12 @@ class TestPipelineStages < Minitest::Test
   def test_optimize_without_parens_is_subset_of_level1
     setup_level1_combined
     code = @level1_combined[:code]
-    source = RubyMinify::Pipeline::ConcatenatedSource.new(
+    source = Ryac::Pipeline::ConcatenatedSource.new(
       content: code, file_boundaries: [], original_size: code.bytesize, stdlib_requires: []
     )
-    preprocessed = RubyMinify::Pipeline::Preprocessor.new.call(source)
-    compacted = RubyMinify::Pipeline::Compactor.new.call(preprocessed.content)
-    without_parens = RubyMinify::Minifier::OPTIMIZE[0...-1].reduce(compacted) { |r, k| k.new.call(r) }
+    preprocessed = Ryac::Pipeline::Preprocessor.new.call(source)
+    compacted = Ryac::Pipeline::Compactor.new.call(preprocessed.content)
+    without_parens = Ryac::Minifier::OPTIMIZE[0...-1].reduce(compacted) { |r, k| k.new.call(r) }
     level1 = minify_at_level(code, 1)
     assert_operator without_parens.length, :>=, level1.code.length
   end
@@ -106,7 +106,7 @@ class TestPipelineStages < Minitest::Test
       end
       puts bar(1, 2, 3)
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal "def foo(*args);args.sum;end;def bar(*);foo(*);end;puts(bar(1,2,3))", result
   end
 
@@ -123,7 +123,7 @@ class TestPipelineStages < Minitest::Test
       end
       puts result
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal "x=42;result=case;when x>100;\"big\";when x>10;\"medium\";else;\"small\";end;puts(result)", result
   end
 
@@ -134,7 +134,7 @@ class TestPipelineStages < Minitest::Test
         x + 1
       end
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal "def foo;x=bar or return false;x+1;end", result
   end
 
@@ -145,7 +145,7 @@ class TestPipelineStages < Minitest::Test
         x + 1
       end
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal "def foo;x=bar and return true;x+1;end", result
   end
 
@@ -159,7 +159,7 @@ class TestPipelineStages < Minitest::Test
         puts value
       end
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal "arr=[6,15,35];arr.each{|value|while (q,r=value.divmod(2);r)==0;value=q;end;puts(value)}", result
   end
 
@@ -169,7 +169,7 @@ class TestPipelineStages < Minitest::Test
       FOO = [1, 2, 3].freeze
       puts FOO.inspect
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal "FOO=[1,2,3].freeze;puts(FOO.inspect)", result
   end
 
@@ -179,7 +179,7 @@ class TestPipelineStages < Minitest::Test
       puts "hello"
       puts '\''
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal "puts(\"\\\"\")" + ';puts("hello");' + "puts(\"'\")", result
   end
 
@@ -191,7 +191,7 @@ class TestPipelineStages < Minitest::Test
       end
       puts check("foobar")
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal 'RE=/foo/;def check(s);RE=~s==0;end;puts(check("foobar"))', result
   end
 
@@ -202,7 +202,7 @@ class TestPipelineStages < Minitest::Test
       end
       puts step(1).inspect
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal 'def step(x,any_type: :element,order: :forward);[x,any_type,order];end;puts(step(1).inspect)', result
   end
 
@@ -214,7 +214,7 @@ class TestPipelineStages < Minitest::Test
       XXX
       puts X
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal 'X="hello\nworld\n";puts(X)', result
   end
 
@@ -226,7 +226,7 @@ class TestPipelineStages < Minitest::Test
       HEREDOC
       puts X
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal 'X="hello\nworld\n";puts(X)', result
   end
 
@@ -239,7 +239,7 @@ class TestPipelineStages < Minitest::Test
       HEREDOC
       puts x
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal 'name="Alice";x="hello #{name}\nworld\n";puts(x)', result
   end
 
@@ -250,7 +250,7 @@ class TestPipelineStages < Minitest::Test
       end
       puts foo(true)
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal 'def foo(x);return(if x;1;else;0;end);end;puts(foo(true))', result
   end
 
@@ -262,19 +262,19 @@ class TestPipelineStages < Minitest::Test
       end
       puts bar(true)
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal 'def bar(x);unless x;return;end;42;end;puts(bar(true))', result
   end
 
   def test_compactor_regexp_with_quote_delimiter
     code = '%r"hello"i'
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal '/hello/i', result
   end
 
   def test_compactor_regexp_with_angle_delimiter
     code = '%r<foo/bar>m'
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal '/foo\/bar/m', result
   end
 
@@ -283,7 +283,7 @@ class TestPipelineStages < Minitest::Test
       arr = [[1,2],[3,4]]
       arr.each {|*v| puts v.inspect }
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal 'arr=[[1,2],[3,4]];arr.each{|*v|puts(v.inspect)}', result
   end
 
@@ -293,7 +293,7 @@ class TestPipelineStages < Minitest::Test
         foo {|a, b=1, *c, &d| puts a, c.inspect }
       end
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal 'def test;foo{|a,b=1,*c,&d|puts(a,c.inspect)};end', result
   end
 
@@ -303,7 +303,7 @@ class TestPipelineStages < Minitest::Test
       (q = q.downcase).tr!('_', '-')
       puts q
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal 'q="HELLO_WORLD";(q=q.downcase).tr!("_","-");puts(q)', result
   end
 
@@ -314,7 +314,7 @@ class TestPipelineStages < Minitest::Test
       end
       puts foo("y", true)
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal 'def foo(opt,rest);opt and (!rest or opt=="x");end;puts(foo("y",true))', result
   end
 
@@ -325,7 +325,7 @@ class TestPipelineStages < Minitest::Test
       end
       puts bar(nil, true, false)
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal 'def bar(a,b,c);a or (b and c);end;puts(bar(nil,true,false))', result
   end
 
@@ -336,13 +336,13 @@ class TestPipelineStages < Minitest::Test
       c = 3
       puts a | (b ^ c)
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal 'a=1;b=2;c=3;puts(a|(b^c))', result
   end
 
   def test_compactor_not_match_operator_spacing
     code = "pattern=\"hello\"\nx=pattern !~ /xyz/\ny=@a !~ /abc/\n変数=\"world\"\nz=変数 !~ /xyz/\n"
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal 'pattern="hello";x=pattern !~/xyz/;y=@a!~/abc/;変数="world";z=変数 !~/xyz/', result
   end
 
@@ -354,7 +354,7 @@ class TestPipelineStages < Minitest::Test
       HEREDOC
       puts X
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal 'X="line with \"quotes\"\nand a\ttab\n";puts(X)', result
   end
 
@@ -363,13 +363,13 @@ class TestPipelineStages < Minitest::Test
       x = [1.0/0].first
       puts x.infinite? == 1
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal 'x=[1.0/0].first;puts(x.infinite? ==1)', result
   end
 
   def test_compactor_regexp_with_slash
     code = '%r[foo/bar]'
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal '/foo\/bar/', result
   end
 
@@ -381,7 +381,7 @@ class TestPipelineStages < Minitest::Test
       puts obj.x
       puts obj2.a
     RUBY
-    result = RubyMinify::Pipeline::Compactor.new.call(code)
+    result = Ryac::Pipeline::Compactor.new.call(code)
     assert_equal 'obj=Struct.new(:x,:y).new(1,2);obj2=Struct.new(:a).new(10);obj.x,obj2.a=obj2.a,obj.x;puts(obj.x);puts(obj2.a)', result
   end
 

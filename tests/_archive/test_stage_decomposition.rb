@@ -4,7 +4,7 @@ require_relative 'test_helper'
 
 class TestBooleanShorten < Minitest::Test
   def shorten(code)
-    RubyMinify::Pipeline::BooleanShorten.new.call(code)
+    Ryac::Pipeline::BooleanShorten.new.call(code)
   end
 
   def test_true_to_bang_bang
@@ -23,7 +23,7 @@ end
 
 class TestCharShorten < Minitest::Test
   def shorten(code)
-    RubyMinify::Pipeline::CharShorten.new.call(code)
+    Ryac::Pipeline::CharShorten.new.call(code)
   end
 
   def test_single_char_string
@@ -50,7 +50,7 @@ end
 
 class TestConstantFold < Minitest::Test
   def fold(code)
-    RubyMinify::Pipeline::ConstantFold.new.call(code)
+    Ryac::Pipeline::ConstantFold.new.call(code)
   end
 
   def test_simple_multiplication
@@ -74,7 +74,7 @@ end
 
 class TestControlFlowSimplify < Minitest::Test
   def simplify(code)
-    RubyMinify::Pipeline::ControlFlowSimplify.new.call(code)
+    Ryac::Pipeline::ControlFlowSimplify.new.call(code)
   end
 
   def test_if_else_to_ternary
@@ -97,7 +97,7 @@ end
 
 class TestEndlessMethod < Minitest::Test
   def endless(code)
-    RubyMinify::Pipeline::EndlessMethod.new.call(code)
+    Ryac::Pipeline::EndlessMethod.new.call(code)
   end
 
   def test_def_to_endless

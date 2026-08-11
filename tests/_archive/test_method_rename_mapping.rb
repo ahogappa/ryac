@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 require 'minitest/autorun'
-require_relative '../lib/ruby_minify'
+require_relative '../lib/ryac'
 
 class TestMethodRenameMapping < Minitest::Test
   def setup
-    @mapping = RubyMinify::MethodRenameMapping.new
+    @mapping = Ryac::MethodRenameMapping.new
   end
 
   def test_add_method_and_freeze_mapping

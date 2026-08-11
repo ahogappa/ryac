@@ -206,7 +206,7 @@ class TestOptimizationLevels < Minitest::Test
     Tempfile.create(['level_test', '.rb']) do |f|
       f.write("x = true\nputs x\n")
       f.flush
-      minifier = RubyMinify::Minifier.new
+      minifier = Ryac::Minifier.new
       result_l0 = minifier.call(f.path, level: 0)
       result_l5 = minifier.call(f.path, level: 5)
       assert_equal "x=true;puts(x)", result_l0.content

@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
 require 'minitest/autorun'
-require_relative '../lib/ruby_minify/pipeline/stage'
-require_relative '../lib/ruby_minify/pipeline/data_types'
-require_relative '../lib/ruby_minify/pipeline/errors'
-require_relative '../lib/ruby_minify/pipeline/concatenator'
+require_relative '../lib/ryac/pipeline/stage'
+require_relative '../lib/ryac/pipeline/data_types'
+require_relative '../lib/ryac/pipeline/errors'
+require_relative '../lib/ryac/pipeline/concatenator'
 
 class TestConcatenator < Minitest::Test
   def setup
-    @concatenator = RubyMinify::Pipeline::Concatenator.new
+    @concatenator = Ryac::Pipeline::Concatenator.new
   end
 
   # T011: Basic concatenation test
@@ -17,7 +17,7 @@ class TestConcatenator < Minitest::Test
 
     result = @concatenator.call(graph)
 
-    assert_instance_of RubyMinify::Pipeline::ConcatenatedSource, result
+    assert_instance_of Ryac::Pipeline::ConcatenatedSource, result
     refute_empty result.content
   end
 
@@ -65,16 +65,16 @@ class TestConcatenator < Minitest::Test
   private
 
   def create_simple_graph
-    graph = RubyMinify::Pipeline::DependencyGraph.new
+    graph = Ryac::Pipeline::DependencyGraph.new
 
-    dep_entry = RubyMinify::Pipeline::FileEntry.new(
+    dep_entry = Ryac::Pipeline::FileEntry.new(
       path: '/fake/dependency.rb',
       content: "module Dependency\n  def helper; end\nend",
       dependencies: [],
       require_nodes: []
     )
 
-    entry_entry = RubyMinify::Pipeline::FileEntry.new(
+    entry_entry = Ryac::Pipeline::FileEntry.new(
       path: '/fake/entry.rb',
       content: "module Entry\n  include Dependency\nend",
       dependencies: ['/fake/dependency.rb'],
@@ -87,16 +87,16 @@ class TestConcatenator < Minitest::Test
   end
 
   def create_graph_with_require
-    graph = RubyMinify::Pipeline::DependencyGraph.new
+    graph = Ryac::Pipeline::DependencyGraph.new
 
-    dep_entry = RubyMinify::Pipeline::FileEntry.new(
+    dep_entry = Ryac::Pipeline::FileEntry.new(
       path: '/fake/dependency.rb',
       content: "module Dependency\n  def helper; end\nend",
       dependencies: [],
       require_nodes: []
     )
 
-    entry_entry = RubyMinify::Pipeline::FileEntry.new(
+    entry_entry = Ryac::Pipeline::FileEntry.new(
       path: '/fake/entry.rb',
       content: "require_relative 'dependency'\nmodule Entry\n  include Dependency\nend",
       dependencies: ['/fake/dependency.rb'],
@@ -112,7 +112,7 @@ class TestConcatenator < Minitest::Test
   def test_detects_circular_dependency
     graph = create_circular_graph
 
-    assert_raises RubyMinify::Pipeline::CircularDependencyError do
+    assert_raises Ryac::Pipeline::CircularDependencyError do
       @concatenator.call(graph)
     end
   end
@@ -120,7 +120,7 @@ class TestConcatenator < Minitest::Test
   def test_circular_dependency_error_contains_cycle
     graph = create_circular_graph
 
-    error = assert_raises RubyMinify::Pipeline::CircularDependencyError do
+    error = assert_raises Ryac::Pipeline::CircularDependencyError do
       @concatenator.call(graph)
     end
 
@@ -138,16 +138,16 @@ class TestConcatenator < Minitest::Test
   end
 
   def create_circular_graph
-    graph = RubyMinify::Pipeline::DependencyGraph.new
+    graph = Ryac::Pipeline::DependencyGraph.new
 
-    a_entry = RubyMinify::Pipeline::FileEntry.new(
+    a_entry = Ryac::Pipeline::FileEntry.new(
       path: '/fake/a.rb',
       content: "require_relative 'b'\nmodule A; end",
       dependencies: ['/fake/b.rb'],
       require_nodes: [{ type: :require_relative, path: 'b', line: 1 }]
     )
 
-    b_entry = RubyMinify::Pipeline::FileEntry.new(
+    b_entry = Ryac::Pipeline::FileEntry.new(
       path: '/fake/b.rb',
       content: "require_relative 'a'\nmodule B; end",
       dependencies: ['/fake/a.rb'],
@@ -160,9 +160,9 @@ class TestConcatenator < Minitest::Test
   end
 
   def create_graph_with_stdlib
-    graph = RubyMinify::Pipeline::DependencyGraph.new
+    graph = Ryac::Pipeline::DependencyGraph.new
 
-    entry = RubyMinify::Pipeline::FileEntry.new(
+    entry = Ryac::Pipeline::FileEntry.new(
       path: '/fake/entry.rb',
       content: "require 'json'\nmodule Entry; end",
       dependencies: [],

@@ -19,19 +19,19 @@ class TestUnifiedRenamer < Minitest::Test
 
   def group
     @group ||= begin
-      source = RubyMinify::Pipeline::ConcatenatedSource.new(
+      source = Ryac::Pipeline::ConcatenatedSource.new(
         content: UNIFIED_CODE,
         file_boundaries: [],
         original_size: UNIFIED_CODE.bytesize,
         stdlib_requires: [],
         rbs_files: {}
       )
-      preprocessor = RubyMinify::Pipeline::Preprocessor.new
+      preprocessor = Ryac::Pipeline::Preprocessor.new
       source = preprocessor.call(source)
 
-      optimized = RubyMinify::Pipeline::Compactor.new.call(source.content)
-      RubyMinify::Minifier::OPTIMIZE[0...-1].each { |k| optimized = k.new.call(optimized) }
-      optimized = RubyMinify::Pipeline::ParenOptimizer.new.call(optimized)
+      optimized = Ryac::Pipeline::Compactor.new.call(source.content)
+      Ryac::Minifier::OPTIMIZE[0...-1].each { |k| optimized = k.new.call(optimized) }
+      optimized = Ryac::Pipeline::ParenOptimizer.new.call(optimized)
 
       {
         l2: run_sequential_stages(optimized, {}, 2),

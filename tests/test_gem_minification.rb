@@ -4,7 +4,7 @@ require 'minitest/autorun'
 require 'tempfile'
 require 'fileutils'
 require 'rbconfig'
-require_relative '../lib/ruby_minify'
+require_relative '../lib/ryac'
 
 # Test that minified gems pass their own test suites.
 # Excluded from default `rake test` — run with `rake test:gems`.
@@ -88,10 +88,10 @@ class TestGemMinification < Minitest::Test
   # catch regressions on large real code without asserting a promise the
   # levels don't make.
   CANARY_STAGES = [
-    RubyMinify::Minifier::OPTIMIZE,
-    [RubyMinify::Pipeline::ConstantAliaser],
-    [RubyMinify::Pipeline::AttrDeclShorten],
-    [RubyMinify::Pipeline::VariableRenamer, { features: { keywords: true } }]
+    Ryac::Minifier::OPTIMIZE,
+    [Ryac::Pipeline::ConstantAliaser],
+    [Ryac::Pipeline::AttrDeclShorten],
+    [Ryac::Pipeline::VariableRenamer, { features: { keywords: true } }]
   ].freeze
 
   GEMS.each do |gem_name, config|
@@ -141,7 +141,7 @@ class TestGemMinification < Minitest::Test
     baseline_failures = baseline_failures_for(gem_name, test_files, lib_dir,
                                                extra_includes: extra_includes, test_runner: test_runner, gem_dir: gem_dir)
 
-    minifier = RubyMinify::Minifier.new
+    minifier = Ryac::Minifier.new
     result = minifier.call(source_path, level: level)
 
     content = if result.aliases.empty?

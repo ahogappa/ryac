@@ -4,14 +4,14 @@ require_relative 'test_helper'
 
 class TestNameGenerator < Minitest::Test
   def test_first_26_names_are_single_letters
-    gen = RubyMinify::NameGenerator.new
+    gen = Ryac::NameGenerator.new
     expected = ('a'..'z').to_a
     actual = 26.times.map { gen.next_name }
     assert_equal expected, actual
   end
 
   def test_names_27_through_286_are_letter_digit_pairs
-    gen = RubyMinify::NameGenerator.new
+    gen = Ryac::NameGenerator.new
     26.times { gen.next_name } # skip a-z
 
     # First pair: a0
@@ -31,7 +31,7 @@ class TestNameGenerator < Minitest::Test
   end
 
   def test_names_after_286_are_three_chars
-    gen = RubyMinify::NameGenerator.new
+    gen = Ryac::NameGenerator.new
     # Skip first 26 (a-z) + 260 (a0-z9) = 286
     286.times { gen.next_name }
 
@@ -41,49 +41,49 @@ class TestNameGenerator < Minitest::Test
   end
 
   def test_exclusion_list_skips_names
-    gen = RubyMinify::NameGenerator.new(%w[a b c])
+    gen = Ryac::NameGenerator.new(%w[a b c])
     assert_equal 'd', gen.next_name
     assert_equal 'e', gen.next_name
   end
 
   def test_prefix_prepends_to_names
-    gen = RubyMinify::NameGenerator.new(prefix: "@")
+    gen = Ryac::NameGenerator.new(prefix: "@")
     assert_equal '@a', gen.next_name
     assert_equal '@b', gen.next_name
   end
 
   def test_upcase_generates_uppercase_names
-    gen = RubyMinify::NameGenerator.new(upcase: true)
+    gen = Ryac::NameGenerator.new(upcase: true)
     assert_equal 'A', gen.next_name
     assert_equal 'B', gen.next_name
   end
 
   def test_upcase_with_multi_char_names
-    gen = RubyMinify::NameGenerator.new(upcase: true)
+    gen = Ryac::NameGenerator.new(upcase: true)
     26.times { gen.next_name } # skip A-Z
     assert_equal 'A0', gen.next_name
     assert_equal 'A1', gen.next_name
   end
 
   def test_prefix_and_upcase_combined
-    gen = RubyMinify::NameGenerator.new(prefix: "@@", upcase: true)
+    gen = Ryac::NameGenerator.new(prefix: "@@", upcase: true)
     assert_equal '@@A', gen.next_name
   end
 
   def test_exclusion_with_upcase
     # Exclusion is checked before upcase transformation
-    gen = RubyMinify::NameGenerator.new(%w[a], upcase: true)
+    gen = Ryac::NameGenerator.new(%w[a], upcase: true)
     assert_equal 'B', gen.next_name
   end
 
   def test_no_duplicate_names_in_first_1000
-    gen = RubyMinify::NameGenerator.new
+    gen = Ryac::NameGenerator.new
     names = 1000.times.map { gen.next_name }
     assert_equal names.size, names.uniq.size, "Generated duplicate names"
   end
 
   def test_all_names_are_valid_identifiers
-    gen = RubyMinify::NameGenerator.new
+    gen = Ryac::NameGenerator.new
     names = 500.times.map { gen.next_name }
     names.each do |name|
       assert_match(/\A[a-z][a-z0-9]*\z/, name, "Invalid identifier: #{name}")
@@ -93,14 +93,14 @@ class TestNameGenerator < Minitest::Test
   # === alnum mode tests ===
 
   def test_alnum_first_26_same_as_default
-    gen = RubyMinify::NameGenerator.new(alnum: true)
+    gen = Ryac::NameGenerator.new(alnum: true)
     expected = ('a'..'z').to_a
     actual = 26.times.map { gen.next_name }
     assert_equal expected, actual
   end
 
   def test_alnum_two_char_names_use_letters_and_digits
-    gen = RubyMinify::NameGenerator.new(alnum: true)
+    gen = Ryac::NameGenerator.new(alnum: true)
     26.times { gen.next_name } # skip a-z
 
     # Second-position chars: 0-9, a-z (36 chars per first letter)
@@ -112,7 +112,7 @@ class TestNameGenerator < Minitest::Test
   end
 
   def test_alnum_total_two_char_names
-    gen = RubyMinify::NameGenerator.new(alnum: true)
+    gen = Ryac::NameGenerator.new(alnum: true)
     26.times { gen.next_name } # skip a-z
 
     # 26 * 36 = 936 two-char names
@@ -123,7 +123,7 @@ class TestNameGenerator < Minitest::Test
   end
 
   def test_alnum_three_char_names_start_after_962
-    gen = RubyMinify::NameGenerator.new(alnum: true)
+    gen = Ryac::NameGenerator.new(alnum: true)
     # 26 + 936 = 962 names of length <= 2
     962.times { gen.next_name }
 
@@ -133,13 +133,13 @@ class TestNameGenerator < Minitest::Test
   end
 
   def test_alnum_no_duplicates_in_first_2000
-    gen = RubyMinify::NameGenerator.new(alnum: true)
+    gen = Ryac::NameGenerator.new(alnum: true)
     names = 2000.times.map { gen.next_name }
     assert_equal names.size, names.uniq.size, "Generated duplicate names"
   end
 
   def test_alnum_all_valid_identifiers
-    gen = RubyMinify::NameGenerator.new(alnum: true)
+    gen = Ryac::NameGenerator.new(alnum: true)
     names = 1000.times.map { gen.next_name }
     names.each do |name|
       assert_match(/\A[a-z][a-z0-9]*\z/, name, "Invalid identifier: #{name}")
@@ -147,7 +147,7 @@ class TestNameGenerator < Minitest::Test
   end
 
   def test_alnum_with_keyword_exclusion
-    gen = RubyMinify::NameGenerator.new(%w[do if in or], alnum: true)
+    gen = Ryac::NameGenerator.new(%w[do if in or], alnum: true)
     26.times { gen.next_name } # skip a-z
 
     # Collect all 2-char names

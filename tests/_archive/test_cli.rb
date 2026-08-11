@@ -3,7 +3,7 @@
 require_relative 'test_helper'
 
 class TestCLI < Minitest::Test
-  MINIFY_BIN = File.expand_path('../bin/minify', __dir__)
+  MINIFY_BIN = File.expand_path('../bin/ryac', __dir__)
 
   def test_version_flag
     stdout, _stderr, status = Open3.capture3(RbConfig.ruby, MINIFY_BIN, '--version')

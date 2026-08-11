@@ -4,7 +4,7 @@ require_relative 'test_helper'
 
 # Test wrapper that includes UnionFind and exposes its methods
 class UnionFindWrapper
-  include RubyMinify::UnionFind
+  include Ryac::UnionFind
 
   def initialize
     uf_init

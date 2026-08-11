@@ -5,7 +5,7 @@ require 'open3'
 require 'tempfile'
 require 'fileutils'
 require 'rbconfig'
-require_relative '../lib/ruby_minify'
+require_relative '../lib/ryac'
 
 # Test that minified gems pass their own test suites.
 # Excluded from default `rake test` — run with `rake test:gems`.
@@ -127,7 +127,7 @@ class TestGemMinification < Minitest::Test
     end
     baseline_failures = parse_test_result(baseline[:stdout])
 
-    minifier = RubyMinify::Minifier.new
+    minifier = Ryac::Minifier.new
     result = minifier.call(source_path, level: level)
 
     content = if result.aliases.empty?

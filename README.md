@@ -1,6 +1,6 @@
-# RubyMinify
+# ryac
 
-A Ruby code minifier that uses [TypeProf](https://github.com/ruby/typeprof) for type-aware analysis and AST-based transformations to achieve high compression rates while preserving functional equivalence.
+**ryac** (pronounced *ryaku*, like 略 — Japanese for "abbreviation"; also **R**ename · **Y**ank · **A**lias · **C**ompact, which is the pipeline) — a Ruby code minifier that uses [TypeProf](https://github.com/ruby/typeprof) for type-aware analysis and AST-based transformations to achieve high compression rates while preserving functional equivalence.
 
 ## Philosophy
 
@@ -22,7 +22,7 @@ This project takes an **aggressive optimization** approach. In Ruby, even commen
 ## Installation
 
 ```ruby
-gem 'ruby-minify'
+gem 'ryac'
 ```
 
 ## Usage
@@ -31,36 +31,36 @@ gem 'ruby-minify'
 
 ```bash
 # Minify a file (follows require_relative automatically)
-bin/minify path/to/entry.rb
+bin/ryac path/to/entry.rb
 
 # Specify compression level (stable or unstable)
-bin/minify path/to/entry.rb -c stable
-bin/minify path/to/entry.rb -c unstable
+bin/ryac path/to/entry.rb -c stable
+bin/ryac path/to/entry.rb -c unstable
 
 # Write to output file
-bin/minify path/to/entry.rb -o minified.rb
+bin/ryac path/to/entry.rb -o minified.rb
 
 # Write constant aliases to a separate file (only generated at L2+)
-bin/minify path/to/entry.rb -o minified.rb -a aliases.rb
+bin/ryac path/to/entry.rb -o minified.rb -a aliases.rb
 
 # Multiple entry points
-bin/minify file1.rb file2.rb
+bin/ryac file1.rb file2.rb
 
 # Minify installed gem(s) by name (resolved via Gem::Specification)
-bin/minify -g rack
-bin/minify -g rack,rack-session -o bundle.rb
+bin/ryac -g rack
+bin/ryac -g rack,rack-session -o bundle.rb
 
 # Show version / help
-bin/minify -v
-bin/minify -h
+bin/ryac -v
+bin/ryac -h
 ```
 
 ### Ruby API
 
 ```ruby
-require 'ruby_minify'
+require 'ryac'
 
-minifier = RubyMinify::Minifier.new
+minifier = Ryac::Minifier.new
 result = minifier.call('path/to/entry.rb')
 
 puts result.content           # minified code
@@ -84,7 +84,7 @@ There are exactly two levels, named for their promise. The default is **`stable`
 
 Finer configurations are not levels: the pipeline is built from steps, and callers can pass an explicit stage list in place of a level name (`Minifier#call(path, level: [...stage defs...])`). The unit tests pin each step's behavior through exactly that mechanism.
 
-See [`tests/ruby_minify/pipeline/`](tests/ruby_minify/pipeline/) for per-stage transformation examples, and [`tests/ruby_minify/levels/`](tests/ruby_minify/levels/) for end-to-end compression examples.
+See [`tests/ryac/pipeline/`](tests/ryac/pipeline/) for per-stage transformation examples, and [`tests/ryac/levels/`](tests/ryac/levels/) for end-to-end compression examples.
 
 ### What the levels are verified against
 

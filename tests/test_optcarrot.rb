@@ -5,7 +5,7 @@ require 'tmpdir'
 require 'tempfile'
 require 'fileutils'
 require 'rbconfig'
-require_relative '../lib/ruby_minify'
+require_relative '../lib/ryac'
 require_relative 'support/constant_audit'
 
 # Optcarrot is what defines the aggressive end of the supported range: a real
@@ -99,7 +99,7 @@ class TestOptcarrot < Minitest::Test
   }.freeze
 
   def self.minified_result
-    @minified_result ||= RubyMinify::Minifier.new.call(ENTRY, level: SUPPORTED_LEVEL)
+    @minified_result ||= Ryac::Minifier.new.call(ENTRY, level: SUPPORTED_LEVEL)
   end
 
   def setup

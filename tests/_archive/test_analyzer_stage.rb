@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 require 'minitest/autorun'
-require_relative '../lib/ruby_minify'
+require_relative '../lib/ryac'
 
 class TestAnalyzerStage < Minitest::Test
   def setup
-    @analyzer = RubyMinify::Pipeline::Analyzer.new
+    @analyzer = Ryac::Pipeline::Analyzer.new
   end
 
   def test_analyzer_returns_analysis_result
@@ -13,7 +13,7 @@ class TestAnalyzerStage < Minitest::Test
 
     result = @analyzer.call(source)
 
-    assert_instance_of RubyMinify::Pipeline::AnalysisResult, result
+    assert_instance_of Ryac::Pipeline::AnalysisResult, result
   end
 
   def test_analyzer_builds_scope_mappings
@@ -51,7 +51,7 @@ class TestAnalyzerStage < Minitest::Test
   def test_analyzer_raises_on_syntax_error
     source = create_syntax_error_source
 
-    assert_raises(RubyMinify::SyntaxError) do
+    assert_raises(Ryac::SyntaxError) do
       @analyzer.call(source)
     end
   end
@@ -128,7 +128,7 @@ class TestAnalyzerStage < Minitest::Test
       end
     RUBY
 
-    source = RubyMinify::Pipeline::ConcatenatedSource.new(
+    source = Ryac::Pipeline::ConcatenatedSource.new(
       content: content,
       file_boundaries: [],
       original_size: content.bytesize,
@@ -156,7 +156,7 @@ class TestAnalyzerStage < Minitest::Test
       MyLongConstantName.new
     RUBY
 
-    source = RubyMinify::Pipeline::ConcatenatedSource.new(
+    source = Ryac::Pipeline::ConcatenatedSource.new(
       content: content,
       file_boundaries: [],
       original_size: content.bytesize,
@@ -198,10 +198,10 @@ class TestAnalyzerStage < Minitest::Test
       end
     RUBY
 
-    RubyMinify::Pipeline::ConcatenatedSource.new(
+    Ryac::Pipeline::ConcatenatedSource.new(
       content: content,
       file_boundaries: [
-        RubyMinify::Pipeline::FileBoundary.new(
+        Ryac::Pipeline::FileBoundary.new(
           path: '/fake/simple.rb',
           start_line: 1,
           end_line: 6
@@ -220,7 +220,7 @@ class TestAnalyzerStage < Minitest::Test
       end
     RUBY
 
-    RubyMinify::Pipeline::ConcatenatedSource.new(
+    Ryac::Pipeline::ConcatenatedSource.new(
       content: content,
       file_boundaries: [],
       original_size: content.bytesize,
@@ -236,7 +236,7 @@ class TestAnalyzerStage < Minitest::Test
       MyLongClassName.new
     RUBY
 
-    RubyMinify::Pipeline::ConcatenatedSource.new(
+    Ryac::Pipeline::ConcatenatedSource.new(
       content: content,
       file_boundaries: [],
       original_size: content.bytesize,
@@ -247,7 +247,7 @@ class TestAnalyzerStage < Minitest::Test
   def create_syntax_error_source
     content = "def broken(\n"
 
-    RubyMinify::Pipeline::ConcatenatedSource.new(
+    Ryac::Pipeline::ConcatenatedSource.new(
       content: content,
       file_boundaries: [],
       original_size: content.bytesize,

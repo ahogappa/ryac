@@ -159,9 +159,9 @@ module ConstantAudit
   end
 
   # Same contract as the pipeline's own path walker; the requiring tests
-  # load lib/ruby_minify first, so delegate instead of keeping a copy.
+  # load lib/ryac first, so delegate instead of keeping a copy.
   def path_segments(node)
-    RubyMinify::Nesting.path_segments(node)
+    Ryac::Nesting.path_segments(node)
   end
 
   def internally_resolved?(read, ctx)

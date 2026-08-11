@@ -8,12 +8,12 @@ require 'tmpdir'
 class TestIntegration < Minitest::Test
   include MinifyTestHelper
 
-  LIB_ENTRY = File.expand_path('../lib/ruby_minify.rb', __dir__)
+  LIB_ENTRY = File.expand_path('../lib/ryac.rb', __dir__)
 
   # Minifying the minifier dominates this file's runtime; every test shares
   # one build of the :unstable artifact.
   def self.unstable_artifact
-    @unstable_artifact ||= RubyMinify::Minifier.new.call(LIB_ENTRY, level: :unstable)
+    @unstable_artifact ||= Ryac::Minifier.new.call(LIB_ENTRY, level: :unstable)
   end
 
   # ===============================================
@@ -46,7 +46,7 @@ class TestIntegration < Minitest::Test
       runner_code = <<~RUBY
         require '#{minified_minifier_path}'
         require '#{aliases_path}'
-        minifier = RubyMinify::Minifier.new
+        minifier = Ryac::Minifier.new
         result = minifier.call('#{LIB_ENTRY}', level: :unstable)
         puts result.content
       RUBY
@@ -61,7 +61,7 @@ class TestIntegration < Minitest::Test
              "Minified minifier should produce identical output when minifying original source"
 
       # Step 4: Re-minification should be idempotent (same size)
-      re_minifier = RubyMinify::Minifier.new
+      re_minifier = Ryac::Minifier.new
       result3 = re_minifier.call(minified_minifier_path, level: :unstable)
       RubyVM::InstructionSequence.compile(result3.content)
       assert_equal result1.content, result3.content,
@@ -149,9 +149,9 @@ class TestIntegration < Minitest::Test
       Dir.mkdir(File.join(fixture_dir, 'sig'))
       File.write(File.join(fixture_dir, 'sig', 'app.rbs'), CROSS_LEVEL_RBS)
 
-      levels = RubyMinify::Minifier::STAGES.keys
+      levels = Ryac::Minifier::STAGES.keys
       expected_by_level = levels.to_h do |level|
-        [level, RubyMinify::Minifier.new.call(fixture_path, level: level, project_root: fixture_dir)]
+        [level, Ryac::Minifier.new.call(fixture_path, level: level, project_root: fixture_dir)]
       end
       expected_by_level.each do |level, expected|
         assert_empty ConstantAudit.unresolved(expected.content, extra_source: expected.aliases)
@@ -165,7 +165,7 @@ class TestIntegration < Minitest::Test
         require '#{minified_path}'
         require '#{aliases_path}'
         #{levels.inspect}.each do |level|
-          result = RubyMinify::Minifier.new.call('#{fixture_path}', level: level, project_root: '#{fixture_dir}')
+          result = Ryac::Minifier.new.call('#{fixture_path}', level: level, project_root: '#{fixture_dir}')
           print #{LEVEL_MARKER.dump}
           print result.content
           print #{SPLIT_MARKER.dump}

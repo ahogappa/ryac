@@ -4,7 +4,7 @@ require_relative 'test_helper'
 
 class TestParenthesisRemoval < Minitest::Test
   def optimize(source)
-    RubyMinify::Pipeline::ParenOptimizer.new.call(source)
+    Ryac::Pipeline::ParenOptimizer.new.call(source)
   end
 
   # === Removal cases (statement_level = true) ===
