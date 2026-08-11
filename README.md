@@ -1,6 +1,6 @@
 # ryac
 
-**ryac** — minify the word *ruby* and you are left with *ry*; this tool then analyzes and compacts, so: Rub**y**, **A**nalyzed & **C**ompacted. Pronounced *ryaku*, like 略 — the Japanese word for "abbreviation".
+**ryac** — minify the word *ruby* and you are left with *ry*; this tool then analyzes and compacts, so: **R**ub**y**, **A**nalyzed & **C**ompacted. Pronounced *ryaku*, like 略 — the Japanese word for "abbreviation".
 
 A Ruby code minifier that uses [TypeProf](https://github.com/ruby/typeprof) for type-aware analysis and AST-based transformations to achieve high compression rates while preserving functional equivalence.
 
