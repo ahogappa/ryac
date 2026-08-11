@@ -13,15 +13,15 @@ Gem::Specification.new do |spec|
                      "It supports multi-file bundling via require_relative, 6 compression levels (whitespace removal, " \
                      "constant folding, constant/variable/method renaming), and preserves functional equivalence " \
                      "through scope-aware analysis."
-  spec.homepage = "https://github.com/ahogappa/ruby-minify"
+  spec.homepage = "https://github.com/ahogappa/ryac"
   spec.license = "MIT"
   # Set by the hard floor of typeprof, which requires Ruby >= 3.3. Nothing in
   # lib/ needs anything newer; the suite passes on 3.3 and on 4.0.
   spec.required_ruby_version = ">= 3.3.0"
 
   spec.metadata["homepage_uri"] = spec.homepage
-  spec.metadata["source_code_uri"] = "https://github.com/ahogappa/ruby-minify"
-  spec.metadata["changelog_uri"] = "https://github.com/ahogappa/ruby-minify/releases"
+  spec.metadata["source_code_uri"] = "https://github.com/ahogappa/ryac"
+  spec.metadata["changelog_uri"] = "https://github.com/ahogappa/ryac/releases"
 
   # Specify which files should be added to the gem when it is released.
   # The `git ls-files -z` loads the files in the RubyGem that have been added into git.
