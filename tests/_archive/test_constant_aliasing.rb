@@ -12,7 +12,7 @@ class TestConstantAliasing < Minitest::Test
   # ===========================================
 
   def test_constant_name_generator_sequence
-    generator = RubyMinify::NameGenerator.new([], upcase: true)
+    generator = Ryac::NameGenerator.new([], upcase: true)
 
     assert_equal 'A', generator.next_name
     assert_equal 'B', generator.next_name
@@ -30,7 +30,7 @@ class TestConstantAliasing < Minitest::Test
   end
 
   def test_name_generator_sequence_with_digits
-    generator = RubyMinify::NameGenerator.new
+    generator = Ryac::NameGenerator.new
 
     ('a'..'z').each { |c| assert_equal c, generator.next_name }
 
@@ -51,7 +51,7 @@ class TestConstantAliasing < Minitest::Test
   end
 
   def test_constant_alias_mapping_basic
-    mapping = RubyMinify::ConstantAliasMapping.new
+    mapping = Ryac::ConstantAliasMapping.new
 
     mapping.add_definition_with_path([:MyClass], definition_type: :class)
     mapping.add_definition_with_path([:AnotherClass], definition_type: :class)
@@ -59,7 +59,7 @@ class TestConstantAliasing < Minitest::Test
     5.times { mapping.increment_usage(:MyClass) }
     3.times { mapping.increment_usage(:AnotherClass) }
 
-    generator = RubyMinify::NameGenerator.new([], upcase: true)
+    generator = Ryac::NameGenerator.new([], upcase: true)
     mapping.freeze_mapping(generator)
 
     assert_nil mapping.short_name_for(:MyClass)
@@ -67,7 +67,7 @@ class TestConstantAliasing < Minitest::Test
   end
 
   def test_constant_alias_mapping_renames_short_names
-    mapping = RubyMinify::ConstantAliasMapping.new
+    mapping = Ryac::ConstantAliasMapping.new
 
     mapping.add_definition_with_path([:Foo], definition_type: :class)
     mapping.increment_usage(:Foo)
@@ -75,7 +75,7 @@ class TestConstantAliasing < Minitest::Test
     mapping.add_definition_with_path([:LongClassName], definition_type: :class)
     3.times { mapping.increment_usage(:LongClassName) }
 
-    generator = RubyMinify::NameGenerator.new([], upcase: true)
+    generator = Ryac::NameGenerator.new([], upcase: true)
     mapping.freeze_mapping(generator)
 
     assert_nil mapping.short_name_for(:LongClassName)
@@ -84,12 +84,12 @@ class TestConstantAliasing < Minitest::Test
 
   def test_external_prefix_aliaser_unit
     user_defined_paths = Set.new([[:MyClass]])
-    aliaser = RubyMinify::ExternalPrefixAliaser.new(user_defined_paths)
+    aliaser = Ryac::ExternalPrefixAliaser.new(user_defined_paths)
 
     10.times { aliaser.collect_reference([:TypeProf, :Core, :AST, :CallNode]) }
     5.times { aliaser.collect_reference([:TypeProf, :Core, :AST, :DefNode]) }
 
-    generator = RubyMinify::NameGenerator.new([], upcase: true)
+    generator = Ryac::NameGenerator.new([], upcase: true)
     aliaser.freeze_mapping(generator)
 
     assert aliaser.prefix_aliased?([:TypeProf, :Core, :AST, :CallNode]),
@@ -105,11 +105,11 @@ class TestConstantAliasing < Minitest::Test
 
   def test_external_prefix_aliaser_min_savings_threshold
     user_defined_paths = Set.new([[:MyClass]])
-    aliaser = RubyMinify::ExternalPrefixAliaser.new(user_defined_paths)
+    aliaser = Ryac::ExternalPrefixAliaser.new(user_defined_paths)
 
     aliaser.collect_reference([:Foo, :Bar])
 
-    generator = RubyMinify::NameGenerator.new([], upcase: true)
+    generator = Ryac::NameGenerator.new([], upcase: true)
     aliaser.freeze_mapping(generator)
 
     refute aliaser.prefix_aliased?([:Foo, :Bar, :Baz]),
@@ -118,11 +118,11 @@ class TestConstantAliasing < Minitest::Test
 
   def test_external_prefix_aliaser_user_defined_excluded
     user_defined_paths = Set.new([[:MyModule, :MyClass]])
-    aliaser = RubyMinify::ExternalPrefixAliaser.new(user_defined_paths)
+    aliaser = Ryac::ExternalPrefixAliaser.new(user_defined_paths)
 
     10.times { aliaser.collect_reference([:MyModule, :MyClass]) }
 
-    generator = RubyMinify::NameGenerator.new([], upcase: true)
+    generator = Ryac::NameGenerator.new([], upcase: true)
     aliaser.freeze_mapping(generator)
 
     decls = aliaser.generate_prefix_declarations
@@ -131,14 +131,14 @@ class TestConstantAliasing < Minitest::Test
 
   def test_external_prefix_aliaser_declaration_references
     user_defined_paths = Set.new
-    aliaser = RubyMinify::ExternalPrefixAliaser.new(user_defined_paths)
+    aliaser = Ryac::ExternalPrefixAliaser.new(user_defined_paths)
 
     5.times { aliaser.collect_reference([:Lib, :Sub, :ClassA]) }
     3.times { aliaser.collect_reference([:Library, :Config]) }
     3.times { aliaser.collect_reference([:Library, :Loader]) }
     5.times { aliaser.collect_reference([:Library, :Sub, :NodeA]) }
 
-    generator = RubyMinify::NameGenerator.new([], upcase: true)
+    generator = Ryac::NameGenerator.new([], upcase: true)
     aliaser.freeze_mapping(generator)
 
     assert aliaser.prefix_aliased?([:Lib, :Sub, :ClassA])
@@ -147,7 +147,7 @@ class TestConstantAliasing < Minitest::Test
 
   def test_external_prefix_aliaser_declaration_reference_tips_balance
     user_defined_paths = Set.new
-    aliaser = RubyMinify::ExternalPrefixAliaser.new(user_defined_paths)
+    aliaser = Ryac::ExternalPrefixAliaser.new(user_defined_paths)
 
     4.times { aliaser.collect_reference([:RuboCop, :Cop, :Team]) }
     4.times { aliaser.collect_reference([:RuboCop, :Cop, :Corrector]) }
@@ -156,7 +156,7 @@ class TestConstantAliasing < Minitest::Test
     aliaser.collect_reference([:RuboCop, :ConfigLoader])
     aliaser.collect_reference([:RuboCop, :Config])
 
-    generator = RubyMinify::NameGenerator.new([], upcase: true)
+    generator = Ryac::NameGenerator.new([], upcase: true)
     aliaser.freeze_mapping(generator)
 
     assert aliaser.prefix_aliased?([:RuboCop, :Cop, :Team]),
@@ -175,12 +175,12 @@ class TestConstantAliasing < Minitest::Test
   end
 
   def test_external_prefix_aliaser_chained_declarations
-    aliaser = RubyMinify::ExternalPrefixAliaser.new(Set.new)
+    aliaser = Ryac::ExternalPrefixAliaser.new(Set.new)
 
     10.times { aliaser.collect_reference([:Alpha, :Beta, :Gamma, :ClassX]) }
     10.times { aliaser.collect_reference([:Alpha, :Beta, :Delta, :ClassY]) }
 
-    generator = RubyMinify::NameGenerator.new([], upcase: true)
+    generator = Ryac::NameGenerator.new([], upcase: true)
     aliaser.freeze_mapping(generator)
 
     decls = aliaser.generate_prefix_declarations
@@ -196,12 +196,12 @@ class TestConstantAliasing < Minitest::Test
   end
 
   def test_external_prefix_aliaser_common_sub_prefix
-    aliaser = RubyMinify::ExternalPrefixAliaser.new(Set.new)
+    aliaser = Ryac::ExternalPrefixAliaser.new(Set.new)
 
     10.times { aliaser.collect_reference([:LongPrefix, :SubModule, :GroupA, :NodeX]) }
     10.times { aliaser.collect_reference([:LongPrefix, :SubModule, :GroupB, :NodeY]) }
 
-    generator = RubyMinify::NameGenerator.new([], upcase: true)
+    generator = Ryac::NameGenerator.new([], upcase: true)
     aliaser.freeze_mapping(generator)
 
     assert aliaser.prefix_aliased?([:LongPrefix, :SubModule, :GroupA, :NodeX])
@@ -213,11 +213,11 @@ class TestConstantAliasing < Minitest::Test
   end
 
   def test_external_prefix_aliaser_single_element_path_ignored
-    aliaser = RubyMinify::ExternalPrefixAliaser.new(Set.new)
+    aliaser = Ryac::ExternalPrefixAliaser.new(Set.new)
 
     10.times { aliaser.collect_reference([:Foo]) }
 
-    generator = RubyMinify::NameGenerator.new([], upcase: true)
+    generator = Ryac::NameGenerator.new([], upcase: true)
     aliaser.freeze_mapping(generator)
 
     assert_equal({}, aliaser.mappings)
@@ -225,9 +225,9 @@ class TestConstantAliasing < Minitest::Test
   end
 
   def test_external_prefix_aliaser_empty_references
-    aliaser = RubyMinify::ExternalPrefixAliaser.new(Set.new)
+    aliaser = Ryac::ExternalPrefixAliaser.new(Set.new)
 
-    generator = RubyMinify::NameGenerator.new([], upcase: true)
+    generator = Ryac::NameGenerator.new([], upcase: true)
     aliaser.freeze_mapping(generator)
 
     assert_equal({}, aliaser.mappings)
@@ -235,12 +235,12 @@ class TestConstantAliasing < Minitest::Test
   end
 
   def test_external_prefix_aliaser_candidate_length_recalc
-    aliaser = RubyMinify::ExternalPrefixAliaser.new(Set.new)
+    aliaser = Ryac::ExternalPrefixAliaser.new(Set.new)
 
     3.times { aliaser.collect_reference([:Ab, :X]) }
 
     existing = ('A'..'Z').to_a
-    generator = RubyMinify::NameGenerator.new(existing, upcase: true)
+    generator = Ryac::NameGenerator.new(existing, upcase: true)
     aliaser.freeze_mapping(generator)
 
     refute aliaser.prefix_aliased?([:Ab, :X]),
@@ -248,20 +248,20 @@ class TestConstantAliasing < Minitest::Test
   end
 
   def test_external_prefix_aliaser_double_freeze_raises
-    aliaser = RubyMinify::ExternalPrefixAliaser.new(Set.new)
-    generator = RubyMinify::NameGenerator.new([], upcase: true)
+    aliaser = Ryac::ExternalPrefixAliaser.new(Set.new)
+    generator = Ryac::NameGenerator.new([], upcase: true)
     aliaser.freeze_mapping(generator)
 
     assert_raises(RuntimeError) { aliaser.freeze_mapping(generator) }
   end
 
   def test_external_prefix_aliaser_declaration_order
-    aliaser = RubyMinify::ExternalPrefixAliaser.new(Set.new)
+    aliaser = Ryac::ExternalPrefixAliaser.new(Set.new)
 
     10.times { aliaser.collect_reference([:Root, :Mid, :Leaf, :Node]) }
     5.times { aliaser.collect_reference([:Root, :Other]) }
 
-    generator = RubyMinify::NameGenerator.new([], upcase: true)
+    generator = Ryac::NameGenerator.new([], upcase: true)
     aliaser.freeze_mapping(generator)
 
     decls = aliaser.generate_prefix_declarations
@@ -638,24 +638,24 @@ class TestConstantAliasing < Minitest::Test
       end
     RUBY
 
-    source = RubyMinify::Pipeline::ConcatenatedSource.new(
+    source = Ryac::Pipeline::ConcatenatedSource.new(
       content: code, file_boundaries: [], original_size: code.bytesize,
       stdlib_requires: [], rbs_files: {}
     )
-    source = RubyMinify::Pipeline::Preprocessor.new.call(source)
-    compacted = RubyMinify::Pipeline::Compactor.new.call(source.content)
-    optimized = RubyMinify::Minifier::OPTIMIZE[0...-1].reduce(compacted) { |r, k| k.new.call(r) }
-    optimized = RubyMinify::Pipeline::ParenOptimizer.new.call(optimized)
-    rename_source = RubyMinify::Pipeline::ConcatenatedSource.new(
+    source = Ryac::Pipeline::Preprocessor.new.call(source)
+    compacted = Ryac::Pipeline::Compactor.new.call(source.content)
+    optimized = Ryac::Minifier::OPTIMIZE[0...-1].reduce(compacted) { |r, k| k.new.call(r) }
+    optimized = Ryac::Pipeline::ParenOptimizer.new.call(optimized)
+    rename_source = Ryac::Pipeline::ConcatenatedSource.new(
       content: optimized, file_boundaries: [], original_size: optimized.bytesize,
       stdlib_requires: [], rbs_files: {}
     )
     stage_defs = [
-      [RubyMinify::Pipeline::ConstantAliaser],
-      [RubyMinify::Pipeline::VariableRenamer],
-      [RubyMinify::Pipeline::MethodRenamer]
+      [Ryac::Pipeline::ConstantAliaser],
+      [Ryac::Pipeline::VariableRenamer],
+      [Ryac::Pipeline::MethodRenamer]
     ]
-    minified = RubyMinify::Pipeline::UnifiedRenamer.new.call(rename_source, stage_defs)
+    minified = Ryac::Pipeline::UnifiedRenamer.new.call(rename_source, stage_defs)
 
     assert_equal 'A=TypeProf::Core::AST;class MyMinifier;def process(a);case a;when A::CallNode;e;when A::DefNode;f;when A::ClassNode;c;when A::ModuleNode;b;when A::IfNode;g;when A::WhileNode;d;end;end;def e;end;def f;end;def c;end;def b;end;def g;end;def d;end;end', minified.code
     assert_equal '', minified.aliases

@@ -11,26 +11,43 @@ require 'minitest/autorun'
 require 'open3'
 require 'tempfile'
 require 'rbconfig'
-require_relative '../lib/ruby_minify'
+require_relative '../lib/ryac'
 
 module MinifyTestHelper
+  # Sub-pipeline recipes for unit tests. The public surface has exactly two
+  # presets (:stable / :unstable); tests additionally pin the behavior of
+  # individual stages by composing steps directly — the supported way to run
+  # a partial pipeline. The historical numbers survive here only as recipe
+  # names, so stage-focused tests can keep saying which slice they exercise.
+  STAGE_RECIPES = {
+    0 => [],
+    1 => [Ryac::Minifier::OPTIMIZE],
+    2 => [Ryac::Minifier::OPTIMIZE,
+          [Ryac::Pipeline::ConstantAliaser], [Ryac::Pipeline::AttrDeclShorten]],
+    3 => [Ryac::Minifier::OPTIMIZE,
+          [Ryac::Pipeline::ConstantAliaser], [Ryac::Pipeline::AttrDeclShorten],
+          [Ryac::Pipeline::VariableRenamer, { features: { keywords: true } }]],
+    4 => Ryac::Minifier::STAGES[:stable],
+    5 => Ryac::Minifier::STAGES[:unstable]
+  }.freeze
+
   def minify_code(code, _options = {}, rbs_files: {})
-    minify_at_level(code, RubyMinify::Minifier::DEFAULT_LEVEL, rbs_files: rbs_files)
+    minify_at_level(code, Ryac::Minifier::DEFAULT_LEVEL, rbs_files: rbs_files)
   end
 
   def minify_at_level(code, level, verify_output: true, rbs_files: {})
-    source = RubyMinify::Pipeline::ConcatenatedSource.new(
+    source = Ryac::Pipeline::ConcatenatedSource.new(
       content: code,
       file_boundaries: [],
       original_size: code.bytesize,
       stdlib_requires: [],
       rbs_files: rbs_files
     )
-    source = RubyMinify::Pipeline::Preprocessor.new.call(source)
+    source = Ryac::Pipeline::Preprocessor.new.call(source)
 
-    compacted = RubyMinify::Pipeline::Compactor.new.call(source.content)
-    stages = RubyMinify::Minifier::STAGES[level] || RubyMinify::Minifier::STAGES[RubyMinify::Minifier::DEFAULT_LEVEL]
-    result = RubyMinify::Minifier.run_stages(compacted, stages, rbs_files: rbs_files)
+    compacted = Ryac::Pipeline::Compactor.new.call(source.content)
+    stages = level.is_a?(Symbol) ? Ryac::Minifier::STAGES.fetch(level) : STAGE_RECIPES.fetch(level)
+    result = Ryac::Minifier.run_stages(compacted, stages, rbs_files: rbs_files)
 
     assert_output_preserved(code, result) if verify_output
     result
@@ -60,14 +77,11 @@ module MinifyTestHelper
 end
 
 # Fake node for unit testing rename mapping classes.
-# Simulates code_range for RubyMinify.location_key.
+# Simulates code_range for Ryac.location_key.
 module FakeNodeSupport
-  FakePosition = Struct.new(:lineno, :column)
-
-  FakeCodeRange = Struct.new(:id) do
-    def first = FakeNodeSupport::FakePosition.new(id, 0)
-    def last = FakeNodeSupport::FakePosition.new(id, 0)
-  end
+  # Stands in for Prism::Location: AstUtils.location_key keys everything by
+  # byte offsets, so a double only has to offer those.
+  FakeLocation = Struct.new(:start_offset, :end_offset)
 
   FAKE_CREF_CACHE = {}
 
@@ -86,7 +100,7 @@ module FakeNodeSupport
       super(id: id, cref_id: cref_id)
     end
 
-    def code_range = FakeNodeSupport::FakeCodeRange.new(id)
+    def location = FakeNodeSupport::FakeLocation.new(id, id)
 
     def lenv
       return nil unless cref_id
@@ -95,5 +109,6 @@ module FakeNodeSupport
   end
 
   def fake_node(id, **kw) = FakeNode.new(id, **kw)
-  def loc_key(id) = [id << 20, id << 20]
+  def loc_key(id) = [id, id]
+
 end

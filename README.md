@@ -1,6 +1,6 @@
-# RubyMinify
+# ryac
 
-A Ruby code minifier that uses [TypeProf](https://github.com/ruby/typeprof) for type-aware analysis and AST-based transformations to achieve high compression rates while preserving functional equivalence.
+**ryac** (pronounced *ryaku*, like 略 — Japanese for "abbreviation"; also **R**ename · **Y**ank · **A**lias · **C**ompact, which is the pipeline) — a Ruby code minifier that uses [TypeProf](https://github.com/ruby/typeprof) for type-aware analysis and AST-based transformations to achieve high compression rates while preserving functional equivalence.
 
 ## Philosophy
 
@@ -22,7 +22,7 @@ This project takes an **aggressive optimization** approach. In Ruby, even commen
 ## Installation
 
 ```ruby
-gem 'ruby-minify'
+gem 'ryac'
 ```
 
 ## Usage
@@ -31,32 +31,36 @@ gem 'ruby-minify'
 
 ```bash
 # Minify a file (follows require_relative automatically)
-bin/minify path/to/entry.rb
+bin/ryac path/to/entry.rb
 
-# Specify compression level (0-5 or alias: min, stable, unstable, max)
-bin/minify path/to/entry.rb -c 5
-bin/minify path/to/entry.rb -c max
+# Specify compression level (stable or unstable)
+bin/ryac path/to/entry.rb -c stable
+bin/ryac path/to/entry.rb -c unstable
 
 # Write to output file
-bin/minify path/to/entry.rb -o minified.rb
+bin/ryac path/to/entry.rb -o minified.rb
 
 # Write constant aliases to a separate file (only generated at L2+)
-bin/minify path/to/entry.rb -o minified.rb -a aliases.rb
+bin/ryac path/to/entry.rb -o minified.rb -a aliases.rb
 
 # Multiple entry points
-bin/minify file1.rb file2.rb
+bin/ryac file1.rb file2.rb
+
+# Minify installed gem(s) by name (resolved via Gem::Specification)
+bin/ryac -g rack
+bin/ryac -g rack,rack-session -o bundle.rb
 
 # Show version / help
-bin/minify -v
-bin/minify -h
+bin/ryac -v
+bin/ryac -h
 ```
 
 ### Ruby API
 
 ```ruby
-require 'ruby_minify'
+require 'ryac'
 
-minifier = RubyMinify::Minifier.new
+minifier = Ryac::Minifier.new
 result = minifier.call('path/to/entry.rb')
 
 puts result.content           # minified code
@@ -71,18 +75,25 @@ result = minifier.call('path/to/entry.rb', level: 5)
 
 ## Optimization Levels
 
-The default level is **3** (`stable`). Levels 0-3 are safe transformations that preserve all public interfaces. Levels 4-5 are aggressive and may break code that relies on reflection or name inspection.
+There are exactly two levels, named for their promise. The default is **`stable`**.
 
-| Level | Alias | Transformations | Safety |
-|-------|-------|----------------|--------|
-| 0 | `min` | Whitespace/comment removal (AST rebuild) | Safe |
-| 1 | | + AST transformations (boolean/char/constant folding, control flow, endless methods, paren removal) | Safe |
-| 2 | | + Constant aliasing, external prefix aliasing | Safe |
-| 3 | `stable` | + Local variable & keyword argument renaming | Safe |
-| 4 | `unstable` | + Class/module renaming, instance/class/global variable renaming | Aggressive |
-| 5 | `max` | + Method renaming, attr-backed ivar coordination | Aggressive |
+| Level | Transformations | Promise |
+|-------|----------------|---------|
+| `stable` | AST compaction and folding, constant/class/module renaming with compatibility aliases, external prefix aliasing, local/keyword/instance/class/global variable renaming | Verified frame-for-frame on a real program (Optcarrot). Sound under closed-world analysis; reflection over *names the program renames* is the caveat. |
+| `unstable` | + Method renaming, attr-backed ivar coordination | A program can defeat method renaming by construction (names inside strings, `eval`'d source, `send(computed)`), so this works only when the program plays along. Verified by self-hosting. |
 
-See [`tests/ruby_minify/pipeline/`](tests/ruby_minify/pipeline/) for per-stage transformation examples, and [`tests/ruby_minify/levels/`](tests/ruby_minify/levels/) for end-to-end compression examples at each level.
+Finer configurations are not levels: the pipeline is built from steps, and callers can pass an explicit stage list in place of a level name (`Minifier#call(path, level: [...stage defs...])`). The unit tests pin each step's behavior through exactly that mechanism.
+
+See [`tests/ryac/pipeline/`](tests/ryac/pipeline/) for per-stage transformation examples, and [`tests/ryac/levels/`](tests/ryac/levels/) for end-to-end compression examples.
+
+### What the levels are verified against
+
+The supported boundary is defined by two programs, both verified in CI:
+
+- **[Optcarrot](https://github.com/mame/optcarrot) at `stable`** — the minified emulator matches the original frame-for-frame across the 180-frame demo and three scripted play scenarios (1,820 frames of title menus, piece rotation, pausing and button mashing) ([`tests/test_optcarrot.rb`](tests/test_optcarrot.rb))
+- **This minifier itself at `unstable`** — the minified minifier re-minifies the original source to identical output, and minifying its own output is a byte-identical fixed point ([`tests/test_integration.rb`](tests/test_integration.rb))
+
+Whether `unstable` holds for a given program depends on the program. Optcarrot stops at `stable` because it defeats method renaming by construction: it builds its CPU/PPU cores as source strings and `eval`s them, scans that text for `@ivar` names with a regexp, and dispatches through `send(computed_symbol)` — method names survive inside strings, out of reach of static analysis. The sinatra and rubocop suites run in CI as regression canaries on a keyword-only step composition, but they sit outside this boundary and do not define it.
 
 ## Development
 
@@ -100,6 +111,10 @@ rake test:integration
 
 # Run gem integration tests (minifies real gems and runs their test suites)
 rake test:gems
+
+# Minify optcarrot at L4 and compare rendered frames against the original
+# (requires gem_tests/optcarrot: git clone https://github.com/mame/optcarrot gem_tests/optcarrot)
+rake test:optcarrot
 
 # Show compression ratio on self-hosting
 rake benchmark

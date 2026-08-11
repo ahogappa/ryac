@@ -4,7 +4,7 @@ require_relative 'test_helper'
 
 class TestParenOptimizer < Minitest::Test
   def optimize(source)
-    RubyMinify::Pipeline::ParenOptimizer.new.call(source)
+    Ryac::Pipeline::ParenOptimizer.new.call(source)
   end
 
   # === Statement-level paren removal ===
@@ -150,12 +150,12 @@ class TestParenOptimizer < Minitest::Test
       end
       puts my_method("a")
     RUBY
-    source = RubyMinify::Pipeline::ConcatenatedSource.new(
+    source = Ryac::Pipeline::ConcatenatedSource.new(
       content: code, file_boundaries: [], original_size: code.bytesize, stdlib_requires: []
     )
-    preprocessed = RubyMinify::Pipeline::Preprocessor.new.call(source)
-    compacted = RubyMinify::Pipeline::Compactor.new.call(preprocessed.content)
-    syntax_optimized = RubyMinify::Minifier::OPTIMIZE[0...-1].reduce(compacted) { |r, k| k.new.call(r) }
+    preprocessed = Ryac::Pipeline::Preprocessor.new.call(source)
+    compacted = Ryac::Pipeline::Compactor.new.call(preprocessed.content)
+    syntax_optimized = Ryac::Minifier::OPTIMIZE[0...-1].reduce(compacted) { |r, k| k.new.call(r) }
     result = optimize(syntax_optimized)
     assert_equal "x=!!1;y=!1;puts x,y;def my_method(my_arg) =my_arg ? \"hello\":\"world\";puts my_method(?a)", result
   end

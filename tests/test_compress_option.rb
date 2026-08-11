@@ -3,37 +3,21 @@
 require_relative 'test_helper'
 
 class TestResolveLevel < Minitest::Test
-  def test_numeric_levels
-    (0..5).each do |n|
-      assert_equal n, RubyMinify::Minifier.resolve_level(n.to_s)
+  def test_the_two_levels_resolve
+    assert_equal :stable, Ryac::Minifier.resolve_level('stable')
+    assert_equal :unstable, Ryac::Minifier.resolve_level('unstable')
+    assert_equal :stable, Ryac::Minifier.resolve_level(:stable)
+  end
+
+  def test_numbers_and_old_aliases_are_gone
+    %w[0 3 5 min max unknown].each do |value|
+      assert_raises(ArgumentError) { Ryac::Minifier.resolve_level(value) }
     end
-  end
-
-  def test_stable_alias_resolves_to_level_3
-    assert_equal 3, RubyMinify::Minifier.resolve_level('stable')
-  end
-
-  def test_unstable_alias_resolves_to_level_4
-    assert_equal 4, RubyMinify::Minifier.resolve_level('unstable')
-  end
-
-  def test_min_alias_resolves_to_level_0
-    assert_equal 0, RubyMinify::Minifier.resolve_level('min')
-  end
-
-  def test_max_alias_resolves_to_level_5
-    assert_equal 5, RubyMinify::Minifier.resolve_level('max')
-  end
-
-  def test_invalid_level_raises
-    assert_raises(ArgumentError) { RubyMinify::Minifier.resolve_level('unknown') }
-    assert_raises(ArgumentError) { RubyMinify::Minifier.resolve_level('6') }
-    assert_raises(ArgumentError) { RubyMinify::Minifier.resolve_level('-1') }
   end
 end
 
 class TestCompressCLI < Minitest::Test
-  MINIFY_BIN = File.expand_path('../bin/minify', __dir__)
+  MINIFY_BIN = File.expand_path('../bin/ryac', __dir__)
 
   def setup
     @input = Tempfile.new(['test_compress', '.rb'])
@@ -45,9 +29,10 @@ class TestCompressCLI < Minitest::Test
     @input.close!
   end
 
-  def test_compress_with_numeric_level
-    _stdout, stderr, status = Open3.capture3(RbConfig.ruby, MINIFY_BIN, '-c', '0', @input.path)
-    assert status.success?, "minify failed: #{stderr}"
+  def test_compress_rejects_numeric_level
+    _stdout, stderr, status = Open3.capture3(RbConfig.ruby, MINIFY_BIN, '-c', '3', @input.path)
+    refute status.success?
+    assert stderr.include?("Invalid compress level"), "Expected rejection of numeric level: #{stderr}"
   end
 
   def test_compress_with_stable

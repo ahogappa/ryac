@@ -1,0 +1,30 @@
+module Ryac
+  class Minifier
+    DEFAULT_LEVEL: Symbol
+
+    type optimizer_class = singleton(Pipeline::BooleanShorten) | singleton(Pipeline::CharShorten) | singleton(Pipeline::ConstantFold) | singleton(Pipeline::ControlFlowSimplify) | singleton(Pipeline::EndlessMethod) | singleton(Pipeline::ParenOptimizer)
+    type renamer_class = singleton(Pipeline::ConstantAliaser) | singleton(Pipeline::AttrDeclShorten) | singleton(Pipeline::VariableRenamer) | singleton(Pipeline::MethodRenamer)
+    type stage_entry = Hash[optimizer_class, Integer] | [renamer_class] | [renamer_class, Hash[Symbol, bool]]
+
+    def self.resolve_level: (String | Symbol value) -> Symbol
+
+    OPTIMIZE: Hash[optimizer_class, Integer]
+    ALL_VAR_FEATURES: Hash[Symbol, Hash[Symbol, bool]]
+    ALL_VAR_WITH_ATTR: Hash[Symbol, Hash[Symbol, bool]]
+    STAGES: Hash[Symbol, Array[stage_entry]]
+
+    def self.run_stages: (String code, Array[stage_entry] stages, ?file_boundaries: Array[Pipeline::FileBoundary], ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String]) -> Pipeline::RenameResult
+
+    attr_reader result: Pipeline::MinifiedResult?
+
+    def initialize: () -> void
+    def call: (String | Array[String] entry_path, ?level: Symbol | Array[stage_entry], ?project_root: String | Array[String] | nil, ?gem_names: Array[String], ?gem_require_paths: Array[String]) -> Pipeline::MinifiedResult
+
+    private
+
+    def run_pipeline: (Pipeline::ConcatenatedSource source, Symbol | Array[stage_entry] target_level) -> Pipeline::RenameResult
+    def resolve_level_value: (Symbol | String level) -> Symbol
+    def build_result: (Pipeline::RenameResult rename_result, Pipeline::ConcatenatedSource source) -> Pipeline::MinifiedResult
+    def build_output: (String code, Array[String] stdlib_requires, ?String preamble) -> String
+  end
+end

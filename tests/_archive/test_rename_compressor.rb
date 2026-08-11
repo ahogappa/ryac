@@ -197,34 +197,34 @@ class TestRenameCompressor < Minitest::Test
   end
 
   def new_minify_at_level(code, level, rbs_files: {})
-    source = RubyMinify::Pipeline::ConcatenatedSource.new(
+    source = Ryac::Pipeline::ConcatenatedSource.new(
       content: code,
       file_boundaries: [],
       original_size: code.bytesize,
       stdlib_requires: [],
       rbs_files: rbs_files
     )
-    preprocessor = RubyMinify::Pipeline::Preprocessor.new
+    preprocessor = Ryac::Pipeline::Preprocessor.new
     source = preprocessor.call(source)
 
     result = source.content
-    result = RubyMinify::Pipeline::Compactor.new.call(result)
+    result = Ryac::Pipeline::Compactor.new.call(result)
 
-    stages = RubyMinify::Minifier::STAGES[level] || RubyMinify::Minifier::STAGES[5]
+    stages = Ryac::Minifier::STAGES[level] || Ryac::Minifier::STAGES[5]
     simple, rename = stages.partition { |s| !s.is_a?(Array) }
     simple.each { |klass| result = klass.new.call(result) }
 
     if rename.any?
-      rename_source = RubyMinify::Pipeline::ConcatenatedSource.new(
+      rename_source = Ryac::Pipeline::ConcatenatedSource.new(
         content: result,
         file_boundaries: [],
         original_size: result.bytesize,
         stdlib_requires: [],
         rbs_files: rbs_files
       )
-      RubyMinify::Pipeline::UnifiedRenamer.new.call(rename_source, rename)
+      Ryac::Pipeline::UnifiedRenamer.new.call(rename_source, rename)
     else
-      RubyMinify::Pipeline::RenameResult.new(code: result)
+      Ryac::Pipeline::RenameResult.new(code: result)
     end
   end
 

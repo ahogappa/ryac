@@ -1,0 +1,17 @@
+module Ryac
+  class GemResolver
+    class GemResolution
+      attr_reader entry_path: String
+      attr_reader project_root: String
+      attr_reader require_paths: Array[String]
+
+      def self.new: (entry_path: String, project_root: String, require_paths: Array[String]) -> GemResolution
+    end
+
+    def call: (String gem_name) -> GemResolution
+
+    private
+
+    def find_entry_file: (Gem::Specification spec, String gem_name) -> String?
+  end
+end

@@ -1,0 +1,17 @@
+module Ryac
+  module Pipeline
+    class ParenOptimizer
+      def call: (String input_string, ?analysis: AnalysisResult?) -> String
+
+      private
+
+      def walk: (Prism::Node node, String source, Array[patch_entry] patches, statement_level: bool) -> void
+      def walk_if: (Prism::IfNode node, String source, Array[patch_entry] patches) -> void
+      def walk_call_children: (Prism::CallNode node, String source, Array[patch_entry] patches) -> void
+      def try_remove_call_parens: (Prism::CallNode node, String source, Array[patch_entry] patches) -> void
+      def try_remove_yield_parens: (Prism::YieldNode node, Array[patch_entry] patches) -> void
+      def add_paren_removal_patches: (Prism::Location open_loc, Prism::Location close_loc, Array[patch_entry] patches) -> void
+      def apply_patches: (String source, Array[patch_entry] patches) -> String
+    end
+  end
+end

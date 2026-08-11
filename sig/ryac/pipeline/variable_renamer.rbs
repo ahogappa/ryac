@@ -1,0 +1,20 @@
+module Ryac
+  module Pipeline
+    class VariableRenamer
+      include RenamePatcher
+
+      FEATURES: Hash[Symbol, bool]
+
+      def initialize: (?features: Hash[Symbol, bool]) -> void
+      def self.collect_patches_from: (Prism::ProgramNode prism_ast, Array[patch_entry] patches, AnalysisResult analysis, ?Hash[Symbol, Hash[Symbol, bool]]? kwargs) -> void
+      def self.postprocess: (String result, AnalysisResult analysis, String aliases_str, String preamble_str) -> [String, String, String]
+      def run_collect: (Prism::ProgramNode prism_ast, Array[patch_entry] patches, AnalysisResult analysis) -> void
+
+      private
+
+      def build_rename_map: (AnalysisResult analysis) -> Hash[location_key, String]
+      def collect_patches: (Prism::Node node, Array[patch_entry] patches, AnalysisResult analysis, Hash[location_key, String] rename_map, Hash[location_key, Hash[Symbol, String]] block_param_names_map) -> void
+      def handle_node: (Prism::Node subnode, Array[patch_entry] patches, AnalysisResult analysis, Hash[location_key, String] rename_map, Hash[location_key, Hash[Symbol, String]] block_param_names_map) -> void
+    end
+  end
+end

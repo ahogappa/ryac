@@ -1,0 +1,13 @@
+module Ryac
+  module Pipeline
+    class BooleanShorten
+      include SourcePatcher
+
+      def call: (String input) -> String
+
+      private
+
+      def walk: (Prism::Node node, Array[patch_entry] patches, ?inside_block_params: bool) -> void
+    end
+  end
+end

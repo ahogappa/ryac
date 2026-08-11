@@ -1,0 +1,38 @@
+module Ryac
+  module Pipeline
+    class StageError < StandardError
+    end
+
+    class FileNotFoundError < StageError
+      attr_reader path: String
+      attr_reader required_from: String?
+      attr_reader line: Integer?
+
+      def initialize: (String path, ?required_from: String?, ?line: Integer?) -> void
+    end
+
+    class DynamicRequireError < StageError
+      attr_reader path: String
+      attr_reader line: Integer
+      attr_reader expression: String
+
+      def initialize: (String path, line: Integer, expression: String) -> void
+    end
+
+    class CircularDependencyError < StageError
+      attr_reader cycle: Array[String]
+
+      def initialize: (Array[String] cycle) -> void
+    end
+
+    class NoFilesError < StageError
+      def initialize: () -> void
+    end
+
+    class GemNotFoundError < StageError
+      attr_reader gem_name: String
+
+      def initialize: (String gem_name) -> void
+    end
+  end
+end

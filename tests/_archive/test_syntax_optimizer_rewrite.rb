@@ -6,18 +6,18 @@ class TestSyntaxOptimizerRewrite < Minitest::Test
   include MinifyTestHelper
 
   def compact(code)
-    source = RubyMinify::Pipeline::ConcatenatedSource.new(
+    source = Ryac::Pipeline::ConcatenatedSource.new(
       content: code,
       file_boundaries: [],
       original_size: code.bytesize,
       stdlib_requires: []
     )
-    preprocessed = RubyMinify::Pipeline::Preprocessor.new.call(source)
-    RubyMinify::Pipeline::Compactor.new.call(preprocessed.content)
+    preprocessed = Ryac::Pipeline::Preprocessor.new.call(source)
+    Ryac::Pipeline::Compactor.new.call(preprocessed.content)
   end
 
   def optimize(compacted)
-    RubyMinify::Minifier::OPTIMIZE[0...-1].reduce(compacted) { |r, k| k.new.call(r) }
+    Ryac::Minifier::OPTIMIZE[0...-1].reduce(compacted) { |r, k| k.new.call(r) }
   end
 
   # --- Leaf transforms ---

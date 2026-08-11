@@ -1,0 +1,13 @@
+module Ryac
+  module Pipeline
+    class CharShorten
+      include SourcePatcher
+
+      def call: (String input) -> String
+
+      private
+
+      def walk: (Prism::Node node, Array[patch_entry] patches) -> void
+    end
+  end
+end

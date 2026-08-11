@@ -1141,7 +1141,7 @@ class TestLevels < Minitest::Test
   end
 
   def test_default_level_is_3
-    assert_equal 3, RubyMinify::Minifier::DEFAULT_LEVEL
+    assert_equal 3, Ryac::Minifier::DEFAULT_LEVEL
   end
 
   # Compression should be monotonically non-increasing across levels
