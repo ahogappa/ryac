@@ -48,7 +48,7 @@ module Ryac
     end
 
     def assign_short_names
-      groups = Hash.new { |h, k| h[k] = [] }
+      groups = Hash.new { |h, k| h[k] = [] } #: Hash[method_key, Array[method_key]]
       @methods.each_key { |key| groups[uf_root(key)] << key }
 
       groups.each do |_root, keys|
@@ -59,7 +59,7 @@ module Ryac
         next if total_call_entries == 0
 
         generator = NameGenerator.new
-        keyword_map = {}
+        keyword_map = {} #: Hash[Symbol, String]
         all_keywords.sort_by { |sym| -sym.to_s.size }.each do |sym|
           next if sym.to_s.size <= 2
 
@@ -93,7 +93,7 @@ module Ryac
 
     # Keyed by the def's location, the coordinate the scope analysis works in.
     def def_node_mapping(def_node_registry)
-      result = {}
+      result = {} #: Hash[location_key, Hash[Symbol, String]]
       def_node_registry.each do |method_key, def_nodes|
         root = uf_root(method_key)
         keyword_map = @keyword_maps[root]
@@ -102,7 +102,7 @@ module Ryac
         next if @methods[method_key]&.[](:excluded)
 
         def_nodes.each do |def_node|
-          mapping = {}
+          mapping = {} #: Hash[Symbol, String]
           keyword_map.each do |sym, short|
             mapping[sym] = short
           end
@@ -119,7 +119,7 @@ module Ryac
     # The scope containing the call site is the caller's concern: pass a block
     # mapping a call-argument node to its scope id.
     def build_variable_hints
-      hints = {}
+      hints = {} #: Hash[scope_id, Hash[Symbol, String]]
 
       @methods.each do |method_key, info|
         next if info[:excluded]

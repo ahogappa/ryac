@@ -1,9 +1,35 @@
+module Parser
+  class ClobberingError < StandardError
+  end
+end
+
 module RuboCop
+  class ConfigLoader
+    def self.default_configuration: () -> Config
+  end
+
+  class Config
+    def to_h: () -> Hash[String, untyped]
+  end
+
   module Cop
     class Registry
       def self.global: () -> Registry
       def find_by_cop_name: (String name) -> singleton(RuboCop::Cop::Base)?
       def initialize: (Array[singleton(RuboCop::Cop::Base)] cops) -> void
+    end
+
+    class Team
+      def self.mobilize: (Registry cop_classes, Config config, **untyped options) -> Team
+      def investigate: (ProcessedSource processed_source) -> untyped
+    end
+
+    # Reopened: the collection stub already declares the superclass
+    # (Parser::Source::TreeRewriter).
+    class Corrector
+      def initialize: (Parser::Source::Buffer | ProcessedSource source) -> void
+      def merge!: (Parser::Source::TreeRewriter increment) -> self
+      def process: () -> String
     end
   end
 end

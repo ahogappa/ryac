@@ -119,7 +119,9 @@ module TypeProf
         attr_reader cname: Symbol
         attr_reader cbase: Node?
         attr_reader toplevel: bool
-        attr_reader static_ret: Node?
+        # Not an AST node: a Static const-read record (ConstRead/ScopedConstRead),
+        # probed via respond_to? at the use site.
+        attr_reader static_ret: untyped
       end
 
       class ConstantWriteNode < Node

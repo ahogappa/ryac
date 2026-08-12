@@ -20,14 +20,14 @@ module Ryac
   end
 
   def resolve_method_calls
-    call_node_to_keys = Hash.new { |h, k| h[k] = [] }
+    call_node_to_keys = Hash.new { |h, k| h[k] = [] } #: Hash[location_key, Array[method_key]]
     resolved_call_keys = Set.new
-    super_merges = []
+    super_merges = [] #: Array[[method_key, method_key]]
 
     @method_rename_mapping.each_method_key do |key|
       @oracle.each_caller(key[0], key[1], key[2]) do |info|
         if info.super
-          super_merges << [[info.caller_cpath, key[1], key[2]].freeze, key]
+          super_merges << [[info.caller_cpath, key[1], key[2]].freeze, key] # steep:ignore -- caller_cpath is always present on super records
           next
         end
 
@@ -106,7 +106,7 @@ module Ryac
 
   def merge_unresolved_calls(resolved_call_keys)
     method_mids = @method_rename_mapping.method_mids
-    unresolved_by_mid = Hash.new { |h, k| h[k] = [] }
+    unresolved_by_mid = Hash.new { |h, k| h[k] = [] } #: Hash[Symbol, Array[Prism::Node]]
 
     AstUtils.each_node(@prism_root) do |node|
       mids = case node
@@ -128,7 +128,7 @@ module Ryac
 
     exclude_mids = Set.new
     unresolved_by_mid.each do |mid, call_nodes|
-      mapped_calls = []
+      mapped_calls = [] #: Array[Prism::Node]
       should_exclude = false
 
       call_nodes.each do |node|
@@ -151,6 +151,9 @@ module Ryac
   end
 
   def classify_unresolved_call(mid, prism_node)
+    # Callers only pass the UNRESOLVED_CALL_NODES shapes, all of which carry
+    # a receiver.
+    # @type var prism_node: Prism::CallNode | Prism::CallOperatorWriteNode | Prism::CallOrWriteNode | Prism::CallAndWriteNode
     return :mapped unless prism_node.receiver
 
     target_keys = @oracle.resolved_targets(prism_node, mid)
@@ -216,7 +219,7 @@ module Ryac
   # too: renaming the reader side would split the getter from the ivar the
   # writer-defined setter still assigns.
   def collect_attr_write_exclusions(prism_root)
-    accessor_owners = Hash.new { |h, k| h[k] = [] }
+    accessor_owners = Hash.new { |h, k| h[k] = [] } #: Hash[Symbol, Array[[Array[Symbol], bool]]]
     reader_syms = Set.new
     writer_syms = Set.new
     each_attr_declaration(prism_root, ATTR_DECLARATION_METHODS, require_class_body: false) do |node, cpath, singleton, sym|

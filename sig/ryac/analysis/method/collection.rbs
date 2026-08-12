@@ -1,0 +1,6 @@
+# Supplements the analysis/method/collection.rb declarations in sig/ryac.rbs
+# with the methods added since.
+module Ryac
+  def collect_shorthand_pun_methods: (Prism::Node prism_root) -> void
+  def collect_attr_write_exclusions: (Prism::Node prism_root) -> void
+end

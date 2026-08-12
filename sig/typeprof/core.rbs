@@ -25,6 +25,11 @@ module TypeProf
     end
 
     class Box
+      attr_reader node: AST::Node
+
+      # Yields one resolution candidate per (entity, receiver type) pair; the
+      # entity and types are TypeProf internals, kept untyped on purpose.
+      def resolve: (GlobalEnv genv, untyped changes) { (untyped entity, untyped ty, Symbol mid, untyped orig_ty) -> void } -> void
     end
 
     class MethodEntity

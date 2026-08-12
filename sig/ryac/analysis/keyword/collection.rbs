@@ -1,0 +1,10 @@
+# Supplements the analysis/keyword/collection.rb declarations in sig/ryac.rbs
+# with the state and methods added since.
+module Ryac
+  @keyword_def_node_registry: Hash[method_key, Array[Prism::DefNode]]
+  @keyword_forwarding_super_keys: Set[method_key]
+
+  private
+
+  def exclude_method_valued_shorthand_calls: (Prism::Node prism_root) -> void
+end

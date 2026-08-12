@@ -1,15 +1,17 @@
 module Ryac
-  module UnionFind
-    @parent: Hash[method_key, method_key]
-    @rank: Hash[method_key, Integer]
+  # Union-Find over arbitrary hashable keys; each includer picks its key type
+  # (both current includers use method_key).
+  module UnionFind[K < Object]
+    @parent: Hash[K, K]
+    @rank: Hash[K, Integer]
 
     def uf_init: () -> void
-    def uf_root: (method_key key) -> method_key
-    def merge_groups: (method_key key1, method_key key2) -> void
+    def uf_root: (K key) -> K
+    def merge_groups: (K key1, K key2) -> void
 
     private
 
-    def uf_add: (method_key key) -> method_key
-    def uf_remove: (method_key key) -> void
+    def uf_add: (K key) -> Integer
+    def uf_remove: (K key) -> void
   end
 end

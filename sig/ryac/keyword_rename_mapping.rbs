@@ -1,6 +1,15 @@
 module Ryac
   class KeywordRenameMapping
-    include UnionFind
+    include UnionFind[method_key]
+
+    type call_entry = { symbol_node: Prism::SymbolNode, val_node: Prism::Node }
+    type keyword_method_info = { keywords: Set[Symbol], call_entries: Hash[Symbol, Array[call_entry]], excluded: bool }
+
+    @methods: Hash[method_key, keyword_method_info]
+    @node_short_names: Hash[location_key, String]
+    # Keyed by each group's union-find root.
+    @keyword_maps: Hash[method_key, Hash[Symbol, String]]
+    @frozen: bool
 
     def initialize: () -> void
     def add_keyword_def: (method_key method_key, Symbol keyword_sym) -> void

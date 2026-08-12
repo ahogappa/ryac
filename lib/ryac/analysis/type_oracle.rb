@@ -21,9 +21,9 @@ module Ryac
     # Yields every ancestor cpath of the class, including its own.
     # Unresolvable classes yield nothing.
     def each_ancestor_cpath(cpath, singleton, &block)
-      @ancestor_cpaths ||= {}
+      @ancestor_cpaths ||= {} #: Hash[[Array[Symbol], bool], Array[Array[Symbol]]]
       cached = @ancestor_cpaths[[cpath, singleton]] ||= begin
-        list = []
+        list = [] #: Array[Array[Symbol]]
         mod = @genv.resolve_cpath(cpath) rescue nil
         if mod
           @genv.each_superclass(mod, singleton) do |ancestor_mod, _singleton|
@@ -43,7 +43,7 @@ module Ryac
       return unless mod
 
       @genv.each_superclass(mod, singleton) do |ancestor_mod, s|
-        names = []
+        names = [] #: Array[String]
         ancestor_mod.methods[s]&.each_key { |mid| names << mid.to_s }
         yield ancestor_mod.cpath, s, names
       end
@@ -117,8 +117,9 @@ module Ryac
         if kw.is_a?(TypeProf::Core::AST::HashNode)
           splat = kw.keys.any?(&:nil?)
           entries = kw.keys.zip(kw.vals).filter_map do |sym_node, val_node|
+            # @type var val_node: TypeProf::Core::AST::Node
             next unless sym_node.is_a?(TypeProf::Core::AST::SymbolNode)
-            [AstUtils.prism_node(sym_node), AstUtils.prism_node(val_node)]
+            [AstUtils.prism_node(sym_node), AstUtils.prism_node(val_node)] #: [Prism::Node, Prism::Node]
           end
         end
 
@@ -134,7 +135,7 @@ module Ryac
       tp_node = tp_call_for(prism_call_node, mid)
       return nil unless tp_node
 
-      keys = []
+      keys = [] #: Array[method_key]
       tp_node.boxes(:mcall) do |box|
         box.resolve(@genv, nil) do |entity, ty, _mid, _orig_ty|
           next unless entity
@@ -151,7 +152,7 @@ module Ryac
       tp_node = tp_call_for(prism_call_node, prism_call_node.name)
       return [] unless tp_node
 
-      sym_arg = tp_node.positional_args&.first
+      sym_arg = tp_node.positional_args&.first #: TypeProf::Core::AST::Node
       ret = sym_arg.ret rescue nil
       return [] unless ret
 
@@ -175,7 +176,7 @@ module Ryac
     # counting, external-reference, and precompute passes each ask about the
     # same nodes.
     def resolve_constant_read(prism_node)
-      @const_resolution_cache ||= {}
+      @const_resolution_cache ||= {} #: Hash[location_key, Array[Symbol]?]
       key = AstUtils.location_key(prism_node)
       return @const_resolution_cache[key] if @const_resolution_cache.key?(key)
 
@@ -210,7 +211,7 @@ module Ryac
     private
 
     def resolve_method(cpath, singleton, mid)
-      @method_cache ||= {}
+      @method_cache ||= {} #: Hash[method_key, TypeProf::Core::MethodEntity?]
       key = [cpath, singleton, mid]
       return @method_cache[key] if @method_cache.key?(key)
 
@@ -225,7 +226,7 @@ module Ryac
     # receiver has inferred types at all, then the block must hold for every
     # type's base.
     def every_receiver_base_type(prism_call_node)
-      recv = tp_call_for(prism_call_node, prism_call_node.name)&.recv
+      recv = tp_call_for(prism_call_node, prism_call_node.name)&.recv #: untyped
       return false unless recv.respond_to?(:ret) && recv.ret
 
       types = recv.ret.types
@@ -286,12 +287,13 @@ module Ryac
     def build_tp_indexes
       return if @tp_calls_by_loc
 
-      calls = {}
-      consts = {}
+      calls = {} #: Hash[location_key, Hash[Symbol, TypeProf::Core::AST::CallBaseNode]]
+      consts = {} #: Hash[location_key, TypeProf::Core::AST::ConstantReadNode]
       @tp_root.traverse do |event, node|
         next unless event == :enter
         case node
         when *TP_CALL_NODES
+          # @type var node: TypeProf::Core::AST::CallBaseNode
           (calls[AstUtils.location_key(node)] ||= {})[node.mid] = node
         when TypeProf::Core::AST::ConstantReadNode
           consts[AstUtils.location_key(node)] = node

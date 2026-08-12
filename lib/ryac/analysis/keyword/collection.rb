@@ -28,7 +28,7 @@ module Ryac
     params = def_node.parameters
     return [] unless params
 
-    names = []
+    names = [] #: Array[Symbol]
     params.keywords&.each do |kw|
       names << kw.name if kw.respond_to?(:name)
     end
@@ -47,12 +47,14 @@ module Ryac
   def forwards_parameters_to_super?(def_node)
     found = false
     walk = lambda do |n|
-      return if found || !n.is_a?(Prism::Node)
+      # The three `return`s below leave the lambda, not the method; Steep
+      # checks them against the method's bool return type.
+      return if found || !n.is_a?(Prism::Node) # steep:ignore ReturnTypeMismatch
       # A nested def has its own parameters; its `super` is not about ours.
-      return if n.is_a?(Prism::DefNode)
+      return if n.is_a?(Prism::DefNode) # steep:ignore ReturnTypeMismatch
       if n.is_a?(Prism::ForwardingSuperNode)
         found = true
-        return
+        return # steep:ignore ReturnTypeMismatch
       end
       n.compact_child_nodes.each { |child| walk.call(child) }
     end
@@ -76,9 +78,9 @@ module Ryac
   end
 
   def register_keyword_calls
-    call_node_to_keys = Hash.new { |h, k| h[k] = [] }
-    super_merges = []
-    zero_call_keys = []
+    call_node_to_keys = Hash.new { |h, k| h[k] = [] } #: Hash[location_key, Array[method_key]]
+    super_merges = [] #: Array[[method_key, method_key]]
+    zero_call_keys = [] #: Array[method_key]
     resolved_site_keys = Set.new
 
     @keyword_rename_mapping.each_method_key do |key|
@@ -90,7 +92,7 @@ module Ryac
         next if splat_seen
 
         if info.super
-          super_merges << [[info.caller_cpath, key[1], key[2]].freeze, key]
+          super_merges << [[info.caller_cpath, key[1], key[2]].freeze, key] # steep:ignore -- caller_cpath is always present on super records
           next
         end
 

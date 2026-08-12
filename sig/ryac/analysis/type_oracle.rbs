@@ -15,8 +15,12 @@ module Ryac
 
     @genv: TypeProf::Core::GlobalEnv
     @tp_root: TypeProf::Core::AST::Node
-    @tp_calls_by_loc: Hash[location_key, Hash[Symbol, TypeProf::Core::AST::Node]]?
-    @tp_consts_by_loc: Hash[location_key, TypeProf::Core::AST::ConstantReadNode]?
+    @ancestor_cpaths: Hash[[Array[Symbol], bool], Array[Array[Symbol]]]
+    @const_resolution_cache: Hash[location_key, Array[Symbol]?]
+    @method_cache: Hash[method_key, TypeProf::Core::MethodEntity?]
+    # Both built by build_tp_indexes before first read.
+    @tp_calls_by_loc: Hash[location_key, Hash[Symbol, TypeProf::Core::AST::CallBaseNode]]
+    @tp_consts_by_loc: Hash[location_key, TypeProf::Core::AST::ConstantReadNode]
 
     def initialize: (TypeProf::Core::GlobalEnv genv, TypeProf::Core::AST::Node tp_root) -> void
 
@@ -38,10 +42,12 @@ module Ryac
     private
 
     def resolve_method: (Array[Symbol] cpath, bool singleton, Symbol mid) -> untyped
+    def every_receiver_base_type: (Prism::CallNode prism_call_node) { (untyped) -> boolish } -> bool
     def type_responds_to?: (untyped mod, bool singleton, Symbol mid) -> bool
     def mod_is_or_inherits?: (untyped mod, untyped target) -> bool
-    def tp_call_for: (Prism::Node prism_node, Symbol mid) -> TypeProf::Core::AST::Node?
+    def tp_call_for: (Prism::Node prism_node, Symbol mid) -> TypeProf::Core::AST::CallBaseNode?
     def tp_const_for: (Prism::Node prism_node) -> TypeProf::Core::AST::ConstantReadNode?
+    def build_tp_indexes: () -> void
     def resolve_tp_const: (TypeProf::Core::AST::Node node) -> Array[Symbol]?
   end
 end
