@@ -9,6 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # The suite plus steep finishes in ~10 minutes; without this, a hung
+    # steep server once burned the full 6-hour default before cancellation.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

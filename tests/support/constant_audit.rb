@@ -23,7 +23,10 @@ module ConstantAudit
   # Returns [[path_string, line], ...] for references that resolve nowhere.
   # extra_source (e.g. an aliases file) contributes definitions and is
   # audited too; external lookups load only ruby_source's requires.
-  def unresolved(ruby_source, extra_source: '')
+  # allow names constants the ORIGINAL program leaves optional (behind a
+  # conditional require) — those resolve only where the optional gem happens
+  # to be installed, which is the program's own bargain, not minifier damage.
+  def unresolved(ruby_source, extra_source: '', allow: [])
     ctx = { defined: Set.new, aliases: {}, ancestors: Hash.new { |h, k| h[k] = [] }, reads: [], requires: [] }
     [ruby_source, extra_source].each do |src|
       next if src.to_s.empty?
@@ -35,6 +38,7 @@ module ConstantAudit
     end
 
     pending = ctx[:reads].reject { |read| internally_resolved?(read, ctx) }
+    pending = pending.reject { |read| allow.include?(read[:segs].join('::')) }
     return [] if pending.none?
 
     candidates = pending.map { |read| [read, external_candidates(read, ctx)] }
