@@ -16,3 +16,10 @@ path: .gem_rbs_collection
 gems:
   - name: typeprof
     ignore: true
+  # steep's own dependency; under rbs 4.0 its gem-bundled sig/ directory is
+  # loaded once by the collection and once by steep itself, and the double
+  # insert raises RBS::DuplicatedDeclarationError — which kills steep's load
+  # thread and leaves `steep check` waiting forever. Nothing in lib/ touches
+  # the LSP types, so drop the collection-side copy.
+  - name: language_server-protocol
+    ignore: true

@@ -152,7 +152,12 @@ class TestOptcarrot < Minitest::Test
   # or the constants its requires provide.
   def test_every_constant_reference_in_the_artifact_resolves
     result = self.class.minified_result
-    issues = ConstantAudit.unresolved(result.content, extra_source: result.aliases)
+    # StackProf is optcarrot's own optional profiler dependency (required
+    # only when --stackprof-mode is passed); it resolves only where the gem
+    # is installed, so it would flip this test between machines without
+    # being minifier damage.
+    issues = ConstantAudit.unresolved(result.content, extra_source: result.aliases,
+                                      allow: %w[StackProf])
     assert_empty issues.map { |path, line| "#{path} (line #{line})" },
                  'constant references in the minified optcarrot resolve nowhere — latent NameError'
   end
