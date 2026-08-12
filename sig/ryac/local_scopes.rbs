@@ -13,7 +13,10 @@ module Ryac
                              | Prism::LocalVariableTargetNode | Prism::LocalVariableOperatorWriteNode
                              | Prism::LocalVariableOrWriteNode | Prism::LocalVariableAndWriteNode
 
+    # Runtime class is built via Struct.new(..., keyword_init: true).
     class Scope
+      def self.new: (?id: scope_id, ?kind: Symbol, ?node: prism_scope_node, ?parent: Scope?, ?owner_call: Prism::CallNode?, ?mapping: Hash[Symbol, String]?) -> Scope
+
       attr_accessor id: scope_id
       attr_accessor kind: Symbol
       attr_accessor node: prism_scope_node
@@ -23,6 +26,9 @@ module Ryac
 
       def allocated?: () -> bool
     end
+
+    @program: Prism::ProgramNode
+    @scope_by_node: Hash[Integer, Scope]
 
     attr_reader scopes: Array[Scope]
     attr_reader rename_entries: Hash[location_key, String]
@@ -57,7 +63,7 @@ module Ryac
     def use_numbered_params?: (Prism::BlockNode block_node, Array[Symbol?] f_args, Array[String] parent_names) -> bool
     def collect_multi_target_names: (Prism::MultiTargetNode multi_target_node) -> Array[Symbol]
     def collect_extra_block_param_names: (Prism::ParametersNode prism_params) -> Array[Symbol]
-    def block_has_non_required_params?: (Prism::ParametersNode? params) -> bool
+    def block_has_non_required_params?: (Prism::ParametersNode? params) -> boolish
     def walk_all: (Prism::Node? node) { (Prism::Node) -> void } -> void
     def resolve_walk: (Prism::Node? node, Array[Scope] stack) -> void
     def enter_scope: (Scope scope, Array[Scope] stack) -> void

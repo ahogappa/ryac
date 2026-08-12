@@ -3,8 +3,16 @@ module Ryac
     class UnifiedRenamer
       include RenamePatcher
 
-      type stage_def = [singleton(ConstantAliaser) | singleton(VariableRenamer) | singleton(MethodRenamer)]
-                     | [singleton(ConstantAliaser) | singleton(VariableRenamer) | singleton(MethodRenamer), Hash[Symbol, bool]]
+      # A rename stage class: anything implementing the two class-method
+      # protocols collect_patches_from and postprocess.
+      type stage_class = singleton(ConstantAliaser)
+                       | singleton(AttrDeclShorten)
+                       | singleton(VariableRenamer)
+                       | singleton(MethodRenamer)
+
+      # A stage plus its optional kwargs hash (kwarg values range from bools
+      # to nested feature hashes, so they stay untyped).
+      type stage_def = [stage_class] | [stage_class, Hash[Symbol, untyped]]
 
       def call: (ConcatenatedSource source, Array[stage_def] stage_defs) -> RenameResult
     end

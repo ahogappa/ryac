@@ -9,7 +9,9 @@ module Ryac
 
       private
 
-      def render_attr_declaration: (Symbol type, Array[String] names) -> String?
+      # type comes straight out of the loosely-typed meta_node_map entry, so
+      # it accepts the whole syntax_value range; only the attr symbols match.
+      def render_attr_declaration: (syntax_value type, Array[String] names) -> String?
     end
   end
 end

@@ -25,6 +25,7 @@ module Ryac
       private
 
       def collect_patches(node, patches, analysis, rename_map, method_alias_map)
+        # @type var callback: ^(Prism::Node) -> void
         callback = proc { |subnode|
           handle_node(subnode, patches, analysis, rename_map, method_alias_map)
         }
@@ -88,7 +89,9 @@ module Ryac
             end_offset += 1 if @source_bytes.getbyte(end_offset) == 0x20 # consume space after ?
             replacement = "#{replacement}?"
           end
-          patches << { start: node.call_operator_loc.start_offset, end: end_offset, replacement: replacement }
+          # call_operator_loc was checked at the top of this branch; Steep
+          # loses that pure-call narrowing across the lines in between.
+          patches << { start: node.call_operator_loc.start_offset, end: end_offset, replacement: replacement } # steep:ignore NoMethod
           return
         end
 
@@ -130,7 +133,9 @@ module Ryac
         short = rename_map[key] || method_alias_map[key]&.to_s
         return unless short
         short = short.chomp('=') if short.end_with?('=') && !short.end_with?('==')
-        patches << { start: node.message_loc.start_offset, end: node.message_loc.end_offset, replacement: short }
+        # message_loc was checked on entry; Steep loses that pure-call
+        # narrowing across the lines in between.
+        patches << { start: node.message_loc.start_offset, end: node.message_loc.end_offset, replacement: short } # steep:ignore NoMethod
       end
     end
   end

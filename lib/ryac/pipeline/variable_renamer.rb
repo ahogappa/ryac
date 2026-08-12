@@ -20,7 +20,7 @@ module Ryac
       end
 
       def self.collect_patches_from(prism_ast, patches, analysis, kwargs = nil)
-        features = kwargs.is_a?(Hash) ? (kwargs[:features] || {}) : {}
+        features = kwargs.is_a?(Hash) ? (kwargs[:features] || {}) : {} #: Hash[Symbol, bool]
         renamer = new(features: features)
         renamer.run_collect(prism_ast, patches, analysis)
       end
@@ -34,7 +34,7 @@ module Ryac
       private
 
       def build_rename_map(analysis)
-        map = {}
+        map = {} #: Hash[location_key, String]
         map.merge!(analysis.local_rename_entries) if @features[:locals]
         map.merge!(analysis.keyword_rename_entries) if @features[:keywords]
         if @features[:ivars]
@@ -47,7 +47,7 @@ module Ryac
       end
 
       def collect_patches(node, patches, analysis, rename_map, block_param_names_map)
-        callback = proc { |subnode| handle_node(subnode, patches, analysis, rename_map, block_param_names_map) }
+        callback = proc { |subnode| handle_node(subnode, patches, analysis, rename_map, block_param_names_map) } #: ^(Prism::Node) -> (Symbol | nil)
         walk_prism(node, &callback)
       end
 
@@ -113,14 +113,14 @@ module Ryac
         # double-patching the index via LocalVariableTargetNode handler
         when Prism::ForNode
           patch_for_node(subnode, patches, analysis, :for_index_mangled)
-          callback = proc { |n| handle_node(n, patches, analysis, rename_map, block_param_names_map) }
+          callback = proc { |n| handle_node(n, patches, analysis, rename_map, block_param_names_map) } #: ^(Prism::Node) -> (Symbol | nil)
           walk_prism(subnode.collection, &callback)
           walk_prism(subnode.statements, &callback)
           :skip_children
 
         # Hash assoc shorthand
         when Prism::KeywordHashNode
-          callback = proc { |n| handle_node(n, patches, analysis, rename_map, block_param_names_map) }
+          callback = proc { |n| handle_node(n, patches, analysis, rename_map, block_param_names_map) } #: ^(Prism::Node) -> (Symbol | nil)
           patch_keyword_hash(subnode, patches, rename_map, &callback)
           :skip_children
         when Prism::AssocNode

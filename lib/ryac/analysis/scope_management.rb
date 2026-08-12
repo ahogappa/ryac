@@ -15,7 +15,7 @@ module Ryac
       return if mapping.size < 2
 
       collisions = mapping.group_by { |_, short| short }
-                          .filter_map { |short, pairs| [short, pairs.map(&:first)] if pairs.size > 1 }
+                          .filter_map { |short, pairs| [short, pairs.map(&:first)] if pairs.size > 1 } #: Array[[String, Array[Symbol]]]
       return if collisions.empty?
 
       raise Pipeline::RenameCollisionError.new(scope_label, collisions)

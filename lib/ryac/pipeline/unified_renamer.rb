@@ -17,15 +17,19 @@ module Ryac
         analysis = Pipeline::Analyzer.new.call(source)
 
         if analysis.constant_mapping
-          rename_classes = stage_defs.any? { |_, kwargs| kwargs&.dig(:rename_classes) }
+          # Steep cannot splat a union of tuple shapes into block params, so
+          # kwargs collapses to `bot` here; the dig itself is sound.
+          rename_classes = stage_defs.any? { |_, kwargs| kwargs&.dig(:rename_classes) } # steep:ignore NoMethod
           generator = NameGenerator.new([], upcase: true)
           analysis.constant_mapping.assign_short_names(generator, skip_class_modules: !rename_classes)
         end
 
         prism_ast = analysis.prism_ast
-        patches = []
+        patches = [] #: Array[patch_entry]
 
         stage_defs.each do |klass, kwargs|
+          # @type var klass: stage_class
+          # @type var kwargs: Hash[Symbol, untyped]?
           klass.collect_patches_from(prism_ast, patches, analysis, kwargs)
         end
 
@@ -34,6 +38,7 @@ module Ryac
         preamble_str = ''
 
         stage_defs.each do |klass, _kwargs|
+          # @type var klass: stage_class
           result, aliases_str, preamble_str = klass.postprocess(result, analysis, aliases_str, preamble_str)
         end
 

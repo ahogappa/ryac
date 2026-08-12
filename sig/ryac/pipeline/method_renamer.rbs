@@ -3,9 +3,10 @@ module Ryac
     class MethodRenamer
       include RenamePatcher
 
-      SEND_METHODS: Array[Symbol]
+      @negated_transforms: Hash[location_key, bool]
+      @source_bytes: String
 
-      def self.collect_patches_from: (Prism::ProgramNode prism_ast, Array[patch_entry] patches, AnalysisResult analysis, ?Hash[Symbol, String]? kwargs) -> void
+      def self.collect_patches_from: (Prism::ProgramNode prism_ast, Array[patch_entry] patches, AnalysisResult analysis, ?Hash[Symbol, untyped]? kwargs) -> void
       def self.postprocess: (String result, AnalysisResult analysis, String aliases_str, String preamble_str) -> [String, String, String]
       def run_collect: (Prism::ProgramNode prism_ast, Array[patch_entry] patches, AnalysisResult analysis) -> void
 
@@ -15,8 +16,11 @@ module Ryac
       def handle_node: (Prism::Node subnode, Array[patch_entry] patches, AnalysisResult analysis, Hash[location_key, String] rename_map, Hash[location_key, Symbol] method_alias_map) -> void
       def patch_def_name: (Prism::DefNode node, Array[patch_entry] patches, Hash[location_key, String] rename_map) -> void
       def patch_call_node: (Prism::CallNode node, Array[patch_entry] patches, Hash[location_key, String] rename_map, Hash[location_key, Symbol] method_alias_map, AnalysisResult analysis) -> void
+
+      SEND_METHODS: Array[Symbol]
+
       def patch_send_symbol: (Prism::CallNode node, Array[patch_entry] patches, String short_name) -> void
-      def patch_call_operator_write: (Prism::Node node, Array[patch_entry] patches, Hash[location_key, String] rename_map, Hash[location_key, Symbol] method_alias_map) -> void
+      def patch_call_operator_write: (Prism::CallOperatorWriteNode | Prism::CallOrWriteNode | Prism::CallAndWriteNode node, Array[patch_entry] patches, Hash[location_key, String] rename_map, Hash[location_key, Symbol] method_alias_map) -> void
     end
   end
 end

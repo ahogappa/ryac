@@ -3,26 +3,33 @@ module Ryac
     type patch_entry = { start: Integer, end: Integer, replacement: String }
 
     module RenamePatcher
+      # Prism nodes whose name_loc is always present (variable write /
+      # operator-write nodes and similar). Prism types name_loc as nullable
+      # only on bare rest/block parameters, which never reach these helpers.
+      interface _NodeWithNameLoc
+        def name_loc: () -> Prism::Location
+      end
+
       private
 
       def apply_patches: (String source, Array[patch_entry] patches) -> String
-      def walk_prism: (Prism::Node? node) { (Prism::Node) -> Symbol? } -> void
+      def walk_prism: (Prism::Node? node) { (Prism::Node) -> untyped } -> void
       def prism_location_key: (Prism::Node node) -> location_key
       def patch_variable: (Prism::Node node, Array[patch_entry] patches, Hash[location_key, String] rename_map) -> void
-      def patch_variable_name_only: (Prism::Node node, Array[patch_entry] patches, Hash[location_key, String] rename_map) -> void
+      def patch_variable_name_only: (Prism::Node & _NodeWithNameLoc node, Array[patch_entry] patches, Hash[location_key, String] rename_map) -> void
       def patch_def_params: (Prism::DefNode node, Array[patch_entry] patches, AnalysisResult analysis, Symbol param_names_key) -> void
       def patch_required_params: (Array[Prism::Node]? requireds, Hash[Symbol, String] param_names, Array[patch_entry] patches) -> void
       def patch_multi_target_params: (Prism::MultiTargetNode node, Hash[Symbol, String] param_names, Array[patch_entry] patches) -> void
       def patch_optional_params: (Array[Prism::OptionalParameterNode]? optionals, Hash[Symbol, String] param_names, Array[patch_entry] patches) -> void
       def patch_rest_param: (Prism::Node? rest, Hash[Symbol, String] param_names, Array[patch_entry] patches) -> void
       def patch_post_params: (Array[Prism::Node]? posts, Hash[Symbol, String] param_names, Array[patch_entry] patches) -> void
-      def patch_keyword_params: (Array[Prism::Node]? keywords, Hash[Symbol, String] param_names, Array[patch_entry] patches) -> void
+      def patch_keyword_params: (Array[Prism::RequiredKeywordParameterNode | Prism::OptionalKeywordParameterNode]? keywords, Hash[Symbol, String] param_names, Array[patch_entry] patches) -> void
       def patch_keyword_rest: (Prism::Node? keyword_rest, Hash[Symbol, String] param_names, Array[patch_entry] patches) -> void
       def patch_block_param_node: (Prism::Node? block, Hash[Symbol, String] param_names, Array[patch_entry] patches) -> void
       def patch_block_params: (Prism::CallNode node, Array[patch_entry] patches, Hash[location_key, Hash[Symbol, String]] block_param_names_map) -> void
       def patch_for_node: (Prism::ForNode node, Array[patch_entry] patches, AnalysisResult analysis, Symbol mangled_key) -> void
-      def patch_assoc: (Prism::AssocNode node, Array[patch_entry] patches, Hash[location_key, String] rename_map, ?keyword_arg: bool) -> Symbol?
-      def patch_keyword_hash: (Prism::KeywordHashNode node, Array[patch_entry] patches, Hash[location_key, String] rename_map) { (Prism::Node) -> void } -> void
+      def patch_assoc: (Prism::AssocNode node, Array[patch_entry] patches, Hash[location_key, String] rename_map, ?keyword_arg: bool) -> (Symbol | Array[patch_entry])?
+      def patch_keyword_hash: (Prism::KeywordHashNode node, Array[patch_entry] patches, Hash[location_key, String] rename_map) { (Prism::Node) -> untyped } -> void
     end
   end
 end
