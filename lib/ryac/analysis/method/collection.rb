@@ -27,7 +27,8 @@ module Ryac
     @method_rename_mapping.each_method_key do |key|
       @oracle.each_caller(key[0], key[1], key[2]) do |info|
         if info.super
-          super_merges << [[info.caller_cpath, key[1], key[2]].freeze, key] # steep:ignore -- caller_cpath is always present on super records
+          # caller_cpath is always present on super records
+          super_merges << [[info.caller_cpath, key[1], key[2]].freeze, key] # steep:ignore
           next
         end
 

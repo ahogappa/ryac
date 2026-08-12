@@ -21,6 +21,7 @@ module Ryac
       when Prism::ClassVariableReadNode
         @cvar_rename_mapping.add_read_site(cpath, node.name, node)
       when *CVAR_WRITE_NODES
+        # @type var node: Prism::ClassVariableWriteNode | Prism::ClassVariableTargetNode | Prism::ClassVariableOperatorWriteNode | Prism::ClassVariableOrWriteNode | Prism::ClassVariableAndWriteNode
         @cvar_rename_mapping.add_write_site(cpath, node.name, node)
       end
     end
@@ -39,7 +40,7 @@ module Ryac
   end
 
   def merge_inherited_cvars
-    cpaths = []
+    cpaths = [] #: Array[Array[Symbol]]
     @cvar_rename_mapping.each_canonical_cpath { |c| cpaths << c }
     cpaths.each do |cpath|
       @oracle.each_ancestor_cpath(cpath, false) do |ancestor_cpath|

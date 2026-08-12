@@ -1,0 +1,21 @@
+# lib/ryac/analysis/constant/collection.rb defines its methods directly on
+# module Ryac, and those declarations live in sig/ryac.rbs alongside the
+# other collection mixins. This file carries the environment patches that
+# probe_boot_constants needs: methods missing from rbs core and from the
+# Bundler shim shipped inside the rbs gem.
+
+module Bundler
+  def self.with_unbundled_env: [X] () { () -> X } -> X
+end
+
+module Process
+  def self.last_status: () -> ::Process::Status?
+end
+
+class IO
+  # `IO.popen([env_hash, cmd, *args])` — the env-hash-inside-the-array form
+  # the boot probe uses; rbs core only types env as a separate leading
+  # argument.
+  def self.popen: [X] (Array[Hash[String, String?] | String] env_and_cmd, ?String mode) { (instance) -> X } -> X
+                | ...
+end

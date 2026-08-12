@@ -188,6 +188,7 @@ module Ryac
     # the syntactic count when reads reach it through resolution the text
     # does not show.
     def constant_read_count(cpath)
+      # @type var entity: untyped
       entity = begin
         @genv.resolve_const(cpath)
       rescue StandardError
@@ -212,7 +213,7 @@ module Ryac
 
     def resolve_method(cpath, singleton, mid)
       @method_cache ||= {} #: Hash[method_key, TypeProf::Core::MethodEntity?]
-      key = [cpath, singleton, mid]
+      key = [cpath, singleton, mid] #: method_key
       return @method_cache[key] if @method_cache.key?(key)
 
       @method_cache[key] = begin
@@ -317,7 +318,7 @@ module Ryac
       return nil unless static_ret.respond_to?(:cpath)
       return static_ret.cpath if static_ret.cpath
 
-      cdef = static_ret.respond_to?(:cdef) ? static_ret.cdef : nil
+      cdef = static_ret.respond_to?(:cdef) ? static_ret.cdef : nil #: untyped
       if cdef.respond_to?(:defs)
         cdef.defs.each do |d|
           return d.static_cpath if d.respond_to?(:static_cpath) && d.static_cpath

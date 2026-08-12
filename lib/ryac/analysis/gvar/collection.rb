@@ -14,6 +14,7 @@ module Ryac
     AstUtils.each_node(prism_root) do |node|
       case node
       when *GVAR_NODES
+        # @type var node: Prism::GlobalVariableReadNode | Prism::GlobalVariableWriteNode | Prism::GlobalVariableTargetNode | Prism::GlobalVariableOperatorWriteNode | Prism::GlobalVariableOrWriteNode | Prism::GlobalVariableAndWriteNode
         @gvar_rename_mapping.add_site(node.name, node)
       end
     end

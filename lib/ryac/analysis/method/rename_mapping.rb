@@ -75,7 +75,8 @@ module Ryac
     def merge_all_by_mid(mid)
       keys = @methods.keys.select { |k| k[2] == mid }
       return if keys.size <= 1
-      keys[1..].each { |k| merge_groups(keys[0], k) } # steep:ignore NoMethod -- keys.size > 1 guaranteed above, [1..] cannot be nil
+      # keys.size > 1 is guaranteed above, so [1..] cannot be nil
+      keys[1..].each { |k| merge_groups(keys[0], k) } # steep:ignore NoMethod
     end
 
     # Inference can silently miss a caller, leaving a def in a group with no
@@ -157,7 +158,7 @@ module Ryac
       end
 
       namespaces.each do |(cpath, singleton), finals|
-        collisions = finals.filter_map { |name, mids| [name, mids.to_a] if mids.size > 1 }
+        collisions = finals.filter_map { |name, mids| [name, mids.to_a] if mids.size > 1 } #: Array[[String, Array[Symbol]]]
         next if collisions.empty?
 
         label = "#{cpath.join('::')}#{singleton ? '.' : '#'}"
@@ -254,7 +255,7 @@ module Ryac
         ancestors_map[cache_key] = ancestor_keys
       end
 
-      hierarchy = { includers: includers, ancestors: ancestors_map }
+      hierarchy = { includers: includers, ancestors: ancestors_map } #: hierarchy
       [result, hierarchy]
     end
 

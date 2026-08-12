@@ -2,8 +2,8 @@
 
 module Ryac
   def resolve_method_aliases_and_transforms(prism_root)
-    alias_map = {}
-    transform_map = {}
+    alias_map = {} #: Hash[location_key, Symbol]
+    transform_map = {} #: Hash[location_key, String]
     AstUtils.each_node(prism_root) do |node|
       next unless node.is_a?(Prism::CallNode)
 

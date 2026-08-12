@@ -78,16 +78,4 @@ module Ryac
 
     def assign_short_name: (Array[method_key] keys, String short_name) -> void
   end
-
-  module Pipeline
-    # Raised by verify_no_shadowing! / verify_injective!. Declared here next
-    # to its main raise site; ideally lives in sig/ryac/pipeline/errors.rbs
-    # with the other Pipeline errors.
-    #
-    # collisions is a list of [short_name, original_names] pairs; kept
-    # untyped because raise sites build it in slightly different shapes.
-    class RenameCollisionError < StageError
-      def initialize: (String scope, untyped collisions) -> void
-    end
-  end
 end

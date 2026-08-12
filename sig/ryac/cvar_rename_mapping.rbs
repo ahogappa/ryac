@@ -1,7 +1,7 @@
 module Ryac
   class CvarRenameMapping
     type cpath = Array[Symbol]
-    type cvar_data = { read_nodes: Array[TypeProf::Core::AST::Node], write_nodes: Array[TypeProf::Core::AST::Node] }
+    type cvar_data = { read_nodes: Array[Prism::Node], write_nodes: Array[Prism::Node] }
 
     @class_cvars: Hash[cpath, Hash[Symbol, cvar_data]]
     @cpath_to_canonical: Hash[cpath, cpath]
@@ -10,9 +10,9 @@ module Ryac
 
     def initialize: () -> void
 
-    def add_read_site: (cpath cpath, Symbol cvar_name, TypeProf::Core::AST::Node node) -> void
+    def add_read_site: (cpath cpath, Symbol cvar_name, Prism::Node node) -> void
 
-    def add_write_site: (cpath cpath, Symbol cvar_name, TypeProf::Core::AST::Node node) -> void
+    def add_write_site: (cpath cpath, Symbol cvar_name, Prism::Node node) -> void
 
     def exclude_cpath: (cpath cpath) -> void
 

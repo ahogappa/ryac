@@ -2,13 +2,13 @@ module Ryac
   class GvarRenameMapping
     BUILT_IN_GLOBALS: Set[Symbol]
 
-    @gvars: Hash[Symbol, Array[TypeProf::Core::AST::Node]]
+    @gvars: Hash[Symbol, Array[Prism::Node]]
     @excluded_names: Set[Symbol]
     @node_short_names: Hash[[Integer, Integer], String]
 
     def initialize: () -> void
 
-    def add_site: (Symbol name, TypeProf::Core::AST::Node node) -> void
+    def add_site: (Symbol name, Prism::Node node) -> void
 
     def exclude_name: (Symbol name) -> void
 

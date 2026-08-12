@@ -24,6 +24,7 @@ module Ryac
         next if attr_backed[cpath]&.include?(node.name)
         @ivar_rename_mapping.add_read_site(cpath, node.name, node)
       when *IVAR_WRITE_NODES
+        # @type var node: Prism::InstanceVariableWriteNode | Prism::InstanceVariableTargetNode | Prism::InstanceVariableOperatorWriteNode | Prism::InstanceVariableOrWriteNode | Prism::InstanceVariableAndWriteNode
         next if attr_backed[cpath]&.include?(node.name)
         @ivar_rename_mapping.add_write_site(cpath, node.name, node)
       end
@@ -31,7 +32,7 @@ module Ryac
   end
 
   def collect_attr_backed_ivars(prism_root)
-    result = Hash.new { |h, k| h[k] = Set.new }
+    result = Hash.new { |h, k| h[k] = Set.new } #: Hash[Array[Symbol], Set[Symbol]]
     each_attr_declaration(prism_root, ATTR_DECLARATION_METHODS, require_class_body: false) do |_node, cpath, _singleton, sym|
       result[cpath] << :"@#{sym}"
     end
@@ -51,7 +52,7 @@ module Ryac
   end
 
   def merge_inherited_ivars
-    cpaths = []
+    cpaths = [] #: Array[Array[Symbol]]
     @ivar_rename_mapping.each_canonical_cpath { |c| cpaths << c }
     cpaths.each do |cpath|
       @oracle.each_ancestor_cpath(cpath, false) do |ancestor_cpath|
@@ -92,8 +93,8 @@ module Ryac
   private
 
   def classify_attr_declarations(prism_root)
-    path_a_info = []
-    path_b_info = []
+    path_a_info = [] #: Array[attr_info]
+    path_b_info = [] #: Array[attr_info]
     each_attr_declaration(prism_root, %i[attr_reader attr_accessor]) do |node, cpath, singleton, sym|
       method_key = [cpath, singleton, sym].freeze
       getter_short = @method_rename_mapping.short_name_for_key(method_key)
@@ -120,10 +121,11 @@ module Ryac
   end
 
   def collect_ivar_nodes_by_key(prism_root)
-    ivar_nodes_by_key = Hash.new { |h, k| h[k] = [] }
+    ivar_nodes_by_key = Hash.new { |h, k| h[k] = [] } #: Hash[[Array[Symbol], Symbol], Array[Prism::Node]]
     Nesting.each(prism_root) do |node, cpath, _singleton, _in_def|
       case node
       when Prism::InstanceVariableReadNode, *IVAR_WRITE_NODES
+        # @type var node: Prism::InstanceVariableReadNode | Prism::InstanceVariableWriteNode | Prism::InstanceVariableTargetNode | Prism::InstanceVariableOperatorWriteNode | Prism::InstanceVariableOrWriteNode | Prism::InstanceVariableAndWriteNode
         ivar_nodes_by_key[[cpath, node.name]] << node
       end
     end
@@ -134,8 +136,8 @@ module Ryac
   # then keep it only when renaming ivar sites plus accessor calls saves
   # more than it costs.
   def assign_ivar_driven_names(path_b_info, ivar_nodes_by_key, path_a_mapping, rename_map)
-    path_b_mapping = {}
-    path_b_method_mapping = {}
+    path_b_mapping = {} #: Hash[[Array[Symbol], Symbol], String]
+    path_b_method_mapping = {} #: Hash[[Array[Symbol], Symbol], Symbol]
     return [path_b_mapping, path_b_method_mapping] if path_b_info.none?
 
     used_ivar_names = @ivar_rename_mapping.node_mapping.values.to_set
@@ -158,7 +160,7 @@ module Ryac
         next if ivar_name.to_s.size <= 2
 
         getter_calls = 0
-        implicit_scope_ids = []
+        implicit_scope_ids = [] #: Array[scope_id]
         @method_rename_mapping.each_group_call_site(info[:method_key]) do |_site, scope_id|
           getter_calls += 1
           implicit_scope_ids << scope_id if scope_id
@@ -187,15 +189,17 @@ module Ryac
           setter_calls = @oracle.method_call_count(info[:cpath], info[:singleton], :"#{info[:mid]}=")
         end
 
-        ivar_savings = (ivar_name.to_s.size - short_name.size) * ivar_count
+        # The loop above always breaks with short_name/method_short assigned;
+        # Steep still sees the initial nils.
+        ivar_savings = (ivar_name.to_s.size - short_name.size) * ivar_count # steep:ignore NoMethod
         method_savings = (info[:mid].to_s.size - method_short.to_s.size) * (getter_calls + setter_calls + 1)
         next unless ivar_savings + method_savings > 0
 
         used_ivar_names << short_name
         used_method_names << method_short.to_s
 
-        path_b_mapping[ivar_key] = short_name
-        path_b_method_mapping[ivar_key] = method_short
+        path_b_mapping[ivar_key] = short_name # steep:ignore ArgumentTypeMismatch
+        path_b_method_mapping[ivar_key] = method_short # steep:ignore ArgumentTypeMismatch
       end
 
     [path_b_mapping, path_b_method_mapping]
@@ -246,7 +250,9 @@ module Ryac
   end
 
   def build_attr_rename_map(path_a_info, path_b_info, path_b_method_mapping)
-    attr_rename_map = {}
+    # Values are the getter shorts: path A stores Strings, path B Symbols
+    # (consumers interpolate, so both work) — hence the untyped value type.
+    attr_rename_map = {} #: Hash[location_key, Hash[Symbol, untyped]]
     path_a_info.each do |info|
       (attr_rename_map[info[:loc_key]] ||= {})[info[:mid]] = info[:getter_short]
     end
