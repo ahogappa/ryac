@@ -11,7 +11,10 @@ module Ryac
       :require_nodes,         # Array<Hash>: {type:, path:, line:, in_class:} for require/autoload nodes
       :in_class_dependencies  # Array<String>: Absolute paths of files required inside class/module bodies
     ) do
-      def initialize(path:, content:, dependencies:, require_nodes:, in_class_dependencies: [])
+      # Steep attributes defs in Data.define blocks to the enclosing module,
+      # so these initialize wrappers are declared on the Data classes in RBS
+      # but look undeclared here.
+      def initialize(path:, content:, dependencies:, require_nodes:, in_class_dependencies: []) # steep:ignore UndeclaredMethodDefinition
         super
       end
     end
@@ -84,7 +87,7 @@ module Ryac
       :stdlib_requires,  # Array<String>: Standard library requires to preserve
       :rbs_files         # Hash<String, String>: path -> RBS content for TypeProf
     ) do
-      def initialize(content:, file_boundaries:, original_size:, stdlib_requires:, rbs_files: {})
+      def initialize(content:, file_boundaries:, original_size:, stdlib_requires:, rbs_files: {}) # steep:ignore UndeclaredMethodDefinition
         super
       end
     end
@@ -114,7 +117,7 @@ module Ryac
       :cvar_rename_entries,        # Hash<location_key, String>: class variable renames
       :gvar_rename_entries         # Hash<location_key, String>: global variable renames
     ) do
-      def initialize(local_rename_entries: {}, keyword_rename_entries: {}, ivar_rename_entries: {}, attr_ivar_entries: {}, cvar_rename_entries: {}, gvar_rename_entries: {}, **kwargs)
+      def initialize(local_rename_entries: {}, keyword_rename_entries: {}, ivar_rename_entries: {}, attr_ivar_entries: {}, cvar_rename_entries: {}, gvar_rename_entries: {}, **kwargs) # steep:ignore UndeclaredMethodDefinition
         super(local_rename_entries: local_rename_entries, keyword_rename_entries: keyword_rename_entries, ivar_rename_entries: ivar_rename_entries, attr_ivar_entries: attr_ivar_entries, cvar_rename_entries: cvar_rename_entries, gvar_rename_entries: gvar_rename_entries, **kwargs)
       end
     end
@@ -133,7 +136,7 @@ module Ryac
       :aliases,   # String: Backward-compatible constant alias declarations (e.g. "MyClass=A;Foo=B")
       :preamble   # String: External prefix declarations (e.g. "A=Process") — must execute before code
     ) do
-      def initialize(code:, aliases: '', preamble: '')
+      def initialize(code:, aliases: '', preamble: '') # steep:ignore UndeclaredMethodDefinition
         super
       end
     end
@@ -145,7 +148,7 @@ module Ryac
       :preamble,  # String: External prefix declarations
       :stats      # CompressionStats
     ) do
-      def initialize(content:, aliases: '', preamble: '', stats:)
+      def initialize(content:, aliases: '', preamble: '', stats:) # steep:ignore UndeclaredMethodDefinition
         super
       end
     end

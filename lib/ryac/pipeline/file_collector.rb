@@ -15,14 +15,16 @@ module Ryac
       def call(entry_path, project_root: nil, gem_names: [], gem_require_paths: [])
         raise NoFilesError.new if entry_path.nil?
 
-        entry_paths = Array(entry_path)
+        entry_paths = Array(entry_path) #: Array[String]
         raise NoFilesError.new if entry_paths.empty?
 
         @graph = DependencyGraph.new
         @visited = Set.new
         @gem_names = gem_names
         @project_roots = if project_root
-          Array(project_root).map { |p| File.expand_path(p) }
+          # Array() of `String | Array[String]` types its elements as that
+          # union, which Steep cannot split back per-element.
+          Array(project_root).map { |p| File.expand_path(p) } # steep:ignore ArgumentTypeMismatch
         else
           root = find_project_root(entry_paths)
           root ? [root] : []
@@ -58,8 +60,8 @@ module Ryac
 
         # Parse and extract require statements
         require_nodes = extract_require_nodes(file_path, content)
-        dependencies = []
-        in_class_dependencies = []
+        dependencies = [] #: Array[String]
+        in_class_dependencies = [] #: Array[String]
 
         require_nodes.each do |node_info|
           dep_path = node_info[:resolved_path]
@@ -87,7 +89,7 @@ module Ryac
       # Extract require/require_relative/autoload nodes from source
       def extract_require_nodes(file_path, content)
         result = Prism.parse(content)
-        nodes = []
+        nodes = [] #: Array[require_node_info]
 
         traverse_for_requires(result.value, nodes, file_path)
 
@@ -280,7 +282,7 @@ module Ryac
           versions = Dir.children(gem_rbs_dir) rescue next
           next if versions.empty?
 
-          latest = versions.max_by { |v| Gem::Version.new(v) }
+          latest = versions.max_by { |v| Gem::Version.new(v) } #: String
           load_rbs_from(File.join(gem_rbs_dir, latest))
         end
       end

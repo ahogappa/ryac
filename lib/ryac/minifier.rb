@@ -77,9 +77,9 @@ module Ryac
     def self.run_stages(code, stages, file_boundaries: [], stdlib_requires: [], rbs_files: {})
       return Pipeline::RenameResult.new(code: code) if stages.empty?
 
-      pre_optimize = []
-      post_optimize = []
-      rename_defs = []
+      pre_optimize = [] #: Array[[optimizer_class, Integer]]
+      post_optimize = [] #: Array[[optimizer_class, Integer]]
+      rename_defs = [] #: Array[untyped]
 
       stages.each do |entry|
         case entry

@@ -320,13 +320,16 @@ module Ryac
     # are Prism nodes already — so this raises rather than inventing a key that
     # could never match.
     def self.location_key(node)
-      loc = node.respond_to?(:location) ? node.location : prism_node(node)&.location
+      # Duck-typed seam: Prism nodes answer #location, TypeProf nodes don't —
+      # a respond_to? split Steep cannot narrow by.
+      loc = node.respond_to?(:location) ? node.location : prism_node(node)&.location # steep:ignore NoMethod, ArgumentTypeMismatch
 
       unless loc.respond_to?(:start_offset)
         raise ArgumentError, "no source location behind #{node.class}"
       end
 
-      [loc.start_offset, loc.end_offset]
+      # The respond_to? guard above has already raised for location-less nodes.
+      [loc.start_offset, loc.end_offset] # steep:ignore NoMethod
     end
   end
 end

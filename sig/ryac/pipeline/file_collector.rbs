@@ -1,8 +1,15 @@
 module Ryac
   module Pipeline
-    type require_node_info = { type: Symbol, path: String, line: Integer, start_offset: Integer, length: Integer, in_class: bool }
+    # resolved_path is absent for :require_stdlib nodes; every node records
+    # whether it sits inside a class/module body and/or a method body.
+    type require_node_info = { type: Symbol, path: String, line: Integer, start_offset: Integer, length: Integer, in_class: bool, in_method: bool, ?resolved_path: String }
 
     class FileCollector < Stage
+      @graph: DependencyGraph
+      @visited: Set[String]
+      @gem_names: Array[String]
+      @project_roots: Array[String]
+
       def call: (String | Array[String] entry_path, ?project_root: String | Array[String] | nil, ?gem_names: Array[String], ?gem_require_paths: Array[String]) -> DependencyGraph
 
       private

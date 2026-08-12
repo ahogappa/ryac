@@ -34,5 +34,13 @@ module Ryac
 
       def initialize: (String gem_name) -> void
     end
+
+    class InvalidOutputError < StageError
+      def initialize: (String label, Array[Prism::ParseError] errors) -> void
+    end
+
+    class RenameCollisionError < StageError
+      def initialize: (String scope, Array[[String, Array[Symbol]]] collisions) -> void
+    end
   end
 end

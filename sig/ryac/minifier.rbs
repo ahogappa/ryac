@@ -26,5 +26,6 @@ module Ryac
     def resolve_level_value: (Symbol | String level) -> Symbol
     def build_result: (Pipeline::RenameResult rename_result, Pipeline::ConcatenatedSource source) -> Pipeline::MinifiedResult
     def build_output: (String code, Array[String] stdlib_requires, ?String preamble) -> String
+    def verify_parses: (String text, String label) -> void
   end
 end

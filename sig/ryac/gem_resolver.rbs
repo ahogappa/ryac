@@ -15,3 +15,13 @@ module Ryac
     def find_entry_file: (Gem::Specification spec, String gem_name) -> String?
   end
 end
+
+# The rbs gem's rubygems shim (rbs/sig/shims/rubygems.rbs) declares only the
+# few Gem::Specification methods rbs itself calls; full_require_paths is real
+# rubygems API (Gem::BasicSpecification#full_require_paths) that GemResolver
+# uses, so it is declared here.
+module Gem
+  class Specification
+    def full_require_paths: () -> Array[String]
+  end
+end

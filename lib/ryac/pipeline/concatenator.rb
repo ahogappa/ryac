@@ -34,7 +34,7 @@ module Ryac
       def extract_cycle_from_graph(graph)
         visited = Set.new
         rec_stack = Set.new
-        path = []
+        path = [] #: Array[String]
 
         graph.paths.each do |start|
           if find_cycle_dfs(graph, start, visited, rec_stack, path)
@@ -96,14 +96,14 @@ module Ryac
 
       # Concatenate files in sorted order
       def concatenate_files(graph, sorted_paths)
-        content_parts = []
-        file_boundaries = []
-        stdlib_requires = []
+        content_parts = [] #: Array[String]
+        file_boundaries = [] #: Array[FileBoundary]
+        stdlib_requires = [] #: Array[String]
         inlined = Set.new
         current_line = 1
 
         # Pre-clean all files: resolve in-class requires by inlining
-        cleaned_cache = {}
+        cleaned_cache = {} #: Hash[String, String]
         sorted_paths.each do |path|
           entry = graph[path]
           next unless entry
@@ -179,7 +179,9 @@ module Ryac
           if node[:in_class] && !node[:in_method] && node[:type] != :require_stdlib
             dep_path = resolve_node_path(node, graph)
             if dep_path && graph[dep_path]
-              dep_content = cleaned_cache[dep_path] || graph[dep_path].content
+              # The `graph[dep_path]` check above guarantees the entry exists;
+              # Steep cannot carry that through a repeated method call.
+              dep_content = cleaned_cache[dep_path] || graph[dep_path].content # steep:ignore NoMethod
               stripped = strip_outer_nesting(dep_content)
               # Only consume trailing semicolons (not newlines) for inline
               while end_pos < result.size && result[end_pos] == ';'
