@@ -7,7 +7,7 @@ module Ryac
 
       def call(input)
         ast = Prism.parse(input).value
-        patches = []
+        patches = [] #: Array[patch_entry]
         walk(ast, patches)
         apply_patches(input, patches)
       end

@@ -7,6 +7,22 @@ module Ryac
       COMPOUND_WRITE_NODES: Array[singleton(Prism::Node)]
       MODIFIER_KEYWORD_NODES: Array[singleton(Prism::Node)]
       ASSIGNMENT_NODES: Array[singleton(Prism::Node)]
+      PARENS_KEPT_NODES: Array[singleton(Prism::Node)]
+
+      # The 24 compound-assignment node classes dispatched by r_compound_write
+      # (`+=`-style Operator variants plus `||=`/`&&=` Or/And variants).
+      type compound_write_node = Prism::LocalVariableOperatorWriteNode | Prism::LocalVariableOrWriteNode | Prism::LocalVariableAndWriteNode
+                               | Prism::InstanceVariableOperatorWriteNode | Prism::InstanceVariableOrWriteNode | Prism::InstanceVariableAndWriteNode
+                               | Prism::GlobalVariableOperatorWriteNode | Prism::GlobalVariableOrWriteNode | Prism::GlobalVariableAndWriteNode
+                               | Prism::ClassVariableOperatorWriteNode | Prism::ClassVariableOrWriteNode | Prism::ClassVariableAndWriteNode
+                               | Prism::ConstantOperatorWriteNode | Prism::ConstantOrWriteNode | Prism::ConstantAndWriteNode
+                               | Prism::ConstantPathOperatorWriteNode | Prism::ConstantPathOrWriteNode | Prism::ConstantPathAndWriteNode
+                               | Prism::CallOperatorWriteNode | Prism::CallOrWriteNode | Prism::CallAndWriteNode
+                               | Prism::IndexOperatorWriteNode | Prism::IndexOrWriteNode | Prism::IndexAndWriteNode
+
+      @prism_ast: Prism::ProgramNode
+      @inside_singleton_class: bool
+      @standard_error_redefined: bool?
 
       def call: (String input_string) -> String
 
@@ -30,15 +46,16 @@ module Ryac
       def r_until: (Prism::UntilNode node) -> String
       def r_case: (Prism::CaseNode node) -> String
       def r_case_match: (Prism::CaseMatchNode node) -> String
+      def r_in_pattern: (Prism::Node pattern) -> String
       def r_for: (Prism::ForNode node) -> String
       def r_return: (Prism::ReturnNode node) -> String
       def r_break: (Prism::BreakNode node) -> String
       def r_next: (Prism::NextNode node) -> String
       def r_jump: (String keyword, Prism::ArgumentsNode? arguments) -> String
-      def r_compound_write: (Prism::Node node) -> String
-      def compound: (String target, String op, Prism::Node node) -> String
-      def call_target: (Prism::CallNode node) -> String
-      def idx_target: (Prism::CallNode node) -> String
+      def r_compound_write: (compound_write_node node) -> String
+      def compound: (String | Symbol target, Symbol | String op, compound_write_node node) -> String
+      def call_target: (Prism::CallOperatorWriteNode | Prism::CallOrWriteNode | Prism::CallAndWriteNode node) -> String
+      def idx_target: (Prism::IndexOperatorWriteNode | Prism::IndexOrWriteNode | Prism::IndexAndWriteNode node) -> String
       def r_symbol: (Prism::SymbolNode node) -> String
       def r_regexp: (Prism::RegularExpressionNode node) -> String
       def escape_regexp_slash: (String content) -> String
@@ -59,6 +76,8 @@ module Ryac
       def r_and: (Prism::AndNode node) -> String
       def r_or: (Prism::OrNode node) -> String
       def r_begin: (Prism::BeginNode node) -> String
+      def bare_standard_error?: (Array[Prism::node] exceptions) -> bool
+      def standard_error_redefined?: () -> bool
       def r_super: (Prism::SuperNode node) -> String
       def r_defined: (Prism::DefinedNode node) -> String
       def r_multi_write: (Prism::MultiWriteNode node) -> String
@@ -77,8 +96,8 @@ module Ryac
       def build_if_chain: (Prism::IfNode node) -> String
       def r_parens: (Prism::ParenthesesNode node) -> String
       def fmt_body: (String? body) -> String
-      def binary_operator_call?: (Prism::Node node) -> bool
-      def setter_call?: (Prism::CallNode node) -> bool
+      def binary_operator_call?: (Prism::Node? node) -> bool?
+      def setter_call?: (Prism::CallNode node) -> bool?
       def node_returns_bot?: (Prism::Node node) -> bool
       def rescue_var_used?: (Prism::RescueNode rescue_node) -> bool
       def block_uses_it?: (Prism::Node? body) -> bool

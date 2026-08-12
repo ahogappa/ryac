@@ -9,7 +9,7 @@ module Ryac
         source = input
         loop do
           ast = Prism.parse(source).value
-          patches = []
+          patches = [] #: Array[patch_entry]
           walk(ast, source, patches)
           break if patches.empty?
           new_source = apply_patches(source, patches)
@@ -51,7 +51,8 @@ module Ryac
         end
 
         header_end = body_node.location.start_offset
-        header = source.byteslice(node.location.start_offset, header_end - node.location.start_offset).chomp(';')
+        # the def header range is always inside the source, so byteslice is non-nil
+        header = source.byteslice(node.location.start_offset, header_end - node.location.start_offset).chomp(';') # steep:ignore NoMethod
 
         "#{header} =#{body}"
       end

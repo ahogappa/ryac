@@ -42,7 +42,7 @@ module Ryac
       # --- Dispatch ---
 
       def rebuild
-        results = []
+        results = [] #: Array[String]
         @prism_ast.statements.body.each do |subnode|
           result = r(subnode)
           results << result unless result.empty?
@@ -101,8 +101,10 @@ module Ryac
         when Prism::NextNode then r_next(node)
         when Prism::SplatNode then node.expression ? "*#{r(node.expression)}" : '*'
         when Prism::UntilNode then r_until(node)
-        when Prism::AliasMethodNode then "alias #{node.new_name.value} #{node.old_name.value}"
-        when Prism::UndefNode then "undef #{node.names.map { |n| n.value.to_s }.join(',')}"
+        # alias/undef names are SymbolNodes in practice (`.value` is not on the
+        # declared unions, which also admit interpolated symbols).
+        when Prism::AliasMethodNode then "alias #{node.new_name.value} #{node.old_name.value}" # steep:ignore NoMethod
+        when Prism::UndefNode then "undef #{node.names.map { |n| n.value.to_s }.join(',')}" # steep:ignore NoMethod
         when Prism::LambdaNode then r_lambda(node)
         when Prism::PostExecutionNode then "END{#{r_stmt(node.statements)}}"
         when Prism::MultiWriteNode then r_multi_write(node)
@@ -147,7 +149,7 @@ module Ryac
           stmts = nodes.body
           singleton_defs = stmts.select { |s| s.is_a?(Prism::DefNode) && s.receiver.is_a?(Prism::SelfNode) }
           if singleton_defs.size >= 4
-            results = []
+            results = [] #: Array[String]
             @inside_singleton_class = true
             inner = singleton_defs.map { |n| r(n) }
             @inside_singleton_class = false
@@ -161,7 +163,7 @@ module Ryac
             end
             results.join(";")
           else
-            results = []
+            results = [] #: Array[String]
             stmts.each do |subnode|
               result = r(subnode)
               results << result unless result.nil? || result.empty?
@@ -179,7 +181,9 @@ module Ryac
 
       def r_call(node)
         return r_binary_op(node) if AstUtils.middle_method?(node.name)
-        return r_block_call(node) if AstUtils.has_block?(node)
+        # has_block? guarantees a BlockNode/BlockArgumentNode, so r_block_call
+        # cannot actually return nil here.
+        return r_block_call(node) if AstUtils.has_block?(node) # steep:ignore ReturnTypeMismatch
         return r_index_access(node) if node.name == :'[]'
         return r_index_assign(node) if node.name == :'[]='
         return r_unary(node, '!') if node.name == :'!'
@@ -195,7 +199,8 @@ module Ryac
         end
         method_name = node.name
         if setter_call?(node)
-          "#{recv_with_op(node.receiver, call_op)}#{method_name}#{r(node.arguments.arguments.first)}"
+          # setter_call? implies exactly one argument is present
+          "#{recv_with_op(node.receiver, call_op)}#{method_name}#{r(node.arguments.arguments.first)}" # steep:ignore NoMethod
         else
           "#{recv_with_op(node.receiver, call_op)}#{method_name}#{build_call_args(node)}"
         end
@@ -203,7 +208,8 @@ module Ryac
 
       def r_binary_op(node)
         recv_str, recv_wrapped = wrap_operand(node.receiver, node.name, :left)
-        arg_str, = wrap_operand(node.arguments.arguments.first, node.name, :right)
+        # binary operator calls always carry exactly one argument
+        arg_str, = wrap_operand(node.arguments.arguments.first, node.name, :right) # steep:ignore NoMethod
         op = node.name
         sep = binary_op_separator(node.receiver, recv_wrapped, op)
         "#{recv_str}#{sep}#{op}#{arg_str}"
@@ -243,7 +249,7 @@ module Ryac
         if node.safe_navigation?
           "#{r(node.receiver)}&.[]=(#{raw_args.map { |a| r(a) }.join(',')})"
         else
-          keys = raw_args[0..-2].map { |a| r(a) }.join(',')
+          keys = raw_args[0..-2].map { |a| r(a) }.join(',') # steep:ignore NoMethod
           "#{r(node.receiver)}[#{keys}]=#{r(raw_args.last)}"
         end
       end
@@ -272,7 +278,7 @@ module Ryac
         body_node = node.body
         if body_node.is_a?(Prism::StatementsNode) && body_node.body.size == 1 &&
             body_node.body.first.is_a?(Prism::ParenthesesNode)
-          body_node = body_node.body.first.body
+          body_node = body_node.body.first.body # steep:ignore NoMethod
         end
         body = r_stmt(body_node)
         params_str = all_params.empty? ? "" : "(#{all_params.join(',')})"
@@ -370,7 +376,8 @@ module Ryac
         case pattern
         when Prism::IfNode, Prism::UnlessNode
           keyword = pattern.is_a?(Prism::IfNode) ? 'if' : 'unless'
-          "#{r(pattern.statements.body[0])} #{keyword} #{r(pattern.predicate)}"
+          # a guard's IfNode always wraps a non-empty statements body
+          "#{r(pattern.statements.body[0])} #{keyword} #{r(pattern.predicate)}" # steep:ignore NoMethod
         else
           r(pattern)
         end
@@ -412,7 +419,8 @@ module Ryac
         else
           node.name
         end
-        op = node.class.name.include?('Operator') ? node.binary_operator : (node.class.name.include?('Or') ? '||' : '&&')
+        # binary_operator exists exactly on the *Operator* variants selected here
+        op = node.class.name.include?('Operator') ? node.binary_operator : (node.class.name.include?('Or') ? '||' : '&&') # steep:ignore NoMethod
         compound(target, op, node)
       end
 
@@ -433,7 +441,7 @@ module Ryac
       # --- Literals ---
 
       def r_symbol(node)
-        sym = node.value.to_sym
+        sym = node.value.to_sym # steep:ignore NoMethod
         name = sym.to_s
         if name.match?(/\A[a-zA-Z_]\w*[?!=]?\z/) || BINARY_OPERATORS.include?(sym) || %i[[] []=].include?(sym)
           ":#{name}"
@@ -456,15 +464,15 @@ module Ryac
         i = 0
         while i < content.size
           if content[i] == '\\'
-            result << content[i]
+            result << content[i] # steep:ignore ArgumentTypeMismatch
             i += 1
-            result << content[i] if i < content.size
+            result << content[i] if i < content.size # steep:ignore ArgumentTypeMismatch
             i += 1
           elsif content[i] == '/'
             result << '\\/'
             i += 1
           else
-            result << content[i]
+            result << content[i] # steep:ignore ArgumentTypeMismatch
             i += 1
           end
         end
@@ -476,9 +484,10 @@ module Ryac
       def r_array(node)
         opening = node.opening
         if opening == "%i[" && node.elements.all? { |e| e.is_a?(Prism::SymbolNode) }
-          "%i[#{node.elements.map(&:value).join(' ')}]"
+          # the all?(SymbolNode) / all?(StringNode) guards make &:value/&:content safe
+          "%i[#{node.elements.map(&:value).join(' ')}]" # steep:ignore BlockTypeMismatch
         elsif opening == "%w[" && node.elements.all? { |e| e.is_a?(Prism::StringNode) }
-          "%w[#{node.elements.map(&:content).join(' ')}]"
+          "%w[#{node.elements.map(&:content).join(' ')}]" # steep:ignore BlockTypeMismatch
         else
           "[#{node.elements.map { r(_1) }.join(',')}]"
         end
@@ -583,13 +592,13 @@ module Ryac
           when "\r" then result << '\\r'
           when "\0" then result << '\\0'
           when '#'
-            if i + 1 < str.size && '{@$'.include?(str[i + 1])
+            if i + 1 < str.size && '{@$'.include?(str[i + 1]) # steep:ignore ArgumentTypeMismatch
               result << '\\#'
             else
               result << '#'
             end
           else
-            result << c
+            result << c # steep:ignore ArgumentTypeMismatch
           end
           i += 1
         end
@@ -653,7 +662,8 @@ module Ryac
             rp += " #{exceptions.map { |e| r(e) }.join(',')}"
           end
           if rescue_node.reference && rescue_var_used?(rescue_node)
-            rp += "=>#{rescue_node.reference.name}"
+            # the reference is a name-bearing target node in valid rescue clauses
+            rp += "=>#{rescue_node.reference.name}" # steep:ignore NoMethod
           end
           parts << "#{rp}#{fmt_body(r_stmt(rescue_node.statements))}"
           rescue_node = rescue_node.subsequent
@@ -675,7 +685,9 @@ module Ryac
       # node whose written name is StandardError counts — over-matching a
       # nested Foo::StandardError only forgoes a few bytes.
       def standard_error_redefined?
-        return @standard_error_redefined unless @standard_error_redefined.nil?
+        # the .nil? guard means the memoized value returned here is a bool,
+        # but Steep does not narrow the ivar through the unless modifier
+        return @standard_error_redefined unless @standard_error_redefined.nil? # steep:ignore ReturnTypeMismatch
 
         found = false
         AstUtils.each_node(@prism_ast) do |node|
@@ -779,7 +791,8 @@ module Ryac
       end
 
       def r_hash_pattern(node)
-        parts = node.elements.map { |a| "#{a.key.value}: #{r(a.value)}" }
+        # hash-pattern keys are always plain SymbolNodes
+        parts = node.elements.map { |a| "#{a.key.value}: #{r(a.value)}" } # steep:ignore NoMethod
         if node.rest
           case node.rest
           when Prism::AssocSplatNode
@@ -792,7 +805,7 @@ module Ryac
       end
 
       def r_find_pattern(node)
-        parts = []
+        parts = [] #: Array[String]
         if node.left
           parts << if node.left.is_a?(Prism::SplatNode) && node.left.expression
             "*#{r(node.left.expression)}"
@@ -815,7 +828,7 @@ module Ryac
 
       def build_call_args(node, block_pass = nil)
         raw_args = node.arguments&.arguments || []
-        args = []
+        args = [] #: Array[String]
         raw_args.each do |arg|
           case arg
           when Prism::SplatNode
@@ -849,13 +862,13 @@ module Ryac
         rest = if params.rest.is_a?(Prism::RestParameterNode)
           [params.rest.name ? "*#{params.rest.name}" : '*']
         else
-          []
+          [] #: Array[String]
         end
         post = (params.posts || []).map { |p|
           p.is_a?(Prism::RequiredParameterNode) ? p.name.to_s : p.slice
         }
-        req_kw = []
-        opt_kw = []
+        req_kw = [] #: Array[String]
+        opt_kw = [] #: Array[String]
         (params.keywords || []).each do |p|
           case p
           when Prism::RequiredKeywordParameterNode then req_kw << "#{p.name}:"
@@ -872,12 +885,12 @@ module Ryac
         elsif params.keyword_rest.is_a?(Prism::ForwardingParameterNode)
           ['...']
         else
-          []
+          [] #: Array[String]
         end
         block_param = if params.block.is_a?(Prism::BlockParameterNode)
           [params.block.name ? "&#{params.block.name}" : '&']
         else
-          []
+          [] #: Array[String]
         end
         req + opt + rest + post + req_kw + opt_kw + rest_kw + block_param
       end
@@ -893,7 +906,7 @@ module Ryac
         if target.rest
           parts << (target.rest.is_a?(Prism::SplatNode) && target.rest.expression ? "*#{target.rest.expression.slice}" : '*')
         end
-        parts.concat(target.rights.map { |t| t.respond_to?(:name) ? t.name.to_s : t.slice })
+        parts.concat(target.rights.map { |t| t.respond_to?(:name) ? t.name.to_s : t.slice }) # steep:ignore NoMethod
         "(#{parts.join(',')})"
       end
 
@@ -934,7 +947,8 @@ module Ryac
         end
         if binary_operator_call?(inner)
           pp = OPERATOR_PRECEDENCE[parent_op]
-          cp = OPERATOR_PRECEDENCE[inner.name]
+          # binary_operator_call? has established inner is a CallNode
+          cp = OPERATOR_PRECEDENCE[inner.name] # steep:ignore NoMethod
           if pp && cp
             return ["(#{str})", true] if cp < pp
             return ["(#{str})", true] if cp == pp && side == :right
@@ -957,7 +971,7 @@ module Ryac
       end
 
       def build_if_chain(node)
-        parts = []
+        parts = [] #: Array[String]
         current = node
         keyword = "if"
         loop do
@@ -1028,7 +1042,8 @@ module Ryac
       end
 
       def rescue_var_used?(rescue_node)
-        var = rescue_node.reference.name
+        # only called when the (name-bearing) reference is present
+        var = rescue_node.reference.name # steep:ignore NoMethod
         return false unless rescue_node.statements
         prism_traverse(rescue_node.statements) { |n|
           return true if n.is_a?(Prism::LocalVariableReadNode) && n.name == var

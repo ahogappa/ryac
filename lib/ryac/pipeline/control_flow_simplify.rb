@@ -11,7 +11,7 @@ module Ryac
         source = input
         loop do
           ast = Prism.parse(source).value
-          patches = []
+          patches = [] #: Array[patch_entry]
           walk(ast, source, patches)
           break if patches.empty?
           new_source = apply_patches(source, patches)
@@ -32,7 +32,8 @@ module Ryac
       def walk(node, source, patches, statement_position = false)
         case node
         when Prism::IfNode
-          if node.end_keyword_loc && source.byteslice(node.if_keyword_loc.start_offset, 2) == 'if'
+          # an IfNode with an end keyword always has its if/elsif keyword location
+          if node.end_keyword_loc && source.byteslice(node.if_keyword_loc.start_offset, 2) == 'if' # steep:ignore NoMethod
             if (replacement = try_if(node, source, statement_position))
               patches << mk(node, replacement)
               return
