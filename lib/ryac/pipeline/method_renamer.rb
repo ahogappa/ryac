@@ -133,9 +133,7 @@ module Ryac
         short = rename_map[key] || method_alias_map[key]&.to_s
         return unless short
         short = short.chomp('=') if short.end_with?('=') && !short.end_with?('==')
-        # message_loc was checked on entry; Steep loses that pure-call
-        # narrowing across the lines in between.
-        patches << { start: node.message_loc.start_offset, end: node.message_loc.end_offset, replacement: short } # steep:ignore NoMethod
+        patches << { start: node.message_loc.start_offset, end: node.message_loc.end_offset, replacement: short }
       end
     end
   end
