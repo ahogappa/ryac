@@ -7,6 +7,7 @@
 /spec/reports/
 /tmp/
 *.min.rb
+*.gem
 
 specs
 .serena/

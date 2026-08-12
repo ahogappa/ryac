@@ -42,7 +42,7 @@ bin/ryac path/to/entry.rb -c unstable
 # Write to output file
 bin/ryac path/to/entry.rb -o minified.rb
 
-# Write constant aliases to a separate file (only generated at L2+)
+# Write constant aliases to a separate file
 bin/ryac path/to/entry.rb -o minified.rb -a aliases.rb
 
 # Multiple entry points
@@ -71,8 +71,8 @@ puts result.aliases           # backward-compat alias declarations (e.g., "MyCla
 puts result.stats.file_count  # number of files processed
 puts result.stats.compression_ratio  # e.g., 0.44 (56% reduction)
 
-# Specify optimization level (0-5, default: 3)
-result = minifier.call('path/to/entry.rb', level: 5)
+# Specify optimization level (:stable or :unstable, default: :stable)
+result = minifier.call('path/to/entry.rb', level: :unstable)
 ```
 
 ## Optimization Levels
@@ -114,7 +114,7 @@ rake test:integration
 # Run gem integration tests (minifies real gems and runs their test suites)
 rake test:gems
 
-# Minify optcarrot at L4 and compare rendered frames against the original
+# Minify optcarrot at :stable and compare rendered frames against the original
 # (requires gem_tests/optcarrot: git clone https://github.com/mame/optcarrot gem_tests/optcarrot)
 rake test:optcarrot
 
@@ -133,7 +133,7 @@ FileCollector → Concatenator → Preprocessor → Compactor → STAGES[level] 
 1. **FileCollector** — Resolves `require_relative` / `autoload` and collects all source files into a dependency graph
 2. **Concatenator** — Topologically sorts files and concatenates them into a single source
 3. **Preprocessor** — Applies RuboCop safe autocorrections (redundant return/self, symbol proc, etc.)
-4. **Compactor** — Rebuilds the AST into minimal whitespace form (L0 baseline)
+4. **Compactor** — Rebuilds the AST into minimal whitespace form (the pre-stage baseline)
 5. **STAGES** — Table-driven stage pipeline, configured per level:
    - **Optimize stages** (Hash `{Class => weight}`): `ControlFlowSimplify`, `EndlessMethod`, `ConstantFold`, `BooleanShorten`, `CharShorten`, `ParenOptimizer` — executed by weight (high-weight before renames, zero-weight after), each transforms `String → String`
    - **Rename stages** (Array `[Class, kwargs]`): `ConstantAliaser`, `VariableRenamer`, `MethodRenamer` — run via `UnifiedRenamer` with a single TypeProf analysis pass
