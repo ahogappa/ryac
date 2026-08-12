@@ -10,9 +10,9 @@ Gem::Specification.new do |spec|
 
   spec.summary = "A Ruby source code minifier with type-aware renaming (ryac, read as ryaku)"
   spec.description = "Ryac minifies Ruby source code using Prism AST transformations and TypeProf type inference. " \
-                     "It supports multi-file bundling via require_relative, 6 compression levels (whitespace removal, " \
-                     "constant folding, constant/variable/method renaming), and preserves functional equivalence " \
-                     "through scope-aware analysis."
+                     "It supports multi-file bundling via require_relative, two compression levels (stable: whitespace " \
+                     "removal, constant folding, constant/variable renaming; unstable: adds method renaming), and " \
+                     "preserves functional equivalence through scope-aware analysis."
   spec.homepage = "https://github.com/ahogappa/ryac"
   spec.license = "MIT"
   # Set by the hard floor of typeprof, which requires Ruby >= 3.3. Nothing in
@@ -28,7 +28,7 @@ Gem::Specification.new do |spec|
   spec.files = Dir.chdir(__dir__) do
     `git ls-files -z`.split("\x0").reject do |f|
       (File.expand_path(f) == __FILE__) ||
-        f.start_with?(*%w[test/ spec/ features/ .git appveyor Gemfile])
+        f.start_with?(*%w[tests/ test/ spec/ features/ .git appveyor Gemfile])
     end
   end
   spec.bindir = "bin"
@@ -41,7 +41,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "typeprof", ">= 0.32.0"
   # rbs is a transitive dependency via typeprof, but the bound belongs here:
   # from 4.1.0 on, TypeProf::Core::Service.new never finishes loading the core
-  # RBS files, which hangs every run that reaches the analysis stages (L2+).
+  # RBS files, which hangs every run that reaches the rename stages.
   spec.add_dependency "rbs", ">= 3.6.0", "< 4.1.0"
   spec.add_dependency "rubocop"
 end
