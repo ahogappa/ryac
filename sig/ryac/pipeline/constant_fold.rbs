@@ -13,7 +13,10 @@ module Ryac
       def walk: (Prism::Node node, Array[patch_entry] patches) -> void
       def try_constant_fold: (Prism::Node node) -> Numeric?
       def try_fold_binary_op: (Prism::CallNode node) -> Numeric?
-      def apply_op: (Numeric lhs, Symbol op, Numeric rhs) -> Numeric?
+      # The operands are Integer | Float at runtime, but RBS's Numeric does
+      # not carry the arithmetic operators and the op is dispatched on a
+      # Symbol tag, so the operands stay untyped.
+      def apply_op: (untyped lhs, Symbol op, untyped rhs) -> Numeric?
     end
   end
 end

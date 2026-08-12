@@ -10,7 +10,7 @@ module Ryac
 
       def call(input)
         ast = Prism.parse(input).value
-        patches = []
+        patches = [] #: Array[patch_entry]
         walk(ast, patches)
         apply_patches(input, patches)
       end
@@ -62,7 +62,9 @@ module Ryac
         lhs = try_constant_fold(node.receiver)
         return nil unless lhs.is_a?(Numeric)
 
-        rhs = try_constant_fold(node.arguments.arguments.first)
+        # arguments proved non-nil above; Steep cannot carry that through the
+        # repeated method call.
+        rhs = try_constant_fold(node.arguments.arguments.first) # steep:ignore NoMethod
         return nil unless rhs.is_a?(Numeric)
 
         return nil if INTEGER_ONLY_OPS.include?(op) && !(lhs.is_a?(Integer) && rhs.is_a?(Integer))

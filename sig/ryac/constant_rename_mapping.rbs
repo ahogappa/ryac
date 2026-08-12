@@ -26,6 +26,8 @@ module Ryac
     attr_reader mappings: Hash[Array[Symbol], ConstantInfo]
     attr_reader used_short_names: Set[String]
 
+    @state: Symbol
+
     def initialize: (?boot_roots: Set[Symbol]?) -> void
     def empty?: () -> bool
     def finalized?: () -> bool
@@ -38,10 +40,10 @@ module Ryac
     def short_name_for_path: (Array[Symbol]? static_cpath) -> String?
     def short_name_for: (Symbol name) -> String?
     def user_defined_path?: (Array[Symbol]? static_cpath) -> bool
-    def class_or_module_path?: (Array[Symbol]? static_cpath) -> bool
     def usage_count_for_path: (Array[Symbol] static_cpath) -> Integer
     def set_usage_count_by_path: (Array[Symbol] static_cpath, Integer count) -> void
     def each_user_defined_path: () { (Array[Symbol]) -> void } -> void
+    def class_or_module_path?: (Array[Symbol]? static_cpath) -> bool
     def has_user_defined_prefix?: (Array[Symbol] full_path) -> bool
     def add_external_prefix: (Array[Symbol] prefix_path, usage_count: Integer) -> void
     def short_name_for_prefix: (Array[Symbol]? full_path) -> String?

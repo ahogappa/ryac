@@ -77,7 +77,10 @@ module Ryac
       segments.unshift(current.name) if current.is_a?(Prism::ConstantReadNode)
       segments
     else
-      [node.name]
+      # Reached only for bare named nodes (ConstantRead and the compound
+      # constant writes), which all carry #name; the parameter stays
+      # Prism::Node for the shared walk.
+      [node.name] # steep:ignore NoMethod
     end
   end
 
@@ -143,7 +146,7 @@ module Ryac
     if user_path
       @constant_mapping.increment_usage_by_path(user_path)
     else
-      @constant_mapping.increment_usage(node.name)
+      @constant_mapping.increment_usage(node.name) # steep:ignore NoMethod
     end
   end
 
@@ -162,7 +165,7 @@ module Ryac
     when Prism::ConstantPathNode
       syntactic_const_segments(superclass_node)
     when Prism::ConstantReadNode
-      full_path = class_cpath[0...-1] + [superclass_node.name]
+      full_path = class_cpath[0...-1] + [superclass_node.name] # steep:ignore NoMethod
       full_path if @constant_mapping&.user_defined_path?(full_path)
     end
   end
@@ -182,11 +185,11 @@ module Ryac
   # Location-keyed maps the patchers consume: resolution and full path per
   # read, write cpath per assignment, cpath and superclass per definition.
   def precompute_constant_resolution
-    @const_resolution_map = {}
-    @const_full_path_map = {}
-    @const_write_cpath_map = {}
-    @class_cpath_map = {}
-    @superclass_resolution_map = {}
+    @const_resolution_map = {} #: Hash[location_key, Array[Symbol]?]
+    @const_full_path_map = {} #: Hash[location_key, Array[Symbol]]
+    @const_write_cpath_map = {} #: Hash[location_key, Array[Symbol]]
+    @class_cpath_map = {} #: Hash[location_key, Array[Symbol]]
+    @superclass_resolution_map = {} #: Hash[location_key, Array[Symbol]]
 
     each_constant_event(@prism_root) do |kind, node, cpath, _singleton, _in_def|
       case kind
@@ -198,7 +201,8 @@ module Ryac
         key = AstUtils.location_key(node)
         @class_cpath_map[key] = cpath
         if node.is_a?(Prism::ClassNode) && node.superclass
-          resolved = resolve_superclass_path(node.superclass, cpath)
+          # cpath is never nil for a :class_def event.
+          resolved = resolve_superclass_path(node.superclass, cpath) # steep:ignore ArgumentTypeMismatch
           @superclass_resolution_map[key] = resolved if resolved
         end
       end
@@ -306,7 +310,7 @@ module Ryac
   def probe_boot_constants(stdlib_requires)
     requires = stdlib_requires.map { |r| "begin;require #{r.dump};rescue LoadError;end" }.join(';')
     script = "#{requires};puts Object.constants"
-    popen = -> { IO.popen([{ 'RUBYOPT' => nil }, RbConfig.ruby, '-e', script], &:read) }
+    popen = -> { IO.popen([{ 'RUBYOPT' => nil }, RbConfig.ruby, '-e', script], &:read) } #: ^() -> String
     out = defined?(Bundler) ? Bundler.with_unbundled_env(&popen) : popen.call
     Process.last_status&.success? ? out.split.map(&:to_sym).to_set : nil
   rescue StandardError

@@ -63,7 +63,8 @@ module Ryac
           segments, _absolute = path_segments(receiver)
           key_cpath = segments if segments
         end
-        yield node, [key_cpath, singleton, node.name].freeze
+        # The .freeze hides the tuple type from Steep's hint propagation.
+        yield node, [key_cpath, singleton, node.name].freeze # steep:ignore ArgumentTypeMismatch
       end
     end
 
@@ -72,10 +73,11 @@ module Ryac
     # absolute when written `::X` — or nil when the path is not statically
     # known (`self::X`, `expr::X`).
     def path_segments(constant_path)
-      segments = []
+      segments = [] #: Array[Symbol]
       current = constant_path
       while current.is_a?(Prism::ConstantPathNode) || current.is_a?(Prism::ConstantPathTargetNode)
-        segments.unshift(current.name)
+        # Prism types #name as Symbol? only for parse-degenerate paths.
+        segments.unshift(current.name) # steep:ignore ArgumentTypeMismatch
         current = current.parent
       end
 

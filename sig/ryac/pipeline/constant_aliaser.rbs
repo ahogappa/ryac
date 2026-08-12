@@ -3,6 +3,8 @@ module Ryac
     class ConstantAliaser
       include RenamePatcher
 
+      @class_module_cpath_offsets: Set[Integer]
+
       def self.collect_patches_from: (Prism::ProgramNode prism_ast, Array[patch_entry] patches, AnalysisResult analysis, ?Hash[Symbol, String]? kwargs) -> void
       def self.postprocess: (String result, AnalysisResult analysis, String aliases_str, String preamble_str) -> [String, String, String]
       def run_collect: (Prism::ProgramNode node, Array[patch_entry] patches, AnalysisResult analysis, Set[Integer] class_module_cpath_offsets) -> void
@@ -10,14 +12,21 @@ module Ryac
       private
 
       def collect_patches: (Prism::Node node, Array[patch_entry] patches, AnalysisResult analysis) -> void
-      def patch_constant_ref: (Prism::Node node, Array[patch_entry] patches, AnalysisResult analysis) -> void
-      def patch_constant_write: (Prism::ConstantWriteNode node, Array[patch_entry] patches, AnalysisResult analysis) -> void
-      def patch_constant_path_write: (Prism::ConstantPathWriteNode node, Array[patch_entry] patches, AnalysisResult analysis) -> void
-      def patch_class_node: (Prism::ClassNode node, Array[patch_entry] patches, AnalysisResult analysis) -> void
-      def patch_module_node: (Prism::ModuleNode node, Array[patch_entry] patches, AnalysisResult analysis) -> void
+
+      # The patch_* helpers are called for their side effects from the
+      # walk_prism block, whose declared result is Symbol? (:skip_children or
+      # nil) — untyped rather than void keeps the block body compatible.
+      def patch_constant_ref: (Prism::ConstantReadNode | Prism::ConstantPathNode node, Array[patch_entry] patches, AnalysisResult analysis) -> untyped
+      def patch_constant_write: (Prism::ConstantWriteNode | Prism::ConstantTargetNode node, Array[patch_entry] patches, AnalysisResult analysis) -> untyped
+      def patch_constant_path_write: (Prism::ConstantPathWriteNode node, Array[patch_entry] patches, AnalysisResult analysis) -> untyped
+      def patch_class_node: (Prism::ClassNode node, Array[patch_entry] patches, AnalysisResult analysis) -> untyped
+      def patch_module_node: (Prism::ModuleNode node, Array[patch_entry] patches, AnalysisResult analysis) -> untyped
+      def patch_definition_path: (Prism::ClassNode | Prism::ModuleNode node, Array[patch_entry] patches, Array[Symbol]? class_cpath, AnalysisResult analysis) -> void
+      def render_short_cpath: (Array[Symbol] cpath, AnalysisResult analysis, ?from: Integer) -> String
       def mark_constant_children: (Prism::Node node) -> void
+      def build_renamed_via_user_prefix: (Prism::ConstantPathNode node, AnalysisResult analysis) -> String?
       def get_short_cpath: (Array[Symbol] cpath, AnalysisResult analysis) -> String
-      def patch_def_receiver: (Prism::Node? receiver, Array[patch_entry] patches, AnalysisResult analysis) -> void
+      def patch_def_receiver: (Prism::Node receiver, Array[patch_entry] patches, AnalysisResult analysis) -> untyped
     end
   end
 end

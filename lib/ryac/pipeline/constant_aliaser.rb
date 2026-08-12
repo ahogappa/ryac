@@ -32,6 +32,9 @@ module Ryac
 
       private
 
+      # analysis.constant_mapping is declared optional on AnalysisResult but
+      # is always present by the time constant patches are collected; the
+      # steep:ignore comments below cover exactly that gap.
       def collect_patches(node, patches, analysis)
         walk_prism(node) do |subnode|
           case subnode
@@ -73,7 +76,7 @@ module Ryac
             # Bare name reference (e.g., CONST) — use only the leaf short name.
             # Expanding to a fully qualified path would break constants defined
             # in `class << self` (metaclass constants are not accessible as Foo::X).
-            analysis.constant_mapping.short_name_for_path(resolved_cpath) || node.name.to_s
+            analysis.constant_mapping.short_name_for_path(resolved_cpath) || node.name.to_s # steep:ignore NoMethod
           else
             get_short_cpath(resolved_cpath, analysis)
           end
@@ -95,7 +98,7 @@ module Ryac
         static_cpath = analysis.const_write_cpath_map[key]
         return unless static_cpath
 
-        short_name = analysis.constant_mapping.short_name_for_path(static_cpath)
+        short_name = analysis.constant_mapping.short_name_for_path(static_cpath) # steep:ignore NoMethod
         return unless short_name
 
         # A ConstantTargetNode is entirely the name; a ConstantWriteNode also
@@ -148,7 +151,7 @@ module Ryac
 
         # class_cpath exists only when path_segments succeeded on this node,
         # and in the absolute case it equals the segments outright.
-        segments, = Nesting.path_segments(node.constant_path)
+        segments, = Nesting.path_segments(node.constant_path) #: [Array[Symbol], bool]
         rendered = render_short_cpath(class_cpath, analysis, from: class_cpath.size - segments.size)
         if rendered != node.constant_path.slice
           cpath_loc = node.constant_path.location
@@ -164,7 +167,7 @@ module Ryac
       # assigned.
       def render_short_cpath(cpath, analysis, from: 0)
         (from...cpath.size).map { |i|
-          analysis.constant_mapping.short_name_for_path(cpath[0..i]) || cpath[i].to_s
+          analysis.constant_mapping.short_name_for_path(cpath[0..i]) || cpath[i].to_s # steep:ignore NoMethod
         }.join('::')
       end
 
@@ -186,9 +189,9 @@ module Ryac
         parent_resolved = analysis.const_resolution_map[parent_key]
         return nil unless parent_resolved
 
-        if analysis.constant_mapping.user_defined_path?(parent_resolved)
+        if analysis.constant_mapping.user_defined_path?(parent_resolved) # steep:ignore NoMethod
           parent_short = if parent_node.is_a?(Prism::ConstantReadNode)
-            analysis.constant_mapping.short_name_for_path(parent_resolved) || parent_node.name.to_s
+            analysis.constant_mapping.short_name_for_path(parent_resolved) || parent_node.name.to_s # steep:ignore NoMethod
           else
             get_short_cpath(parent_resolved, analysis)
           end
@@ -200,7 +203,7 @@ module Ryac
       end
 
       def get_short_cpath(cpath, analysis)
-        if analysis.constant_mapping.user_defined_path?(cpath)
+        if analysis.constant_mapping.user_defined_path?(cpath) # steep:ignore NoMethod
           render_short_cpath(cpath, analysis)
         else
           cpath.map(&:to_s).join('::')
