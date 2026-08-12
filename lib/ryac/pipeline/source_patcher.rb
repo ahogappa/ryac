@@ -18,7 +18,9 @@ module Ryac
         result.force_encoding(source.encoding)
       end
 
-      def src(source, node)
+      # byteslice is typed String? but node offsets always lie inside the
+      # source the node was parsed from, so the result is never nil.
+      def src(source, node) # steep:ignore MethodBodyTypeMismatch
         source.byteslice(node.location.start_offset, node.location.length)
       end
     end

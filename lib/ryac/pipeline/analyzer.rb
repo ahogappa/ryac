@@ -61,7 +61,7 @@ module Ryac
         analyze_variables_phase
 
         rename_map = @method_rename_mapping.node_mapping.dup
-        attr_ivar_entries = {}
+        attr_ivar_entries = {} #: Hash[location_key, String]
         attr_rename_map = coordinate_attr_renames(@prism_root, rename_map, attr_ivar_entries)
 
         analyze_constants_phase
@@ -250,14 +250,14 @@ module Ryac
       end
 
       def collect_syntax_data(prism_ast)
-        data = {}
+        data = {} #: syntax_data_map
         traverse_prism(prism_ast, data)
         data
       end
 
       def traverse_prism(node, data)
         loc = node.location
-        key = [loc.start_line, loc.start_column]
+        key = [loc.start_line, loc.start_column] #: [Integer, Integer]
         case node
         when Prism::DefNode
           data[key] = { self_receiver: node.receiver.is_a?(Prism::SelfNode) }

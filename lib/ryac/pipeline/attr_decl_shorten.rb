@@ -28,7 +28,7 @@ module Ryac
           meta = analysis.meta_node_map[key]
           next unless meta
 
-          args = meta[:args] || []
+          args = meta[:args] || [] #: Array[Symbol]
           next unless args.any?
 
           names = args.map { |sym| attr_rename_map&.dig(key, sym) || sym.to_s }
