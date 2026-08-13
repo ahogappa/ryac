@@ -126,10 +126,9 @@ module Ryac
         [prism_result, nodes, service.genv]
       end
 
-      # The shapes released typeprof 0.32.0 crashes on (fixed upstream by
-      # ruby/typeprof#465 and #451). Consulted only after update_rb_file has
-      # crashed — under a typeprof that ingests them, these shapes minify
-      # like any other.
+      # The shapes released typeprof 0.32.0 crashes on. Consulted only after
+      # update_rb_file has crashed — under a typeprof that ingests them,
+      # these shapes minify like any other.
       def unsupported_construct(root)
         found = nil
         AstUtils.each_node(root) do |n|

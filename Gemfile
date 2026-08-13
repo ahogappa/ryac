@@ -5,11 +5,10 @@ source "https://rubygems.org"
 # Specify your gem's dependencies in ryac.gemspec
 gemspec
 
-# Tracks master ahead of the 0.32.0 release: it carries the ingestion fixes
-# for anonymous-splat find patterns and `**nil` (ruby/typeprof#465) and
-# parameterless block pipes (#451), which the corpus exercises. The gemspec
-# still admits released >= 0.32.0 — the analyzer converts the old crashes to
-# named MinifyErrors there.
+# Tracks master ahead of the 0.32.0 release: it ingests the pattern shapes
+# the corpus exercises (anonymous-splat find patterns, `**nil`, bare block
+# pipes), where 0.32.0 crashes. The gemspec still admits released >= 0.32.0
+# — the analyzer converts those crashes to named MinifyErrors there.
 gem "typeprof", github: "ruby/typeprof"
 
 gem "rake", "~> 13.0"

@@ -413,8 +413,8 @@ PIPELINE_STEPS = [AddStep, DoubleStep].freeze
 # pin, rightward assignment, one-line `in` (parens are load-bearing: bare
 # `def f =expr in pat` rebinds the match to the def itself), find patterns
 # with named and anonymous splats, and `**nil`. The anonymous shapes need
-# the ingestion fixes the Gemfile's typeprof master carries
-# (ruby/typeprof#465); released 0.32.0 raises a named MinifyError on them.
+# a typeprof newer than 0.32.0, whose ingestion crashes on them — released
+# 0.32.0 gets a named MinifyError from the analyzer instead.
 class PatternMatcher
   def classify(obj)
     case obj
@@ -541,7 +541,7 @@ class ControlGolf
 
   def block_next_break = [1, 2, 3, 4].map { |i| next 0 if i.odd?; i * i }
 
-  # `||` and `|; t|` declare no parameters at all (typeprof needs #451).
+  # `||` and `|; t|` declare no parameters at all.
   def bare_pipes = [1, 2].map { || :x } + [3].map { |; t| t = :y; t }
 
   def begin_else

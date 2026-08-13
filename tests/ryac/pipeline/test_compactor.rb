@@ -433,6 +433,16 @@ class TestCompactor < Minitest::Test
     assert_equal 'undef foo', @stage.call('undef foo')
   end
 
+  # Interpolated symbols cannot drop their colon-quote syntax; plain names
+  # in the same statement still do.
+  def test_alias_interpolated_symbol
+    assert_equal 'alias :"a#{1}" object_id', @stage.call('alias :"a#{1}" :object_id')
+  end
+
+  def test_undef_interpolated_symbol
+    assert_equal 'undef :"m#{2}",to_s', @stage.call('undef :"m#{2}", :to_s')
+  end
+
   # --- Defined / POST execution ---
 
   def test_defined

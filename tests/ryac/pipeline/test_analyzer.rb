@@ -87,10 +87,10 @@ class TestAnalyzer < Minitest::Test
 
   # --- typeprof ingestion crashes ---
 
-  # typeprof 0.32.0 crashes converting these shapes (fixed upstream by
-  # ruby/typeprof#465 and #451). The analyzer's contract is version-agnostic:
-  # a typeprof that ingests them just analyzes them; one that crashes must
-  # surface a MinifyError naming the construct — never a raw NoMethodError.
+  # Released typeprof 0.32.0 crashes converting these shapes; newer typeprof
+  # ingests them. The analyzer's contract is version-agnostic: a typeprof
+  # that ingests them just analyzes them; one that crashes must surface a
+  # MinifyError naming the construct — never a raw NoMethodError.
   INGESTION_HAZARDS = {
     'anonymous splat' => "case [1];in [*, x, *rest];puts x;end",
     '`**nil` hash patterns' => "case({a: 1});in {a:, **nil};puts a;end",
