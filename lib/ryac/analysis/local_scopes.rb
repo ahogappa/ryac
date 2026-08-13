@@ -32,8 +32,7 @@ module Ryac
     NUMBERED_PARAM_RE = /\A_\d+\z/
 
     Scope = Struct.new(:id, :kind, :node, :parent, :owner_call, :mapping, keyword_init: true) do
-      # Steep cannot attribute defs inside a Struct.new block to the Struct
-      # subclass; the RBS Scope class declares this method.
+      # declared on the Scope class itself in the RBS
       def allocated? = !mapping.nil? # steep:ignore UndeclaredMethodDefinition, NoMethod
     end
 
@@ -505,8 +504,7 @@ module Ryac
 
       case node
       when *VARIABLE_NODES
-        # Splatting the class list hides the narrowing from Steep; node is one
-        # of the six local-variable node classes here.
+        # node is one of the six local-variable node classes here
         record_variable(node, stack) # steep:ignore ArgumentTypeMismatch
       when Prism::ForNode
         record_for_index(node, stack)

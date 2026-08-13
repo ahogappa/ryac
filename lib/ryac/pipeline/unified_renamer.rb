@@ -17,8 +17,7 @@ module Ryac
         analysis = Pipeline::Analyzer.new.call(source)
 
         if analysis.constant_mapping
-          # Steep cannot splat a union of tuple shapes into block params, so
-          # kwargs collapses to `bot` here; the dig itself is sound.
+          # kwargs is the optional second tuple element: nil or a Hash
           rename_classes = stage_defs.any? { |_, kwargs| kwargs&.dig(:rename_classes) } # steep:ignore NoMethod
           generator = NameGenerator.new([], upcase: true)
           analysis.constant_mapping.assign_short_names(generator, skip_class_modules: !rename_classes)

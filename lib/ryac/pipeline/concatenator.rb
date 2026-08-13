@@ -179,8 +179,7 @@ module Ryac
           if node[:in_class] && !node[:in_method] && node[:type] != :require_stdlib
             dep_path = resolve_node_path(node, graph)
             if dep_path && graph[dep_path]
-              # The `graph[dep_path]` check above guarantees the entry exists;
-              # Steep cannot carry that through a repeated method call.
+              # the `graph[dep_path]` check above guarantees the entry exists
               dep_content = cleaned_cache[dep_path] || graph[dep_path].content # steep:ignore NoMethod
               stripped = strip_outer_nesting(dep_content)
               # Only consume trailing semicolons (not newlines) for inline

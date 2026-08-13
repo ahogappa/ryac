@@ -101,10 +101,8 @@ module Ryac
         when Prism::NextNode then r_next(node)
         when Prism::SplatNode then node.expression ? "*#{r(node.expression)}" : '*'
         when Prism::UntilNode then r_until(node)
-        # alias/undef names are SymbolNodes in practice (`.value` is not on the
-        # declared unions, which also admit interpolated symbols).
-        when Prism::AliasMethodNode then "alias #{node.new_name.value} #{node.old_name.value}" # steep:ignore NoMethod
-        when Prism::UndefNode then "undef #{node.names.map { |n| n.value.to_s }.join(',')}" # steep:ignore NoMethod
+        when Prism::AliasMethodNode then "alias #{r_alias_name(node.new_name)} #{r_alias_name(node.old_name)}"
+        when Prism::UndefNode then "undef #{node.names.map { |n| r_alias_name(n) }.join(',')}"
         when Prism::LambdaNode then r_lambda(node)
         when Prism::PostExecutionNode then "END{#{r_stmt(node.statements)}}"
         when Prism::MultiWriteNode then r_multi_write(node)
@@ -395,6 +393,10 @@ module Ryac
 
       def r_return(node) = r_jump('return', node.arguments)
       def r_break(node) = r_jump('break', node.arguments)
+
+      # A plain symbol drops its colon (`alias a b`); anything else — an
+      # interpolated symbol — must keep its own syntax.
+      def r_alias_name(node) = node.is_a?(Prism::SymbolNode) ? node.value.to_s : r(node)
       def r_next(node) = r_jump('next', node.arguments)
 
       def r_jump(keyword, arguments)
@@ -685,8 +687,7 @@ module Ryac
       # node whose written name is StandardError counts — over-matching a
       # nested Foo::StandardError only forgoes a few bytes.
       def standard_error_redefined?
-        # the .nil? guard means the memoized value returned here is a bool,
-        # but Steep does not narrow the ivar through the unless modifier
+        # a non-nil memo is always one of the two bools
         return @standard_error_redefined unless @standard_error_redefined.nil? # steep:ignore ReturnTypeMismatch
 
         found = false

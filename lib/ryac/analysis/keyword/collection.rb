@@ -47,8 +47,7 @@ module Ryac
   def forwards_parameters_to_super?(def_node)
     found = false
     walk = lambda do |n|
-      # The three `return`s below leave the lambda, not the method; Steep
-      # checks them against the method's bool return type.
+      # these `return`s leave the lambda, not the enclosing method
       return if found || !n.is_a?(Prism::Node) # steep:ignore ReturnTypeMismatch
       # A nested def has its own parameters; its `super` is not about ours.
       return if n.is_a?(Prism::DefNode) # steep:ignore ReturnTypeMismatch

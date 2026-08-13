@@ -411,11 +411,10 @@ PIPELINE_STEPS = [AddStep, DoubleStep].freeze
 
 # Pattern matching: array/hash patterns, alternation with guard, expression
 # pin, rightward assignment, one-line `in` (parens are load-bearing: bare
-# `def f =expr in pat` rebinds the match to the def itself), and find
-# patterns with NAMED splats. Anonymous-splat find patterns (`[*, x, *]`)
-# and `**nil` stay absent until the bundled typeprof carries
-# ruby/typeprof#465 — those shapes crash 0.32.0's ingestion and the
-# analyzer says so by name.
+# `def f =expr in pat` rebinds the match to the def itself), find patterns
+# with named and anonymous splats, and `**nil`. The anonymous shapes need
+# the ingestion fixes the Gemfile's typeprof master carries
+# (ruby/typeprof#465); released 0.32.0 raises a named MinifyError on them.
 class PatternMatcher
   def classify(obj)
     case obj
@@ -445,7 +444,15 @@ class PatternMatcher
   def find_middle(list)
     case list
     in [*front, Symbol => marker, *back] then "#{front.size}<#{marker}>#{back.size}"
+    in [*, String => word, *] then "word #{word}"
     else "none"
+    end
+  end
+
+  def only_key(hash)
+    case hash
+    in { id:, **nil } then "id #{id}"
+    else "extra"
     end
   end
 end
@@ -533,6 +540,9 @@ class ControlGolf
   end
 
   def block_next_break = [1, 2, 3, 4].map { |i| next 0 if i.odd?; i * i }
+
+  # `||` and `|; t|` declare no parameters at all (typeprof needs #451).
+  def bare_pipes = [1, 2].map { || :x } + [3].map { |; t| t = :y; t }
 
   def begin_else
     begin
@@ -726,7 +736,10 @@ puts pm.rightward
 puts pm.one_line_match?({ status: :ok })
 puts pm.tail_pattern([:a, :b, :c])
 puts pm.find_middle([1, 2, :mid, 3])
+puts pm.find_middle([1, "w", 2])
 puts pm.find_middle([1, 2])
+puts pm.only_key({ id: 9 })
+puts pm.only_key({ id: 9, extra: 1 })
 vec = GolfVector.new(3, -4)
 puts vec[0]
 vec[1] = 5
@@ -745,6 +758,7 @@ puts cg.loop_with_break_value
 puts cg.throw_catch(4)
 p cg.early_values(true)
 puts cg.block_next_break.inspect
+puts cg.bare_pipes.inspect
 puts cg.begin_else
 puts cg.case_without_subject(0)
 puts cg.beginless_endless(3).inspect

@@ -126,10 +126,10 @@ module Ryac
         [prism_result, nodes, service.genv]
       end
 
-      # The ingestion crashes typeprof 0.32.0 is known for, so the rescue
-      # above can name the construct. A typeprof carrying ruby/typeprof#465
-      # and #451 ingests all of these, never reaches the rescue, and these
-      # shapes simply minify — do NOT pre-emptively reject them here.
+      # The shapes released typeprof 0.32.0 crashes on (fixed upstream by
+      # ruby/typeprof#465 and #451). Consulted only after update_rb_file has
+      # crashed — under a typeprof that ingests them, these shapes minify
+      # like any other.
       def unsupported_construct(root)
         found = nil
         AstUtils.each_node(root) do |n|

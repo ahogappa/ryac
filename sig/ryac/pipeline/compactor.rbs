@@ -50,6 +50,7 @@ module Ryac
       def r_for: (Prism::ForNode node) -> String
       def r_return: (Prism::ReturnNode node) -> String
       def r_break: (Prism::BreakNode node) -> String
+      def r_alias_name: (Prism::Node node) -> String
       def r_next: (Prism::NextNode node) -> String
       def r_jump: (String keyword, Prism::ArgumentsNode? arguments) -> String
       def r_compound_write: (compound_write_node node) -> String

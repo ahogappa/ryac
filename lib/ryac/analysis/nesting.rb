@@ -63,7 +63,6 @@ module Ryac
           segments, _absolute = path_segments(receiver)
           key_cpath = segments if segments
         end
-        # The .freeze hides the tuple type from Steep's hint propagation.
         yield node, [key_cpath, singleton, node.name].freeze # steep:ignore ArgumentTypeMismatch
       end
     end

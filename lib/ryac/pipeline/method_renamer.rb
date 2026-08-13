@@ -89,8 +89,7 @@ module Ryac
             end_offset += 1 if @source_bytes.getbyte(end_offset) == 0x20 # consume space after ?
             replacement = "#{replacement}?"
           end
-          # call_operator_loc was checked at the top of this branch; Steep
-          # loses that pure-call narrowing across the lines in between.
+          # call_operator_loc was checked at the top of this branch
           patches << { start: node.call_operator_loc.start_offset, end: end_offset, replacement: replacement } # steep:ignore NoMethod
           return
         end

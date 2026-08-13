@@ -320,8 +320,7 @@ module Ryac
     # are Prism nodes already — so this raises rather than inventing a key that
     # could never match.
     def self.location_key(node)
-      # Duck-typed seam: Prism nodes answer #location, TypeProf nodes don't —
-      # a respond_to? split Steep cannot narrow by.
+      # duck-typed seam: Prism nodes answer #location, TypeProf nodes don't
       loc = node.respond_to?(:location) ? node.location : prism_node(node)&.location # steep:ignore NoMethod, ArgumentTypeMismatch
 
       unless loc.respond_to?(:start_offset)

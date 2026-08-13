@@ -61,10 +61,9 @@ module Ryac
     def initialize(boot_roots: nil)
       @boot_roots = boot_roots
       @mappings = {}           # Hash<Array<Symbol>, ConstantInfo> - key is static_cpath
-      # lookup by simple name
+      # keyed by the last path segment
       @by_name = {} #: Hash[Symbol, Array[ConstantInfo]]
       @used_short_names = Set.new
-      # external prefix mappings
       @external_prefixes = {} #: Hash[Array[Symbol], ExternalPrefixInfo]
       @prefix_counts = Hash.new(0) # Hash<Array<Symbol>, Integer> - raw prefix reference counts
       @state = :empty
@@ -168,8 +167,7 @@ module Ryac
 
       entries.sort_by! { |e| -e[0] }
 
-      # Allocate names in one pass. Steep widens the loop-carried candidate
-      # back to String? at each use, hence the steep:ignore comments below.
+      # candidate is assigned on the first iteration and only replaced after
       candidate = nil #: String?
       entries.each do |_savings, kind, info|
         if candidate.nil?

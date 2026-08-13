@@ -62,8 +62,7 @@ module Ryac
         lhs = try_constant_fold(node.receiver)
         return nil unless lhs.is_a?(Numeric)
 
-        # arguments proved non-nil above; Steep cannot carry that through the
-        # repeated method call.
+        # arguments proved non-nil above
         rhs = try_constant_fold(node.arguments.arguments.first) # steep:ignore NoMethod
         return nil unless rhs.is_a?(Numeric)
 

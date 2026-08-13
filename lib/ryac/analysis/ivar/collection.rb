@@ -189,8 +189,7 @@ module Ryac
           setter_calls = @oracle.method_call_count(info[:cpath], info[:singleton], :"#{info[:mid]}=")
         end
 
-        # The loop above always breaks with short_name/method_short assigned;
-        # Steep still sees the initial nils.
+        # the loop above always breaks with short_name/method_short assigned
         ivar_savings = (ivar_name.to_s.size - short_name.size) * ivar_count # steep:ignore NoMethod
         method_savings = (info[:mid].to_s.size - method_short.to_s.size) * (getter_calls + setter_calls + 1)
         next unless ivar_savings + method_savings > 0
@@ -250,8 +249,8 @@ module Ryac
   end
 
   def build_attr_rename_map(path_a_info, path_b_info, path_b_method_mapping)
-    # Values are the getter shorts: path A stores Strings, path B Symbols
-    # (consumers interpolate, so both work) — hence the untyped value type.
+    # Values are the getter shorts: path A stores Strings, path B Symbols;
+    # consumers interpolate, so both work.
     attr_rename_map = {} #: Hash[location_key, Hash[Symbol, untyped]]
     path_a_info.each do |info|
       (attr_rename_map[info[:loc_key]] ||= {})[info[:mid]] = info[:getter_short]

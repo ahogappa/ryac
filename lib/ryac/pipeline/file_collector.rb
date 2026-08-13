@@ -22,8 +22,7 @@ module Ryac
         @visited = Set.new
         @gem_names = gem_names
         @project_roots = if project_root
-          # Array() of `String | Array[String]` types its elements as that
-          # union, which Steep cannot split back per-element.
+          # Array() leaves only Strings whichever of the two shapes came in
           Array(project_root).map { |p| File.expand_path(p) } # steep:ignore ArgumentTypeMismatch
         else
           root = find_project_root(entry_paths)

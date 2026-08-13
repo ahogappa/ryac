@@ -11,9 +11,7 @@ module Ryac
       :require_nodes,         # Array<Hash>: {type:, path:, line:, in_class:} for require/autoload nodes
       :in_class_dependencies  # Array<String>: Absolute paths of files required inside class/module bodies
     ) do
-      # Steep attributes defs in Data.define blocks to the enclosing module,
-      # so these initialize wrappers are declared on the Data classes in RBS
-      # but look undeclared here.
+      # declared on the Data class itself in the RBS
       def initialize(path:, content:, dependencies:, require_nodes:, in_class_dependencies: []) # steep:ignore UndeclaredMethodDefinition
         super
       end
