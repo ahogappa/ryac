@@ -108,24 +108,53 @@ module Ryac
           raise SyntaxError, "at #{path}:#{error.location.start_line}:#{error.location.start_column}: #{error.message}"
         end
 
-        # TypeProf 0.32 crashes ingesting find patterns (`in [*, x, *post]`)
-        # with a bare NoMethodError from deep inside its AST conversion; name
-        # the limitation instead.
-        AstUtils.each_node(prism_result.value) do |n|
-          next unless n.is_a?(Prism::FindPatternNode)
-          raise MinifyError,
-                "find patterns (`in [*, x, *rest]`) are not supported: type analysis " \
-                "cannot ingest them (#{path}:#{n.location.start_line})"
-        end
-
         service = TypeProf::Core::Service.new({})
         source.rbs_files.each do |rbs_path, rbs_content|
           service.update_rbs_file(rbs_path, rbs_content)
         end
-        service.update_rb_file(path, content)
+        begin
+          service.update_rb_file(path, content)
+        rescue NoMethodError => e
+          construct = unsupported_construct(prism_result.value)
+          where = construct ? "#{construct[:label]} (#{path}:#{construct[:line]})" : 'this source'
+          raise MinifyError,
+                "type analysis cannot ingest #{where}: typeprof #{TypeProf::VERSION} " \
+                "crashed converting it (#{e.message.lines[0].strip}); a newer typeprof may support it"
+        end
         nodes = service.instance_variable_get(:@rb_text_nodes)[path]
 
         [prism_result, nodes, service.genv]
+      end
+
+      # The ingestion crashes typeprof 0.32.0 is known for, so the rescue
+      # above can name the construct. A typeprof carrying ruby/typeprof#465
+      # and #451 ingests all of these, never reaches the rescue, and these
+      # shapes simply minify — do NOT pre-emptively reject them here.
+      def unsupported_construct(root)
+        found = nil
+        AstUtils.each_node(root) do |n|
+          case n
+          when Prism::FindPatternNode
+            # right is SplatNode | MissingNode in Prism's types; the source
+            # parsed successfully, so a missing splat cannot occur here.
+            right = n.right
+            if n.left.expression.nil? || !right.is_a?(Prism::SplatNode) || right.expression.nil?
+              found = { label: 'find patterns with an anonymous splat (`in [*, x, *]`)',
+                        line: n.location.start_line }
+            end
+          when Prism::HashPatternNode
+            if n.rest.is_a?(Prism::NoKeywordsParameterNode)
+              found = { label: '`**nil` hash patterns', line: n.location.start_line }
+            end
+          when Prism::BlockParametersNode
+            if n.parameters.nil?
+              found = { label: 'parameterless block pipes (`{ || }`, `{ |;x| }`)',
+                        line: n.location.start_line }
+            end
+          end
+          break if found
+        end
+        found
       end
 
       def analyze_keywords_and_scopes

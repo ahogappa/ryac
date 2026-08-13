@@ -411,9 +411,11 @@ PIPELINE_STEPS = [AddStep, DoubleStep].freeze
 
 # Pattern matching: array/hash patterns, alternation with guard, expression
 # pin, rightward assignment, one-line `in` (parens are load-bearing: bare
-# `def f =expr in pat` rebinds the match to the def itself). Find patterns
-# (`[*, x, *rest]`) are deliberately absent — type analysis cannot ingest
-# them and the analyzer says so by name.
+# `def f =expr in pat` rebinds the match to the def itself), and find
+# patterns with NAMED splats. Anonymous-splat find patterns (`[*, x, *]`)
+# and `**nil` stay absent until the bundled typeprof carries
+# ruby/typeprof#465 — those shapes crash 0.32.0's ingestion and the
+# analyzer says so by name.
 class PatternMatcher
   def classify(obj)
     case obj
@@ -437,6 +439,13 @@ class PatternMatcher
     case list
     in [_, *, last_el] then last_el
     else -1
+    end
+  end
+
+  def find_middle(list)
+    case list
+    in [*front, Symbol => marker, *back] then "#{front.size}<#{marker}>#{back.size}"
+    else "none"
     end
   end
 end
@@ -716,6 +725,8 @@ puts pm.classify("x")
 puts pm.rightward
 puts pm.one_line_match?({ status: :ok })
 puts pm.tail_pattern([:a, :b, :c])
+puts pm.find_middle([1, 2, :mid, 3])
+puts pm.find_middle([1, 2])
 vec = GolfVector.new(3, -4)
 puts vec[0]
 vec[1] = 5

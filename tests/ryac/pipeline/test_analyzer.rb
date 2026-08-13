@@ -85,20 +85,37 @@ class TestAnalyzer < Minitest::Test
     assert_equal 'module M;def hello =puts "hi";end;class C;include M;end;C.new.hello', result.code
   end
 
-  # --- find pattern guard ---
+  # --- typeprof ingestion crashes ---
 
-  # TypeProf 0.32 cannot ingest find patterns; the analyzer names the
-  # limitation instead of crashing inside the gem.
-  def test_find_pattern_raises_named_error
-    content = "case [1];in [*, x, *rest];puts x;end"
-    source = Ryac::Pipeline::ConcatenatedSource.new(
-      content: content,
-      file_boundaries: [], original_size: content.bytesize, stdlib_requires: [], rbs_files: {}
-    )
-    err = assert_raises(Ryac::MinifyError) do
-      Ryac::Pipeline::Analyzer.new.call(source)
+  # typeprof 0.32.0 crashes converting these shapes (fixed upstream by
+  # ruby/typeprof#465 and #451). The analyzer's contract is version-agnostic:
+  # a typeprof that ingests them just analyzes them; one that crashes must
+  # surface a MinifyError naming the construct — never a raw NoMethodError.
+  INGESTION_HAZARDS = {
+    'anonymous splat' => "case [1];in [*, x, *rest];puts x;end",
+    '`**nil` hash patterns' => "case({a: 1});in {a:, **nil};puts a;end",
+    'parameterless block pipes' => "[1].each { || puts 1 }",
+  }.freeze
+
+  INGESTION_HAZARDS.each do |label, content|
+    define_method(:"test_ingestion_hazard_#{label.gsub(/[^a-z ]/, '').strip.tr(' ', '_')}") do
+      source = Ryac::Pipeline::ConcatenatedSource.new(
+        content: content,
+        file_boundaries: [], original_size: content.bytesize, stdlib_requires: [], rbs_files: {}
+      )
+      begin
+        refute_nil Ryac::Pipeline::Analyzer.new.call(source)
+      rescue Ryac::MinifyError => err
+        assert_includes err.message, label
+      end
     end
-    assert_includes err.message, 'find patterns'
+  end
+
+  # Find patterns with NAMED splats never crashed typeprof 0.32.0 — the old
+  # blanket guard rejected them anyway. They must minify.
+  def test_named_splat_find_pattern_minifies
+    result = minify_code("case [1, 2, 3]\nin [*pre, mid, *post]\n  puts mid\nend\n")
+    assert_equal 'case [1,2,3];in [*a,b,*c];puts b;end', result.code
   end
 
   # --- lambda with outer scope variable (lines 227-228, 235-241) ---

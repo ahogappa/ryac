@@ -1,4 +1,6 @@
 module TypeProf
+  VERSION: String
+
   class CodePosition
     attr_reader lineno: Integer
     attr_reader column: Integer
