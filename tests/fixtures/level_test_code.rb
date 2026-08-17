@@ -412,9 +412,7 @@ PIPELINE_STEPS = [AddStep, DoubleStep].freeze
 # Pattern matching: array/hash patterns, alternation with guard, expression
 # pin, rightward assignment, one-line `in` (parens are load-bearing: bare
 # `def f =expr in pat` rebinds the match to the def itself), find patterns
-# with named and anonymous splats, and `**nil`. The anonymous shapes need
-# a typeprof newer than 0.32.0, whose ingestion crashes on them — released
-# 0.32.0 gets a named MinifyError from the analyzer instead.
+# with named and anonymous splats, and `**nil`.
 class PatternMatcher
   def classify(obj)
     case obj

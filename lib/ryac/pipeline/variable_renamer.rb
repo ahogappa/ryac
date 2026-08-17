@@ -6,29 +6,22 @@ module Ryac
     # Default (no features): renames locals only.
     # features: { keywords: true } → locals + keywords (Level 3)
     # features: { keywords: true, ivars: true, cvars: true, gvars: true } → all variables (Level 4)
-    class VariableRenamer
+    class VariableRenamer < Stage
       include RenamePatcher
 
       FEATURES = { locals: true, keywords: false, ivars: false, cvars: false, gvars: false }.freeze
+
+      def needs_analysis? = true
 
       def initialize(features: {})
         @features = FEATURES.merge(features)
       end
 
-      def self.postprocess(result, _analysis, aliases_str, preamble_str)
-        [result, aliases_str, preamble_str]
-      end
-
-      def self.collect_patches_from(prism_ast, patches, analysis, kwargs = nil)
-        features = kwargs.is_a?(Hash) ? (kwargs[:features] || {}) : {} #: Hash[Symbol, bool]
-        renamer = new(features: features)
-        renamer.run_collect(prism_ast, patches, analysis)
-      end
-
-      def run_collect(prism_ast, patches, analysis)
+      def collect(ctx, patches)
+        analysis = analysis(ctx)
         rename_map = build_rename_map(analysis)
         block_param_names_map = analysis.block_param_names_map
-        collect_patches(prism_ast, patches, analysis, rename_map, block_param_names_map)
+        collect_patches(ctx.ast, patches, analysis, rename_map, block_param_names_map)
       end
 
       private

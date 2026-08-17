@@ -3,6 +3,31 @@
 require_relative '../../test_helper'
 
 class TestControlFlowSimplify < Minitest::Test
+  # --- tail return: the value of a def is its last expression ---
+
+  def test_tail_return_removed
+    assert_equal 'def f(x);y=x+1;y*2;end', @stage.call('def f(x);y=x+1;return y*2;end')
+  end
+
+  def test_tail_return_removed_in_endless_def
+    assert_equal 'def f = 1', @stage.call('def f = return 1')
+  end
+
+  # `return a, b` builds an array and `return *a` splats — the bare
+  # expression list would not, so both keep their return.
+  def test_multi_value_and_splat_returns_kept
+    assert_equal 'def f(x);return x,1;end', @stage.call('def f(x);return x,1;end')
+    assert_equal 'def f(a);return *a;end', @stage.call('def f(a);return *a;end')
+  end
+
+  def test_bare_tail_return_kept
+    assert_equal 'def f(x);x.go;return;end', @stage.call('def f(x);x.go;return;end')
+  end
+
+  def test_mid_body_return_kept
+    assert_equal 'def f(x);return 0 if x.nil?;x*2;end',
+                 @stage.call('def f(x);return 0 if x.nil?;x*2;end')
+  end
   def setup
     @stage = Ryac::Pipeline::ControlFlowSimplify.new
   end
@@ -192,6 +217,39 @@ class TestControlFlowSimplify < Minitest::Test
 
   def test_assignment_value_while_not_simplified
     assert_equal "x=while c;b;end", @stage.call("x=while c;b;end")
+  end
+
+  # In the modifier form the body parses before the condition binds its
+  # local, so `puts x while x = gets` raises NameError — every rewrite path
+  # must refuse when the condition binds a local the body reads.
+  def test_while_condition_binding_local_used_in_body_not_rewritten
+    input = "while x = gets;puts x;end"
+    assert_equal input, @stage.call(input)
+  end
+
+  def test_until_condition_binding_local_used_in_body_not_rewritten
+    input = "until (x = step).nil?;puts x;end"
+    assert_equal input, @stage.call(input)
+  end
+
+  def test_while_condition_binding_unused_local_still_rewritten
+    assert_equal "puts y while x = gets", @stage.call("while x = gets;puts y;end")
+  end
+
+  def test_if_condition_compound_write_used_in_body_not_rewritten
+    input = "if (x ||= foo);x.bar;end"
+    assert_equal input, @stage.call(input)
+  end
+
+  # Block form stays safe (condition runs before the body parses its
+  # locals at runtime); only the modifier form must be refused.
+  def test_unless_condition_compound_write_keeps_block_form
+    assert_equal "if !(x &&= foo);x.bar;end", @stage.call("unless (x &&= foo);x.bar;end")
+  end
+
+  def test_if_condition_operator_write_used_in_body_not_rewritten
+    input = "if (x += 1) > 3;puts x;end"
+    assert_equal input, @stage.call(input)
   end
 
   def test_no_ternary_with_multi_assignment_body

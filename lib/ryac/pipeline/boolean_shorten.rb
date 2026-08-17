@@ -2,14 +2,9 @@
 
 module Ryac
   module Pipeline
-    class BooleanShorten
-      include SourcePatcher
-
-      def call(input)
-        ast = Prism.parse(input).value
-        patches = [] #: Array[patch_entry]
-        walk(ast, patches)
-        apply_patches(input, patches)
+    class BooleanShorten < Stage
+      def collect(ctx, patches)
+        walk(ctx.ast, patches)
       end
 
       private

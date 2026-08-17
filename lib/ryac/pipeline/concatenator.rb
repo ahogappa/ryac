@@ -6,7 +6,7 @@ module Ryac
   module Pipeline
     # Stage 2: File Concatenation
     # Performs topological sort and concatenates files in dependency order
-    class Concatenator < Stage
+    class Concatenator
       # @param graph [DependencyGraph] From Stage 1
       # @return [ConcatenatedSource] Ordered, concatenated source
       # @raise [CircularDependencyError] If cycle detected in graph
@@ -171,7 +171,9 @@ module Ryac
 
       def offset_based_processing(content, nodes, graph, in_class_deps, inlined, cleaned_cache)
         sorted_nodes = nodes.sort_by { |n| n[:start_offset] }.reverse
-        result = content.dup
+        # Prism offsets are byte offsets: splice on bytes, or any multibyte
+        # character before a require shifts every slice after it.
+        result = content.b
         sorted_nodes.each do |node|
           start_pos = node[:start_offset]
           end_pos = start_pos + node[:length]
@@ -186,7 +188,7 @@ module Ryac
               while end_pos < result.size && result[end_pos] == ';'
                 end_pos += 1
               end
-              result[start_pos...end_pos] = stripped
+              result[start_pos...end_pos] = stripped.b
               inlined.add(dep_path)
               next
             end
@@ -202,7 +204,7 @@ module Ryac
           end
           result[start_pos...end_pos] = ''
         end
-        result
+        result.force_encoding(content.encoding)
       end
 
       def line_based_processing(content, require_nodes)

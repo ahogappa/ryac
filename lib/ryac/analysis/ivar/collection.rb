@@ -24,7 +24,7 @@ module Ryac
         next if attr_backed[cpath]&.include?(node.name)
         @ivar_rename_mapping.add_read_site(cpath, node.name, node)
       when *IVAR_WRITE_NODES
-        # @type var node: Prism::InstanceVariableWriteNode | Prism::InstanceVariableTargetNode | Prism::InstanceVariableOperatorWriteNode | Prism::InstanceVariableOrWriteNode | Prism::InstanceVariableAndWriteNode
+        # @type var node: ivar_write_node
         next if attr_backed[cpath]&.include?(node.name)
         @ivar_rename_mapping.add_write_site(cpath, node.name, node)
       end
@@ -125,7 +125,7 @@ module Ryac
     Nesting.each(prism_root) do |node, cpath, _singleton, _in_def|
       case node
       when Prism::InstanceVariableReadNode, *IVAR_WRITE_NODES
-        # @type var node: Prism::InstanceVariableReadNode | Prism::InstanceVariableWriteNode | Prism::InstanceVariableTargetNode | Prism::InstanceVariableOperatorWriteNode | Prism::InstanceVariableOrWriteNode | Prism::InstanceVariableAndWriteNode
+        # @type var node: Prism::InstanceVariableReadNode | ivar_write_node
         ivar_nodes_by_key[[cpath, node.name]] << node
       end
     end
@@ -166,9 +166,7 @@ module Ryac
           implicit_scope_ids << scope_id if scope_id
         end
 
-        short_name = nil
-        method_short = nil
-        loop do
+        short_name, method_short = loop do #: [String, Symbol]
           candidate = generator.next_name
           method_candidate = candidate.delete_prefix("@").to_sym
 
@@ -179,9 +177,7 @@ module Ryac
           # local already owns the candidate at an implicit-receiver site.
           next if implicit_scope_ids.any? { |sid| scope_vars[sid].include?(method_candidate.to_s) }
 
-          short_name = candidate
-          method_short = method_candidate
-          break
+          break [candidate, method_candidate]
         end
 
         setter_calls = 0
@@ -189,16 +185,15 @@ module Ryac
           setter_calls = @oracle.method_call_count(info[:cpath], info[:singleton], :"#{info[:mid]}=")
         end
 
-        # the loop above always breaks with short_name/method_short assigned
-        ivar_savings = (ivar_name.to_s.size - short_name.size) * ivar_count # steep:ignore NoMethod
+        ivar_savings = (ivar_name.to_s.size - short_name.size) * ivar_count
         method_savings = (info[:mid].to_s.size - method_short.to_s.size) * (getter_calls + setter_calls + 1)
         next unless ivar_savings + method_savings > 0
 
         used_ivar_names << short_name
         used_method_names << method_short.to_s
 
-        path_b_mapping[ivar_key] = short_name # steep:ignore ArgumentTypeMismatch
-        path_b_method_mapping[ivar_key] = method_short # steep:ignore ArgumentTypeMismatch
+        path_b_mapping[ivar_key] = short_name
+        path_b_method_mapping[ivar_key] = method_short
       end
 
     [path_b_mapping, path_b_method_mapping]

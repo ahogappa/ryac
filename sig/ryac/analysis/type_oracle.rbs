@@ -15,7 +15,7 @@ module Ryac
 
     @genv: TypeProf::Core::GlobalEnv
     @tp_root: TypeProf::Core::AST::Node
-    @ancestor_cpaths: Hash[[Array[Symbol], bool], Array[Array[Symbol]]]
+    @ancestor_cpaths: Hash[MethodRenameMapping::class_key, Array[Array[Symbol]]]
     @const_resolution_cache: Hash[location_key, Array[Symbol]?]
     @method_cache: Hash[method_key, TypeProf::Core::MethodEntity?]
     # Both built by build_tp_indexes before first read.

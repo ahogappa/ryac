@@ -48,7 +48,7 @@ module Ryac
     def each_group_call_site: (method_key method_key) { (Prism::Node, scope_id?) -> void } -> void
 
     def assign_short_names: (scope_mapping_table scope_mappings, ?TypeOracle? oracle) -> void
-    def verify_no_shadowing!: () -> void
+    def verify_no_shadowing!: (?hierarchy hierarchy) -> void
 
     def short_name_for: ([Integer, Integer] node_location_key) -> String?
 
@@ -72,7 +72,7 @@ module Ryac
 
     def build_existing_method_names: (TypeOracle oracle) -> [Hash[class_key, Set[String]], hierarchy]
 
-    def find_shortest_name: (Array[method_key] keys, Hash[scope_id, Set[String]] scope_vars, Hash[class_key, Set[String]] existing_methods) -> String
+    def find_shortest_name: (Array[method_key] keys, Hash[scope_id, Set[String]] scope_vars, Hash[class_key, Set[String]] existing_methods, hierarchy hierarchy) -> String
 
     def propagate_short_name: (Array[method_key] keys, String short_name, Hash[class_key, Set[String]] existing_methods, hierarchy hierarchy) -> void
 

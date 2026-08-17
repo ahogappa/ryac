@@ -5,12 +5,9 @@ module Ryac
     # Removes unnecessary parentheses from method calls at statement level.
     # Operates as a source patcher: Prism.parse → walk AST → collect patches → apply.
     # Only removes parens; never adds them.
-    class ParenOptimizer
-      def call(input_string, analysis: nil)
-        ast = Prism.parse(input_string).value
-        patches = [] #: Array[patch_entry]
-        walk(ast, input_string, patches, statement_level: true)
-        apply_patches(input_string, patches)
+    class ParenOptimizer < Stage
+      def collect(ctx, patches)
+        walk(ctx.ast, ctx.source, patches, statement_level: true)
       end
 
       private
@@ -159,13 +156,6 @@ module Ryac
         patches << { start: close_loc.start_offset, end: close_loc.end_offset, replacement: '' }
       end
 
-      def apply_patches(source, patches)
-        result = source.b.dup
-        patches.sort_by { |p| -p[:start] }.each do |patch|
-          result[patch[:start]...patch[:end]] = patch[:replacement]
-        end
-        result.force_encoding(source.encoding)
-      end
     end
   end
 end

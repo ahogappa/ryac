@@ -67,12 +67,10 @@ if options[:gems]
   end
 
   begin
-    resolver = Ryac::GemResolver.new
-    resolutions = options[:gems].map { |name| resolver.call(name) }
-    entry = resolutions.map(&:entry_path)
-    entry = entry.first if entry.size == 1
-    project_root = resolutions.map(&:project_root)
-    gem_require_paths = resolutions.flat_map(&:require_paths)
+    gem_args = Ryac::GemResolver.minifier_args(options[:gems])
+    entry = gem_args[:entry]
+    project_root = gem_args[:project_root]
+    gem_require_paths = gem_args[:gem_require_paths]
   rescue Ryac::Pipeline::GemNotFoundError => e
     warn "Error: #{e.message}"
     exit 1
@@ -106,10 +104,8 @@ begin
   content = if options[:aliases]
     File.write(options[:aliases], result.aliases)
     result.content
-  elsif !result.aliases.empty?
-    "#{result.content};#{result.aliases}"
   else
-    result.content
+    result.full_content
   end
 
   if options[:output]
@@ -121,19 +117,18 @@ begin
   warn "Compression: #{((1 - result.stats.compression_ratio) * 100).round(1)}%"
   warn "Files processed: #{result.stats.file_count}"
 rescue Ryac::SyntaxError => e
-  warn "Error: Syntax error"
+  warn "Error: the input does not parse"
   warn "  #{e.message}"
   exit 2
-rescue Ryac::MinifyError => e
-  warn "Error: Minification error"
-  warn "  #{e.message}"
+rescue Ryac::InputError => e
+  warn "Error: #{e.message}"
   exit 2
-rescue Ryac::Pipeline::StageError => e
-  warn "Error: Pipeline error"
+rescue Ryac::InternalError => e
+  warn "Error: this is a bug in ryac, not in your program — please report it"
   warn "  #{e.message}"
-  exit 2
+  exit 3
 rescue => e
-  warn "Error: Internal error during minification"
-  warn "  #{e.message}"
+  warn "Error: this is a bug in ryac, not in your program — please report it"
+  warn "  #{e.class}: #{e.message}"
   exit 3
 end

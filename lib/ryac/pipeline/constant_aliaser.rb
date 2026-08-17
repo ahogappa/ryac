@@ -4,37 +4,45 @@ require 'set'
 
 module Ryac
   module Pipeline
-    # Level 2: Constant aliasing via source patching.
-    class ConstantAliaser
+    # Constant aliasing via source patching.
+    class ConstantAliaser < Stage
       include RenamePatcher
 
-      def self.collect_patches_from(prism_ast, patches, analysis, _kwargs = nil)
-        class_module_cpath_offsets = Set.new
-        new.run_collect(prism_ast, patches, analysis, class_module_cpath_offsets)
+      def needs_analysis? = true
+
+      def initialize(rename_classes: false)
+        @rename_classes = rename_classes
       end
 
-      def self.postprocess(result, analysis, aliases_str, preamble_str)
-        if analysis.constant_mapping
-          prefix_decls = analysis.constant_mapping.generate_prefix_declarations
-          preamble_str = [preamble_str, prefix_decls.join(';')].reject(&:empty?).join(';') if prefix_decls.any?
-
-          alias_decls = analysis.constant_mapping.generate_alias_declarations
-          aliases_str = [aliases_str, alias_decls.join(';')].reject(&:empty?).join(';') if alias_decls.any?
+      def collect(ctx, patches)
+        analysis = analysis(ctx)
+        @class_module_cpath_offsets = Set.new
+        # Declared optional on AnalysisResult but always present by the time
+        # constant patches are collected.
+        @constant_mapping = analysis.constant_mapping #: ConstantRenameMapping
+        # Short-name assignment is this stage's policy — it happens exactly
+        # once, before any constant patch is emitted, and no other stage
+        # reads the mapping.
+        if @constant_mapping
+          generator = NameGenerator.new([], upcase: true)
+          @constant_mapping.assign_short_names(generator, skip_class_modules: !@rename_classes)
         end
-
-        [result, aliases_str, preamble_str]
+        collect_patches(ctx.ast, patches, analysis)
       end
 
-      def run_collect(node, patches, analysis, class_module_cpath_offsets)
-        @class_module_cpath_offsets = class_module_cpath_offsets
-        collect_patches(node, patches, analysis)
+      def finish(ctx)
+        mapping = @constant_mapping
+        return unless mapping
+
+        prefix_decls = mapping.generate_prefix_declarations
+        ctx.preamble = [ctx.preamble, prefix_decls.join(';')].reject(&:empty?).join(';') if prefix_decls.any?
+
+        alias_decls = mapping.generate_alias_declarations
+        ctx.aliases = [ctx.aliases, alias_decls.join(';')].reject(&:empty?).join(';') if alias_decls.any?
       end
 
       private
 
-      # analysis.constant_mapping is declared optional on AnalysisResult but
-      # is always present by the time constant patches are collected; the
-      # steep:ignore comments below cover exactly that gap.
       def collect_patches(node, patches, analysis)
         walk_prism(node) do |subnode|
           case subnode
@@ -69,16 +77,16 @@ module Ryac
         key = prism_location_key(node)
         resolved_cpath = analysis.const_resolution_map[key]
         full_path = analysis.const_full_path_map[key]
-        prefix_alias = full_path && analysis.constant_mapping&.short_name_for_prefix(full_path)
+        prefix_alias = full_path && @constant_mapping&.short_name_for_prefix(full_path)
 
-        if resolved_cpath && analysis.constant_mapping&.user_defined_path?(resolved_cpath)
+        if resolved_cpath && @constant_mapping&.user_defined_path?(resolved_cpath)
           short = if node.is_a?(Prism::ConstantReadNode)
             # Bare name reference (e.g., CONST) — use only the leaf short name.
             # Expanding to a fully qualified path would break constants defined
             # in `class << self` (metaclass constants are not accessible as Foo::X).
-            analysis.constant_mapping.short_name_for_path(resolved_cpath) || node.name.to_s # steep:ignore NoMethod
+            @constant_mapping.short_name_for_path(resolved_cpath) || node.name.to_s
           else
-            get_short_cpath(resolved_cpath, analysis)
+            get_short_cpath(resolved_cpath)
           end
           loc = node.location
           patches << { start: loc.start_offset, end: loc.end_offset, replacement: short }
@@ -98,7 +106,7 @@ module Ryac
         static_cpath = analysis.const_write_cpath_map[key]
         return unless static_cpath
 
-        short_name = analysis.constant_mapping.short_name_for_path(static_cpath) # steep:ignore NoMethod
+        short_name = @constant_mapping.short_name_for_path(static_cpath)
         return unless short_name
 
         # A ConstantTargetNode is entirely the name; a ConstantWriteNode also
@@ -112,7 +120,7 @@ module Ryac
         static_cpath = analysis.const_write_cpath_map[key]
         return unless static_cpath
 
-        path_str = render_short_cpath(static_cpath, analysis)
+        path_str = render_short_cpath(static_cpath)
         target_loc = node.target.location
         patches << { start: target_loc.start_offset, end: target_loc.end_offset, replacement: path_str }
         @class_module_cpath_offsets << target_loc.start_offset
@@ -127,7 +135,7 @@ module Ryac
           superclass_path = analysis.superclass_resolution_map[key]
           superclass_path ||= analysis.const_resolution_map[prism_location_key(node.superclass)]
           if superclass_path
-            short = get_short_cpath(superclass_path, analysis)
+            short = get_short_cpath(superclass_path)
             sc_loc = node.superclass.location
             patches << { start: sc_loc.start_offset, end: sc_loc.end_offset, replacement: short }
             @class_module_cpath_offsets << sc_loc.start_offset
@@ -152,7 +160,7 @@ module Ryac
         # class_cpath exists only when path_segments succeeded on this node,
         # and in the absolute case it equals the segments outright.
         segments, = Nesting.path_segments(node.constant_path) #: [Array[Symbol], bool]
-        rendered = render_short_cpath(class_cpath, analysis, from: class_cpath.size - segments.size)
+        rendered = render_short_cpath(class_cpath, from: class_cpath.size - segments.size)
         if rendered != node.constant_path.slice
           cpath_loc = node.constant_path.location
           patches << { start: cpath_loc.start_offset, end: cpath_loc.end_offset, replacement: rendered }
@@ -165,9 +173,9 @@ module Ryac
       # Each prefix of the cpath may carry its own short name; render from
       # `from` onward, falling back to the original segment where none was
       # assigned.
-      def render_short_cpath(cpath, analysis, from: 0)
+      def render_short_cpath(cpath, from: 0)
         (from...cpath.size).map { |i|
-          analysis.constant_mapping.short_name_for_path(cpath[0..i]) || cpath[i].to_s # steep:ignore NoMethod
+          @constant_mapping.short_name_for_path(cpath[0..i]) || cpath[i].to_s
         }.join('::')
       end
 
@@ -189,11 +197,11 @@ module Ryac
         parent_resolved = analysis.const_resolution_map[parent_key]
         return nil unless parent_resolved
 
-        if analysis.constant_mapping.user_defined_path?(parent_resolved) # steep:ignore NoMethod
+        if @constant_mapping.user_defined_path?(parent_resolved)
           parent_short = if parent_node.is_a?(Prism::ConstantReadNode)
-            analysis.constant_mapping.short_name_for_path(parent_resolved) || parent_node.name.to_s # steep:ignore NoMethod
+            @constant_mapping.short_name_for_path(parent_resolved) || parent_node.name.to_s
           else
-            get_short_cpath(parent_resolved, analysis)
+            get_short_cpath(parent_resolved)
           end
           "#{parent_short}::#{node.name}"
         elsif parent_node.is_a?(Prism::ConstantPathNode)
@@ -202,16 +210,16 @@ module Ryac
         end
       end
 
-      def get_short_cpath(cpath, analysis)
-        if analysis.constant_mapping.user_defined_path?(cpath) # steep:ignore NoMethod
-          render_short_cpath(cpath, analysis)
+      def get_short_cpath(cpath)
+        if @constant_mapping.user_defined_path?(cpath)
+          render_short_cpath(cpath)
         else
           cpath.map(&:to_s).join('::')
         end
       end
 
       def patch_def_receiver(receiver, patches, analysis)
-        return unless analysis.constant_mapping
+        return unless @constant_mapping
 
         @class_module_cpath_offsets.add(receiver.location.start_offset)
         key = prism_location_key(receiver)
@@ -221,9 +229,9 @@ module Ryac
                          when Prism::ConstantPathNode
                            analysis.const_resolution_map[key]
                          end
-        return unless resolved_cpath && analysis.constant_mapping.user_defined_path?(resolved_cpath)
+        return unless resolved_cpath && @constant_mapping.user_defined_path?(resolved_cpath)
 
-        short = get_short_cpath(resolved_cpath, analysis)
+        short = get_short_cpath(resolved_cpath)
         loc = receiver.location
         patches << { start: loc.start_offset, end: loc.end_offset, replacement: short }
       end

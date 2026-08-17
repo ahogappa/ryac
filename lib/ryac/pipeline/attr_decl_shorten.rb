@@ -8,27 +8,26 @@ module Ryac
     # at every level: with rename_attrs the declared symbols are additionally
     # mapped through the analysis' attr rename map, keeping declarations in
     # sync with call sites the method renamer renames.
-    class AttrDeclShorten
+    class AttrDeclShorten < Stage
       include RenamePatcher
 
-      def self.collect_patches_from(prism_ast, patches, analysis, kwargs = nil)
-        new.collect(prism_ast, patches, analysis, rename_attrs: kwargs&.dig(:rename_attrs))
+      def needs_analysis? = true
+
+      def initialize(rename_attrs: false)
+        @rename_attrs = rename_attrs
       end
 
-      def self.postprocess(result, _analysis, aliases_str, preamble_str)
-        [result, aliases_str, preamble_str]
-      end
-
-      def collect(node, patches, analysis, rename_attrs: false)
-        attr_rename_map = analysis.attr_rename_map if rename_attrs
-        walk_prism(node) do |subnode|
+      def collect(ctx, patches)
+        analysis = analysis(ctx)
+        attr_rename_map = analysis.attr_rename_map if @rename_attrs
+        walk_prism(ctx.ast) do |subnode|
           next unless subnode.is_a?(Prism::CallNode)
 
           key = prism_location_key(subnode)
           meta = analysis.meta_node_map[key]
           next unless meta
 
-          args = meta[:args] || [] #: Array[Symbol]
+          args = meta[:args] || []
           next unless args.any?
 
           names = args.map { |sym| attr_rename_map&.dig(key, sym) || sym.to_s }

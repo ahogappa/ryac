@@ -30,5 +30,6 @@ module Ryac
     def self?.each_node: (Prism::Node? node) { (Prism::Node) -> void } -> void
     def self?.prism_node: (TypeProf::Core::AST::Node node) -> Prism::Node?
     def self?.location_key: (Prism::Node | TypeProf::Core::AST::Node node) -> location_key
+    def self?.line_col_key: (Prism::Node node) -> line_col_key
   end
 end

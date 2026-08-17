@@ -28,7 +28,8 @@ module Ryac
       @oracle.each_caller(key[0], key[1], key[2]) do |info|
         if info.super
           # caller_cpath is always present on super records
-          super_merges << [[info.caller_cpath, key[1], key[2]].freeze, key] # steep:ignore
+          entry = [info.caller_cpath, key[1], key[2]].freeze #: method_key
+          super_merges << [entry, key]
           next
         end
 
@@ -53,9 +54,9 @@ module Ryac
   #
   # The pair is identified by both entities pointing at the same definition
   # site — an explicit `def self.foo` alongside `def foo` is two sites and
-  # must stay independent. The older "no defs but has call boxes" shape is
-  # still accepted: TypeProf only began recording a def for the singleton
-  # side of module_function in 0.32.0.
+  # must stay independent. The "no defs but has call boxes" shape is also
+  # accepted: older TypeProf releases recorded no def at all for the
+  # singleton side of module_function.
   def link_module_function_variant(def_node, method_key)
     cpath, singleton, mid = method_key
     return unless @oracle.method_known?(cpath, !singleton, mid)
@@ -220,7 +221,7 @@ module Ryac
   # too: renaming the reader side would split the getter from the ivar the
   # writer-defined setter still assigns.
   def collect_attr_write_exclusions(prism_root)
-    accessor_owners = Hash.new { |h, k| h[k] = [] } #: Hash[Symbol, Array[[Array[Symbol], bool]]]
+    accessor_owners = Hash.new { |h, k| h[k] = [] } #: Hash[Symbol, Array[MethodRenameMapping::class_key]]
     reader_syms = Set.new
     writer_syms = Set.new
     each_attr_declaration(prism_root, ATTR_DECLARATION_METHODS, require_class_body: false) do |node, cpath, singleton, sym|

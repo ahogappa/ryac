@@ -12,7 +12,21 @@ module Ryac
   # exists — write `size` (never `length`), `any?` (never `empty?`), `[0]`
   # (never `first`) on our own collections. Otherwise minify(minify(lib))
   # stops being a fixed point: the transform fires on one pass only.
-  METHOD_ALIASES = {
+  # Object/Kernel aliases where both spellings name the same method on
+  # EVERY receiver — the only rows safe on a receiverless call, which
+  # dispatches on whatever self happens to be.
+  KERNEL_ALIASES = {
+    kind_of?:   :is_a?,
+    yield_self: :then,
+    object_id:  :__id__,
+    raise:      :fail,
+  }.freeze
+
+  # Receiver-specific synonyms (Enumerable/Hash/String/...): a receiverless
+  # spelling can name something else entirely (`include?` in a class body is
+  # Module#include?), so these fire only when inference proves the receiver
+  # responds to the short spelling.
+  RECEIVER_ALIASES = {
     collect:        :map,
     collect!:       :map!,
     detect:         :find,
@@ -23,17 +37,15 @@ module Ryac
     has_value?:     :value?,
     find_index:     :index,
     magnitude:      :abs,
-    kind_of?:       :is_a?,
-    yield_self:     :then,
     id2name:        :to_s,
     length:         :size,
     entries:        :to_a,
     append:         :push,
     include?:       :key?,
     member?:        :key?,
-    object_id:      :__id__,
-    raise:          :fail,
   }.freeze
+
+  METHOD_ALIASES = KERNEL_ALIASES.merge(RECEIVER_ALIASES).freeze
 
   # Structural method transforms: method call → different syntax
   # Applied only when TypeProf verifies receiver type compatibility.

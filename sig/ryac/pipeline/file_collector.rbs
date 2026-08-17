@@ -4,7 +4,7 @@ module Ryac
     # whether it sits inside a class/module body and/or a method body.
     type require_node_info = { type: Symbol, path: String, line: Integer, start_offset: Integer, length: Integer, in_class: bool, in_method: bool, ?resolved_path: String }
 
-    class FileCollector < Stage
+    class FileCollector
       @graph: DependencyGraph
       @visited: Set[String]
       @gem_names: Array[String]

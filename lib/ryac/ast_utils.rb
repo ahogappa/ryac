@@ -330,5 +330,12 @@ module Ryac
       # The respond_to? guard above has already raised for location-less nodes.
       [loc.start_offset, loc.end_offset] # steep:ignore NoMethod
     end
+
+    # The line/column coordinate space (syntax_data and friends) — kept
+    # separate from byte-offset location_key on purpose.
+    def self.line_col_key(node)
+      loc = node.location
+      [loc.start_line, loc.start_column]
+    end
   end
 end

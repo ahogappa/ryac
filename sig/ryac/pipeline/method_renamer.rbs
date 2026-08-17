@@ -1,14 +1,13 @@
 module Ryac
   module Pipeline
-    class MethodRenamer
+    class MethodRenamer < Stage
       include RenamePatcher
 
       @negated_transforms: Hash[location_key, bool]
       @source_bytes: String
 
-      def self.collect_patches_from: (Prism::ProgramNode prism_ast, Array[patch_entry] patches, AnalysisResult analysis, ?Hash[Symbol, untyped]? kwargs) -> void
-      def self.postprocess: (String result, AnalysisResult analysis, String aliases_str, String preamble_str) -> [String, String, String]
-      def run_collect: (Prism::ProgramNode prism_ast, Array[patch_entry] patches, AnalysisResult analysis) -> void
+      def needs_analysis?: () -> bool
+      def collect: (StageContext ctx, Array[patch_entry] patches) -> void
 
       private
 

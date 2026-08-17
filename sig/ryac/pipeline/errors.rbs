@@ -1,6 +1,6 @@
 module Ryac
   module Pipeline
-    class StageError < StandardError
+    class StageError < Ryac::InputError
     end
 
     class FileNotFoundError < StageError
@@ -35,11 +35,11 @@ module Ryac
       def initialize: (String gem_name) -> void
     end
 
-    class InvalidOutputError < StageError
+    class InvalidOutputError < Ryac::InternalError
       def initialize: (String label, Array[Prism::ParseError] errors) -> void
     end
 
-    class RenameCollisionError < StageError
+    class RenameCollisionError < Ryac::InternalError
       def initialize: (String scope, Array[[String, Array[Symbol]]] collisions) -> void
     end
   end

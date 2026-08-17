@@ -2,18 +2,22 @@ module Ryac
   class Minifier
     DEFAULT_LEVEL: Symbol
 
-    type optimizer_class = singleton(Pipeline::BooleanShorten) | singleton(Pipeline::CharShorten) | singleton(Pipeline::ConstantFold) | singleton(Pipeline::ControlFlowSimplify) | singleton(Pipeline::EndlessMethod) | singleton(Pipeline::ParenOptimizer)
-    type renamer_class = singleton(Pipeline::ConstantAliaser) | singleton(Pipeline::AttrDeclShorten) | singleton(Pipeline::VariableRenamer) | singleton(Pipeline::MethodRenamer)
-    type stage_entry = Hash[optimizer_class, Integer] | [renamer_class] | [renamer_class, Hash[Symbol, bool]]
+    type stage_class = singleton(Pipeline::Stage)
+    type stage_entry = [stage_class] | [stage_class, Hash[Symbol, untyped]]
 
     def self.resolve_level: (String | Symbol value) -> Symbol
 
-    OPTIMIZE: Hash[optimizer_class, Integer]
+    OPTIMIZE_PRE: Array[stage_entry]
+    OPTIMIZE_POST: Array[stage_entry]
     ALL_VAR_FEATURES: Hash[Symbol, Hash[Symbol, bool]]
     ALL_VAR_WITH_ATTR: Hash[Symbol, Hash[Symbol, bool]]
+    STABLE_STAGES: Array[stage_entry]
     STAGES: Hash[Symbol, Array[stage_entry]]
 
-    def self.run_stages: (String code, Array[stage_entry] stages, ?file_boundaries: Array[Pipeline::FileBoundary], ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String]) -> Pipeline::RenameResult
+    def self.derive_unstable: (Array[stage_entry] stable) -> Array[stage_entry]
+    def self.run_stages: (String code, Array[stage_entry] stages, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String]) -> Pipeline::RenameResult
+
+    include Pipeline::SourcePatcher
 
     attr_reader result: Pipeline::MinifiedResult?
 
@@ -23,9 +27,7 @@ module Ryac
     private
 
     def run_pipeline: (Pipeline::ConcatenatedSource source, Symbol | Array[stage_entry] target_level) -> Pipeline::RenameResult
-    def resolve_level_value: (Symbol | String level) -> Symbol
-    def build_result: (Pipeline::RenameResult rename_result, Pipeline::ConcatenatedSource source) -> Pipeline::MinifiedResult
+    def build_result: (Pipeline::RenameResult rename_result, Pipeline::ConcatenatedSource source, Integer file_count) -> Pipeline::MinifiedResult
     def build_output: (String code, Array[String] stdlib_requires, ?String preamble) -> String
-    def verify_parses: (String text, String label) -> void
   end
 end

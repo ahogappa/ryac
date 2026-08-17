@@ -62,9 +62,9 @@ module Ryac
       @boot_roots = boot_roots
       @mappings = {}           # Hash<Array<Symbol>, ConstantInfo> - key is static_cpath
       # keyed by the last path segment
-      @by_name = {} #: Hash[Symbol, Array[ConstantInfo]]
+      @by_name = {}
       @used_short_names = Set.new
-      @external_prefixes = {} #: Hash[Array[Symbol], ExternalPrefixInfo]
+      @external_prefixes = {}
       @prefix_counts = Hash.new(0) # Hash<Array<Symbol>, Integer> - raw prefix reference counts
       @state = :empty
     end
@@ -96,7 +96,7 @@ module Ryac
       @mappings[static_cpath] = info
 
       # Also index by simple name for backward compatibility
-      (@by_name[name] ||= []) << info # steep:ignore UnannotatedEmptyCollection
+      (@by_name[name] ||= []) << info
     end
 
     # Increment usage count for a constant by static_cpath
@@ -174,6 +174,7 @@ module Ryac
           candidate = name_generator.next_name
           candidate = name_generator.next_name while existing_names.include?(candidate)
         end
+        cand = candidate #: String
 
         case kind
         when :internal
@@ -183,19 +184,19 @@ module Ryac
           # assigns are themselves 1-2 characters, and a second pass must
           # not shuffle them again.
           next if info.original_name.to_s.size <= 2
-          next unless info.original_name.to_s.size - candidate.size > 0 # steep:ignore NoMethod
-          info.short_name = candidate
-          @used_short_names << candidate # steep:ignore ArgumentTypeMismatch
+          next unless info.original_name.to_s.size - cand.size > 0
+          info.short_name = cand
+          @used_short_names << cand
 
         when :external
-          saved_per_use = info.prefix_string.size - candidate.size # steep:ignore NoMethod
+          saved_per_use = info.prefix_string.size - cand.size
           next unless saved_per_use > 0
-          declaration_cost = candidate.size + 1 + info.prefix_string.size + 1 # steep:ignore NoMethod
+          declaration_cost = cand.size + 1 + info.prefix_string.size + 1
           net_savings = (saved_per_use * info.usage_count) - declaration_cost
           next unless net_savings > 0
-          info.short_name = candidate
+          info.short_name = cand
           info.char_savings = net_savings
-          existing_names << candidate
+          existing_names << cand
           @external_prefixes[info.prefix_path] = info
         end
 
@@ -214,7 +215,7 @@ module Ryac
     # Get short name for a constant by static_cpath. The parameter is nilable
     # for the callers that pass sliced sub-paths; a nil key simply misses.
     def short_name_for_path(static_cpath)
-      info = @mappings[static_cpath] # steep:ignore ArgumentTypeMismatch
+      info = static_cpath ? @mappings[static_cpath] : nil
       info&.short_name
     end
 
@@ -253,7 +254,8 @@ module Ryac
 
     # Check if a path is a class or module definition
     def class_or_module_path?(static_cpath)
-      info = @mappings[static_cpath] # steep:ignore ArgumentTypeMismatch
+      return false unless static_cpath
+      info = @mappings[static_cpath]
       info && (info.definition_type == :class || info.definition_type == :module)
     end
 
@@ -272,7 +274,7 @@ module Ryac
     # Get short name for the prefix of a full external path
     def short_name_for_prefix(full_path)
       return nil if full_path.nil? || full_path.size < 2
-      prefix = full_path[0...-1]
+      prefix = full_path[0...-1] #: Array[Symbol]
       info = @external_prefixes[prefix]
       info&.short_name
     end
@@ -286,10 +288,10 @@ module Ryac
       sorted.map do |info|
         decl_rhs = info.prefix_string
         (info.prefix_path.size - 1).downto(2) do |len|
-          sub = info.prefix_path[0...len]
+          sub = info.prefix_path[0...len] #: Array[Symbol]
           if alias_map.key?(sub)
-            remaining = info.prefix_path[len..].map(&:to_s).join('::')
-            decl_rhs = "#{alias_map[sub]}::#{remaining}"
+            rest = info.prefix_path[len..] #: Array[Symbol]
+            decl_rhs = "#{alias_map[sub]}::#{rest.map(&:to_s).join('::')}"
             break
           end
         end

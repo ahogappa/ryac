@@ -119,7 +119,7 @@ module Ryac
     # The scope containing the call site is the caller's concern: pass a block
     # mapping a call-argument node to its scope id.
     def build_variable_hints
-      hints = {} #: Hash[scope_id, Hash[Symbol, String]]
+      hints = {} #: scope_mapping_table
 
       @methods.each do |method_key, info|
         next if info[:excluded]

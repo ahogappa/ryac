@@ -116,24 +116,27 @@ class TestIvarCollection < Minitest::Test
     code = 'class Config;attr_accessor :timeout_ms;def initialize;@timeout_ms=100;end;end;' \
            'class Tuner;def bump(target);target.timeout_ms=500;end;end;puts Config.new.timeout_ms'
     result = minify_at_level(code, 5)
-    assert_includes result.code, 'attr :timeout_ms,!!1'
-    assert_includes result.code, '.timeout_ms=500'
+    assert_equal 'class A;attr :timeout_ms,!!1;def initialize =@timeout_ms=100;end;' \
+                 'class B;def bump(a) =a.timeout_ms=500;end;puts A.new.timeout_ms',
+                 result.code
   end
 
   def test_attr_with_hidden_getter_site_not_renamed
     code = 'class Config;attr_reader :timeout_ms;def initialize;@timeout_ms=100;end;end;' \
            'class Reporter;def show(target);puts target.timeout_ms;end;end;puts Config.new.timeout_ms'
     result = minify_at_level(code, 5)
-    assert_includes result.code, 'attr :timeout_ms'
-    assert_includes result.code, '.timeout_ms'
+    assert_equal 'class A;attr :timeout_ms;def initialize =@timeout_ms=100;end;' \
+                 'class B;def show(a) =puts a.timeout_ms;end;puts A.new.timeout_ms',
+                 result.code
   end
 
   def test_attr_with_hidden_operator_write_not_renamed
     code = 'class Counter;attr_accessor :hit_count;def initialize;@hit_count=0;end;end;' \
            'class Driver;def punch(target);target.hit_count+=7;end;end;puts Counter.new.hit_count'
     result = minify_at_level(code, 5)
-    assert_includes result.code, 'attr :hit_count,!!1'
-    assert_includes result.code, '.hit_count+=7'
+    assert_equal 'class A;attr :hit_count,!!1;def initialize =@hit_count=0;end;' \
+                 'class B;def punch(a) =a.hit_count+=7;end;puts A.new.hit_count',
+                 result.code
   end
 
   # attr_writer never renames its declaration, so a reader sharing its
@@ -144,7 +147,9 @@ class TestIvarCollection < Minitest::Test
     code = 'class Pack;attr_reader :payload_data;attr_writer :payload_data;def initialize;@payload_data=1;end;end;' \
            'pack=Pack.new;pack.payload_data=9;puts pack.payload_data'
     result = minify_at_level(code, 5)
-    assert_includes result.code, 'attr :payload_data'
-    assert_includes result.code, 'attr_writer :payload_data'
+    assert_equal 'class A;attr :payload_data;attr_writer :payload_data;' \
+                 'def initialize =@payload_data=1;end;' \
+                 'a=A.new;a.payload_data=9;puts a.payload_data',
+                 result.code
   end
 end

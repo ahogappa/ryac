@@ -7,13 +7,12 @@ module Ryac
     AstUtils.each_node(prism_root) do |node|
       next unless node.is_a?(Prism::CallNode)
 
-      shorter = METHOD_ALIASES[node.name]
-      if shorter
-        if node.receiver
-          alias_map[AstUtils.location_key(node)] = shorter if @oracle.receiver_responds_to?(node, shorter)
-        else
-          alias_map[AstUtils.location_key(node)] = shorter
-        end
+      if node.receiver
+        shorter = METHOD_ALIASES[node.name]
+        alias_map[AstUtils.location_key(node)] = shorter if shorter && @oracle.receiver_responds_to?(node, shorter)
+      else
+        shorter = KERNEL_ALIASES[node.name]
+        alias_map[AstUtils.location_key(node)] = shorter if shorter
       end
 
       if node.receiver && (node.arguments.nil? || node.arguments.arguments.empty?)

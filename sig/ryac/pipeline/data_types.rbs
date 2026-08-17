@@ -40,8 +40,9 @@ module Ryac
       attr_reader stdlib_requires: Array[String]
       attr_reader rbs_files: Hash[String, String]
 
-      def self.new: (content: String, file_boundaries: Array[FileBoundary], original_size: Integer, stdlib_requires: Array[String], ?rbs_files: Hash[String, String]) -> ConcatenatedSource
-      def initialize: (content: String, file_boundaries: Array[FileBoundary], original_size: Integer, stdlib_requires: Array[String], ?rbs_files: Hash[String, String]) -> void
+      def self.new: (content: String, ?file_boundaries: Array[FileBoundary], ?original_size: Integer?, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String]) -> ConcatenatedSource
+      def initialize: (content: String, ?file_boundaries: Array[FileBoundary], ?original_size: Integer?, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String]) -> void
+      def with: (?content: String, ?file_boundaries: Array[FileBoundary], ?original_size: Integer, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String]) -> ConcatenatedSource
     end
 
     class AnalysisResult
@@ -60,7 +61,7 @@ module Ryac
       attr_reader const_write_cpath_map: Hash[location_key, Array[Symbol]]
       attr_reader class_cpath_map: Hash[location_key, Array[Symbol]]
       attr_reader superclass_resolution_map: Hash[location_key, Array[Symbol]]
-      attr_reader meta_node_map: Hash[location_key, Hash[Symbol, syntax_value]]
+      attr_reader meta_node_map: Hash[location_key, meta_node_entry]
       attr_reader local_rename_entries: Hash[location_key, String]
       attr_reader keyword_rename_entries: Hash[location_key, String]
       attr_reader ivar_rename_entries: Hash[location_key, String]
@@ -84,7 +85,7 @@ module Ryac
         const_write_cpath_map: Hash[location_key, Array[Symbol]],
         class_cpath_map: Hash[location_key, Array[Symbol]],
         superclass_resolution_map: Hash[location_key, Array[Symbol]],
-        meta_node_map: Hash[location_key, Hash[Symbol, syntax_value]],
+        meta_node_map: Hash[location_key, meta_node_entry],
         ?local_rename_entries: Hash[location_key, String],
         ?keyword_rename_entries: Hash[location_key, String],
         ?ivar_rename_entries: Hash[location_key, String],
@@ -108,7 +109,7 @@ module Ryac
         const_write_cpath_map: Hash[location_key, Array[Symbol]],
         class_cpath_map: Hash[location_key, Array[Symbol]],
         superclass_resolution_map: Hash[location_key, Array[Symbol]],
-        meta_node_map: Hash[location_key, Hash[Symbol, syntax_value]],
+        meta_node_map: Hash[location_key, meta_node_entry],
         ?local_rename_entries: Hash[location_key, String],
         ?keyword_rename_entries: Hash[location_key, String],
         ?ivar_rename_entries: Hash[location_key, String],
@@ -144,6 +145,7 @@ module Ryac
 
       def self.new: (content: String, ?aliases: String, ?preamble: String, stats: CompressionStats) -> MinifiedResult
       def initialize: (content: String, ?aliases: String, ?preamble: String, stats: CompressionStats) -> void
+      def full_content: () -> String
     end
   end
 end

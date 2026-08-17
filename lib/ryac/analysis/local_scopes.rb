@@ -78,7 +78,7 @@ module Ryac
 
     # {scope_id => {original => short}} for every scope that allocates names.
     def scope_mappings
-      @scopes.each_with_object({}) do |scope, out| #$ Hash[scope_id, Hash[Symbol, String]]
+      @scopes.each_with_object({}) do |scope, out| #$ scope_mapping_table
         # allocated? guarantees mapping is non-nil here.
         out[scope.id] = scope.mapping if scope.allocated? # steep:ignore ArgumentTypeMismatch
       end
@@ -504,8 +504,8 @@ module Ryac
 
       case node
       when *VARIABLE_NODES
-        # node is one of the six local-variable node classes here
-        record_variable(node, stack) # steep:ignore ArgumentTypeMismatch
+        # @type var node: prism_variable_node
+        record_variable(node, stack)
       when Prism::ForNode
         record_for_index(node, stack)
       end
@@ -537,8 +537,7 @@ module Ryac
       each_def_param_name(params) { |sym| names[sym] = mapping[sym] || sym.to_s }
       return unless names.any?
 
-      loc = def_node.location
-      @def_param_names[[loc.start_line, loc.start_column]] = names
+      @def_param_names[AstUtils.line_col_key(def_node)] = names
     end
 
     def each_def_param_name(params, &block)
@@ -575,8 +574,7 @@ module Ryac
       idx = for_node.index
       return unless idx.is_a?(Prism::LocalVariableTargetNode)
 
-      loc = for_node.location
-      @for_index_names[[loc.start_line, loc.start_column]] = resolved_name(idx.name, idx.depth, stack)
+      @for_index_names[AstUtils.line_col_key(for_node)] = resolved_name(idx.name, idx.depth, stack)
     end
   end
 end

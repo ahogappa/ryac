@@ -1,23 +1,17 @@
 module Ryac
   VERSION: String
 
-  class Error < StandardError
-  end
-
-  class MinifyError < Error
-  end
-
-  class SyntaxError < Error
-  end
-
   type tp_node = TypeProf::Core::AST::Node
   type tp_genv = TypeProf::Core::GlobalEnv
   type location_key = [Integer, Integer]
+  # Line/column coordinates — a separate space from byte-offset location_key;
+  # build with AstUtils.line_col_key, never by hand.
+  type line_col_key = [Integer, Integer]
   type scope_id = location_key
   type scope_mapping_table = Hash[scope_id, Hash[Symbol, String]]
   type syntax_value = String | Integer | Symbol | bool | Hash[Symbol, String] | nil
-  type syntax_data_map = Hash[[Integer, Integer], Hash[Symbol, syntax_value]]
-  type meta_node_entry = { type: Symbol, args: Array[Symbol] }
+  type syntax_data_map = Hash[line_col_key, Hash[Symbol, syntax_value]]
+  type meta_node_entry = { type: Symbol, ?args: Array[Symbol] }
 
   # --- scope_management.rb ---
   module RenameInvariants
@@ -76,6 +70,7 @@ module Ryac
   DYNAMIC_IVAR_METHODS: Array[Symbol]
   ATTR_DECLARATION_METHODS: Array[Symbol]
   IVAR_WRITE_NODES: Array[Class]
+  type ivar_write_node = Prism::InstanceVariableWriteNode | Prism::InstanceVariableTargetNode | Prism::InstanceVariableOperatorWriteNode | Prism::InstanceVariableOrWriteNode | Prism::InstanceVariableAndWriteNode
 
   def collect_ivar_definitions: (Prism::Node prism_root, Hash[Array[Symbol], Set[Symbol]] attr_backed) -> void
   def collect_attr_backed_ivars: (Prism::Node prism_root) -> Hash[Array[Symbol], Set[Symbol]]
@@ -115,6 +110,7 @@ module Ryac
   # --- analysis/cvar/collection.rb ---
   DYNAMIC_CVAR_METHODS: Array[Symbol]
   CVAR_WRITE_NODES: Array[Class]
+  type cvar_write_node = Prism::ClassVariableWriteNode | Prism::ClassVariableTargetNode | Prism::ClassVariableOperatorWriteNode | Prism::ClassVariableOrWriteNode | Prism::ClassVariableAndWriteNode
 
   def collect_cvar_definitions: (Prism::Node prism_root) -> void
   def scan_dynamic_cvar_access: (Prism::Node prism_root) -> void
@@ -122,11 +118,14 @@ module Ryac
 
   # --- analysis/gvar/collection.rb ---
   GVAR_NODES: Array[Class]
+  type gvar_node = Prism::GlobalVariableReadNode | Prism::GlobalVariableWriteNode | Prism::GlobalVariableTargetNode | Prism::GlobalVariableOperatorWriteNode | Prism::GlobalVariableOrWriteNode | Prism::GlobalVariableAndWriteNode
 
   def collect_gvar_definitions: (Prism::Node prism_root) -> void
   def scan_alias_globals: (Prism::Node prism_root) -> void
 
   # --- analysis/method_aliases.rb ---
+  KERNEL_ALIASES: Hash[Symbol, Symbol]
+  RECEIVER_ALIASES: Hash[Symbol, Symbol]
   METHOD_ALIASES: Hash[Symbol, Symbol]
   METHOD_TRANSFORMS: Hash[[Symbol, Symbol], String]
 

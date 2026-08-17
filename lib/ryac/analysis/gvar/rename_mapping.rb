@@ -2,24 +2,40 @@
 
 module Ryac
   class GvarRenameMapping
-    # Built-in globals that must never be renamed.
-    # After preprocessor (Style/SpecialGlobalVars with use_perl_names),
-    # long forms like $LOAD_PATH are already converted to $: etc.
-    BUILT_IN_GLOBALS = Set.new(%i[
+    # One pairing of English name to punctuation spelling. SpellingShorten
+    # rewrites reads and plain writes to the short form; both spellings also
+    # join BUILT_IN_GLOBALS below, so the node kinds it does not rewrite
+    # (targets, operator/or/and writes) can never be renamed either.
+    PERL_SPELLINGS = {
+      '$PROGRAM_NAME': '$0',
+      '$LOAD_PATH': '$:',
+      '$LOADED_FEATURES': '$"',
+    }.freeze
+
+    # Built-in globals that must never be renamed: Ruby defines their
+    # storage, so a renamed spelling reads nil and writes into a dead cell.
+    BUILT_IN_GLOBALS = (Set.new(%i[
       $stdout $stderr $stdin $DEBUG $VERBOSE $FILENAME
+      $ERROR_INFO $ERROR_POSITION $FIELD_SEPARATOR $OFS $OUTPUT_FIELD_SEPARATOR
+      $RS $INPUT_RECORD_SEPARATOR $ORS $OUTPUT_RECORD_SEPARATOR
+      $INPUT_LINE_NUMBER $NR $LAST_READ_LINE $DEFAULT_OUTPUT $DEFAULT_INPUT
+      $PID $PROCESS_ID $CHILD_STATUS $LAST_MATCH_INFO $IGNORECASE
+      $ARGV $MATCH $PREMATCH $POSTMATCH $LAST_PAREN_MATCH $FS
       $0 $: $; $, $. $/ $\\ $_ $< $> $! $@ $~ $& $` $' $+ $*
       $" $? $$ $-0 $-F $-I $-K $-W $-a $-d $-i $-l $-p $-v $-w
       $1 $2 $3 $4 $5 $6 $7 $8 $9
-    ]).freeze
+    ]) + PERL_SPELLINGS.keys + PERL_SPELLINGS.values.map(&:to_sym)).freeze
 
     def initialize
       @gvars = {}
       @excluded_names = Set.new
+      @written_names = Set.new
       @node_short_names = {}
     end
 
-    def add_site(name, node)
+    def add_site(name, node, write: false)
       return if BUILT_IN_GLOBALS.include?(name)
+      @written_names << name if write
       @gvars[name] ||= []
       @gvars[name] << node
     end
@@ -42,6 +58,9 @@ module Ryac
       sorted_gvars.each do |name, nodes|
         next if @excluded_names.include?(name)
         next if name.to_s.size <= 2
+        # A global the program only reads is either a built-in this list
+        # does not know or nil everywhere — renaming it can only break.
+        next unless @written_names.include?(name)
 
         short_name = generator.next_name
         short_name = generator.next_name while existing_names.include?(short_name)

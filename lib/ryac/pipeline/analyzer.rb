@@ -7,7 +7,7 @@ module Ryac
     # Stage 3: Analysis
     # Parses source with TypeProf, builds scope mappings,
     # collects constants and their references, and freezes mappings.
-    class Analyzer < Stage
+    class Analyzer
       include Ryac
 
       def self.prism_only(source)
@@ -20,13 +20,7 @@ module Ryac
         analyzer = new
         syntax_data = analyzer.syntax_data_for(prism_result.value)
 
-        source ||= ConcatenatedSource.new(
-          content: content,
-          file_boundaries: [],
-          original_size: content.bytesize,
-          stdlib_requires: [],
-          rbs_files: {}
-        )
+        source ||= ConcatenatedSource.new(content: content)
 
         AnalysisResult.new(
           prism_ast: prism_result.value,
@@ -103,57 +97,20 @@ module Ryac
         content = source.content
 
         prism_result = Prism.parse(content)
-        unless prism_result.errors.empty?
-          error = prism_result.errors.first
-          raise SyntaxError, "at #{path}:#{error.location.start_line}:#{error.location.start_column}: #{error.message}"
+        # Every input file was parse-checked at collection, so a failure
+        # here means an upstream stage broke the text.
+        unless prism_result.errors.none?
+          raise InvalidOutputError.new('pre-rename source', prism_result.errors)
         end
 
         service = TypeProf::Core::Service.new({})
         source.rbs_files.each do |rbs_path, rbs_content|
           service.update_rbs_file(rbs_path, rbs_content)
         end
-        begin
-          service.update_rb_file(path, content)
-        rescue NoMethodError => e
-          construct = unsupported_construct(prism_result.value)
-          where = construct ? "#{construct[:label]} (#{path}:#{construct[:line]})" : 'this source'
-          raise MinifyError,
-                "type analysis cannot ingest #{where}: typeprof #{TypeProf::VERSION} " \
-                "crashed converting it (#{e.message.lines[0].strip}); a newer typeprof may support it"
-        end
+        service.update_rb_file(path, content)
         nodes = service.instance_variable_get(:@rb_text_nodes)[path]
 
         [prism_result, nodes, service.genv]
-      end
-
-      # The shapes released typeprof 0.32.0 crashes on. Consulted only after
-      # update_rb_file has crashed — under a typeprof that ingests them,
-      # these shapes minify like any other.
-      def unsupported_construct(root)
-        found = nil
-        AstUtils.each_node(root) do |n|
-          case n
-          when Prism::FindPatternNode
-            # right is SplatNode | MissingNode in Prism's types; the source
-            # parsed successfully, so a missing splat cannot occur here.
-            right = n.right
-            if n.left.expression.nil? || !right.is_a?(Prism::SplatNode) || right.expression.nil?
-              found = { label: 'find patterns with an anonymous splat (`in [*, x, *]`)',
-                        line: n.location.start_line }
-            end
-          when Prism::HashPatternNode
-            if n.rest.is_a?(Prism::NoKeywordsParameterNode)
-              found = { label: '`**nil` hash patterns', line: n.location.start_line }
-            end
-          when Prism::BlockParametersNode
-            if n.parameters.nil?
-              found = { label: 'parameterless block pipes (`{ || }`, `{ |;x| }`)',
-                        line: n.location.start_line }
-            end
-          end
-          break if found
-        end
-        found
       end
 
       def analyze_keywords_and_scopes
@@ -284,8 +241,7 @@ module Ryac
       end
 
       def traverse_prism(node, data)
-        loc = node.location
-        key = [loc.start_line, loc.start_column] #: [Integer, Integer]
+        key = AstUtils.line_col_key(node)
         case node
         when Prism::DefNode
           data[key] = { self_receiver: node.receiver.is_a?(Prism::SelfNode) }

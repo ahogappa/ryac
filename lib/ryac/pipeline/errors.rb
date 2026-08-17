@@ -1,9 +1,14 @@
 # frozen_string_literal: true
 
+# The superclasses below resolve at load: this edge is what places their
+# definitions in front of this file in the concatenated artifact.
+require_relative '../errors'
+
 module Ryac
   module Pipeline
-    # Base error class for all pipeline stage errors
-    class StageError < StandardError; end
+    # Base class for input-side pipeline failures: the program being
+    # minified (or how it was invoked) is at fault.
+    class StageError < Ryac::InputError; end
 
     # Raised when a required file cannot be found
     class FileNotFoundError < StageError
@@ -65,7 +70,7 @@ module Ryac
     # Raised when the pipeline produced output that does not parse. The broken
     # output is a bug in a stage, and failing here names the producer instead
     # of letting the consumer discover it at load time.
-    class InvalidOutputError < StageError
+    class InvalidOutputError < Ryac::InternalError
       def initialize(label, errors)
         detail = errors.first(3).map { |e|
           "#{e.location.start_line}:#{e.location.start_column}: #{e.message}"
@@ -77,7 +82,7 @@ module Ryac
     # Raised when two different names in one scope were assigned the same
     # short name. The output may still parse — `def c(a) = c(a) || d(a)` is
     # valid Ruby — so this cannot be left to a syntax check.
-    class RenameCollisionError < StageError
+    class RenameCollisionError < Ryac::InternalError
       def initialize(scope, collisions)
         detail = collisions.map { |short, originals|
           "#{originals.join(', ')} -> #{short}"

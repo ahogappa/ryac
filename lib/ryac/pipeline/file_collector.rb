@@ -6,7 +6,7 @@ module Ryac
   module Pipeline
     # Stage 1: File Collection
     # Discovers all dependencies via static analysis of require/require_relative/autoload
-    class FileCollector < Stage
+    class FileCollector
       # @param entry_path [String, Array<String>] Path(s) to entry point file(s)
       # @return [DependencyGraph] Graph of all discovered files
       # @raise [FileNotFoundError] If a required file doesn't exist
@@ -88,6 +88,15 @@ module Ryac
       # Extract require/require_relative/autoload nodes from source
       def extract_require_nodes(file_path, content)
         result = Prism.parse(content)
+        # Collection is the only point that still knows which file a byte
+        # came from — a syntax error surfaces here with real coordinates,
+        # or downstream as a nameless internal failure.
+        error = result.errors[0]
+        if error
+          raise Ryac::SyntaxError.new(error.message, path: file_path,
+                                      line: error.location.start_line,
+                                      column: error.location.start_column)
+        end
         nodes = [] #: Array[require_node_info]
 
         traverse_for_requires(result.value, nodes, file_path)

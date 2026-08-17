@@ -1,0 +1,14 @@
+module Ryac
+  module Pipeline
+    class SpellingShorten < Stage
+      SAFE_WORD: Regexp
+
+      def collect: (StageContext ctx, Array[patch_entry] patches) -> void
+
+      private
+
+      def try_percent_array: (Prism::ArrayNode node, Array[patch_entry] patches) -> void
+      def plain?: (Prism::Node node, Class klass) -> bool
+    end
+  end
+end

@@ -1,17 +1,17 @@
 module Ryac
   module Pipeline
-    class AttrDeclShorten
+    class AttrDeclShorten < Stage
       include RenamePatcher
 
-      def self.collect_patches_from: (Prism::Node prism_ast, Array[patch_entry] patches, AnalysisResult analysis, ?Hash[Symbol, untyped]? kwargs) -> void
-      def self.postprocess: (String result, AnalysisResult _analysis, String aliases_str, String preamble_str) -> [String, String, String]
-      def collect: (Prism::Node node, Array[patch_entry] patches, AnalysisResult analysis, ?rename_attrs: bool?) -> void
+      @rename_attrs: bool
+
+      def needs_analysis?: () -> bool
+      def initialize: (?rename_attrs: bool) -> void
+      def collect: (StageContext ctx, Array[patch_entry] patches) -> void
 
       private
 
-      # type comes straight out of the loosely-typed meta_node_map entry, so
-      # it accepts the whole syntax_value range; only the attr symbols match.
-      def render_attr_declaration: (syntax_value type, Array[String] names) -> String?
+      def render_attr_declaration: (Symbol type, Array[String] names) -> String?
     end
   end
 end

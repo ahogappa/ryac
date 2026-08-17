@@ -1,12 +1,10 @@
 module Ryac
   module Pipeline
-    class ConstantFold
-      include SourcePatcher
-
+    class ConstantFold < Stage
       FOLDABLE_OPS: Array[Symbol]
       INTEGER_ONLY_OPS: Array[Symbol]
 
-      def call: (String input) -> String
+      def collect: (StageContext ctx, Array[patch_entry] patches) -> void
 
       private
 

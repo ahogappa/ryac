@@ -2,17 +2,12 @@
 
 module Ryac
   module Pipeline
-    class ConstantFold
-      include SourcePatcher
-
+    class ConstantFold < Stage
       FOLDABLE_OPS = %i[+ - * / % ** << >> & | ^].freeze
       INTEGER_ONLY_OPS = %i[<< >> & | ^].freeze
 
-      def call(input)
-        ast = Prism.parse(input).value
-        patches = [] #: Array[patch_entry]
-        walk(ast, patches)
-        apply_patches(input, patches)
+      def collect(ctx, patches)
+        walk(ctx.ast, patches)
       end
 
       private

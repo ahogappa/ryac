@@ -32,7 +32,6 @@ module Ryac
 
       def call(input_string)
         @prism_ast = Prism.parse(input_string).value
-        @inside_singleton_class = false
         @standard_error_redefined = nil
         rebuild.join(";")
       end
@@ -42,13 +41,7 @@ module Ryac
       # --- Dispatch ---
 
       def rebuild
-        results = [] #: Array[String]
-        @prism_ast.statements.body.each do |subnode|
-          result = r(subnode)
-          results << result unless result.empty?
-          break if node_returns_bot?(subnode)
-        end
-        results
+        render_statement_list(@prism_ast.statements.body)
       end
 
       def r(node)
@@ -144,35 +137,53 @@ module Ryac
         return '' if nodes.nil?
 
         if nodes.is_a?(Prism::StatementsNode)
-          stmts = nodes.body
-          singleton_defs = stmts.select { |s| s.is_a?(Prism::DefNode) && s.receiver.is_a?(Prism::SelfNode) }
-          if singleton_defs.size >= 4
-            results = [] #: Array[String]
-            @inside_singleton_class = true
-            inner = singleton_defs.map { |n| r(n) }
-            @inside_singleton_class = false
-            inner.reject! { |s| s.nil? || s.empty? }
-            results << "class<<self;#{inner.join(';')};end"
-            stmts.each do |subnode|
-              next if subnode.is_a?(Prism::DefNode) && subnode.receiver.is_a?(Prism::SelfNode)
-              result = r(subnode)
-              results << result unless result.nil? || result.empty?
-              break if node_returns_bot?(subnode)
-            end
-            results.join(";")
-          else
-            results = [] #: Array[String]
-            stmts.each do |subnode|
-              result = r(subnode)
-              results << result unless result.nil? || result.empty?
-              break if node_returns_bot?(subnode)
-            end
-            results.join(";")
-          end
+          render_statement_list(nodes.body).join(';')
         else
           result = r(nodes)
           result.nil? || result.empty? ? '' : result
         end
+      end
+
+      # `def self.x` runs of GROUP_MIN or more become one `class<<self`
+      # block. Only CONSECUTIVE defs form a run — grouping across other
+      # statements would reorder their side effects.
+      GROUP_MIN = 4
+
+      def singleton_self_def?(node)
+        node.is_a?(Prism::DefNode) && node.receiver.is_a?(Prism::SelfNode)
+      end
+
+      def render_statement_list(stmts)
+        results = [] #: Array[String]
+        run = [] #: Array[Prism::DefNode]
+        stmts.each do |subnode|
+          if singleton_self_def?(subnode)
+            # @type var subnode: Prism::DefNode
+            run << subnode
+            next
+          end
+          results.concat(flush_singleton_run(run))
+          result = r(subnode)
+          results << result unless result.nil? || result.empty?
+          break if node_returns_bot?(subnode)
+        end
+        results.concat(flush_singleton_run(run))
+        results
+      end
+
+      # Renders and clears the pending run of `def self.` statements: one
+      # class<<self group when the run is long enough to pay for the
+      # wrapper, the plain renders otherwise.
+      def flush_singleton_run(run)
+        rendered = if run.size >= GROUP_MIN
+                     inner = run.map { |n| r_def(n, drop_self_receiver: true) }
+                     inner.reject! { |s| s.nil? || s.empty? }
+                     ["class<<self;#{inner.join(';')};end"]
+                   else
+                     run.map { |n| r(n) }.reject { |s| s.nil? || s.empty? }
+                   end
+        run.clear
+        rendered
       end
 
       # --- Method calls ---
@@ -261,10 +272,13 @@ module Ryac
 
       # --- Definitions ---
 
-      def r_def(node)
+      # drop_self_receiver: the def sits directly inside `class<<self`, so
+      # its written `self.` disappears; anything nested in its body renders
+      # through the plain path and keeps its own receiver.
+      def r_def(node, drop_self_receiver: false)
         method_name = node.name
         receiver_prefix = if node.receiver
-          if @inside_singleton_class && node.receiver.is_a?(Prism::SelfNode)
+          if drop_self_receiver && node.receiver.is_a?(Prism::SelfNode)
             ""
           else
             "#{r(node.receiver)}."
@@ -718,8 +732,6 @@ module Ryac
 
       def r_defined(node)
         "defined?(#{r(node.value)})"
-      rescue
-        "defined?(#{node.value.slice})"
       end
 
       # --- Multi-write ---
@@ -1037,7 +1049,10 @@ module Ryac
       def node_returns_bot?(node)
         case node
         when Prism::ReturnNode, Prism::BreakNode, Prism::NextNode then true
-        when Prism::CallNode then node.name == :raise || node.name == :fail
+        when Prism::CallNode
+          # Only the Kernel spellings end the flow; `logger.raise(1)` is an
+          # ordinary method call.
+          node.receiver.nil? && (node.name == :raise || node.name == :fail)
         else false
         end
       end

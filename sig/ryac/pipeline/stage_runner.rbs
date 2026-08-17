@@ -1,0 +1,18 @@
+module Ryac
+  module Pipeline
+    class StageRunner
+      include SourcePatcher
+
+      @stdlib_requires: Array[String]
+      @rbs_files: Hash[String, String]
+
+      def initialize: (?stdlib_requires: Array[String], ?rbs_files: Hash[String, String]) -> void
+      def call: (String code, Array[Minifier::stage_entry] stage_defs) -> RenameResult
+
+      private
+
+      def instantiate: (Minifier::stage_entry entry) -> Stage
+      def run_analysis_batch: (String code, Array[Stage] batch) -> [String, String, String]
+    end
+  end
+end

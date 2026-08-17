@@ -21,7 +21,7 @@ module Ryac
       when Prism::ClassVariableReadNode
         @cvar_rename_mapping.add_read_site(cpath, node.name, node)
       when *CVAR_WRITE_NODES
-        # @type var node: Prism::ClassVariableWriteNode | Prism::ClassVariableTargetNode | Prism::ClassVariableOperatorWriteNode | Prism::ClassVariableOrWriteNode | Prism::ClassVariableAndWriteNode
+        # @type var node: cvar_write_node
         @cvar_rename_mapping.add_write_site(cpath, node.name, node)
       end
     end

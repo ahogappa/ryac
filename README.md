@@ -18,7 +18,6 @@ This project takes an **aggressive optimization** approach. In Ruby, even commen
 - **Method renaming**: Shortens method names with `send(:sym)` coordination and attr-backed ivar optimization
 - **Method alias shortening**: Replaces long stdlib method names with shorter aliases (e.g., `collect` → `map`)
 - **Dead code elimination**: Removes unreachable code after `return`, `break`, `next`, `raise`
-- **RuboCop preprocessing**: Applies safe autocorrections before minification
 - **Dynamic code detection**: Disables renaming in scopes containing `eval`, `binding`, `send`, etc.
 
 ## Installation
@@ -127,22 +126,19 @@ rake benchmark
 The minification pipeline:
 
 ```
-FileCollector → Concatenator → Preprocessor → Compactor → STAGES[level] → Output
+FileCollector → Concatenator → StageRunner (Compactor → stage list) → Output
 ```
 
 1. **FileCollector** — Resolves `require_relative` / `autoload` and collects all source files into a dependency graph
 2. **Concatenator** — Topologically sorts files and concatenates them into a single source
-3. **Preprocessor** — Applies RuboCop safe autocorrections (redundant return/self, symbol proc, etc.)
-4. **Compactor** — Rebuilds the AST into minimal whitespace form (the pre-stage baseline)
-5. **STAGES** — Table-driven stage pipeline, configured per level:
-   - **Optimize stages** (Hash `{Class => weight}`): `ControlFlowSimplify`, `EndlessMethod`, `ConstantFold`, `BooleanShorten`, `CharShorten`, `ParenOptimizer` — executed by weight (high-weight before renames, zero-weight after), each transforms `String → String`
-   - **Rename stages** (Array `[Class, kwargs]`): `ConstantAliaser`, `VariableRenamer`, `MethodRenamer` — run via `UnifiedRenamer` with a single TypeProf analysis pass
+3. **StageRunner** — Compacts the source (AST rebuilt into minimal whitespace form), then walks the level's ordered stage list. Every stage implements one contract — `needs_analysis?` / `fixpoint?` / `collect(ctx, patches)` / `finish(ctx)` — and phase is list position:
+   - **Syntactic stages** (no analysis): `ControlFlowSimplify`, `EndlessMethod`, `ConstantFold`, `BooleanShorten`, `CharShorten` before the rename batch; `ParenOptimizer` after it
+   - **Analysis stages**: `ConstantAliaser`, `AttrDeclShorten`, `VariableRenamer` (plus `MethodRenamer` at `unstable`) — consecutive analysis stages form one batch sharing a single TypeProf pass, and the runner rejects a list that would need two
 
 ## Dependencies
 
 - [TypeProf](https://github.com/ruby/typeprof) - Type-aware AST analysis
 - [Prism](https://github.com/ruby/prism) - Syntax validation
-- [RuboCop](https://github.com/rubocop/rubocop) - Preprocessing autocorrections
 
 ## License
 

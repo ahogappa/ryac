@@ -4,21 +4,13 @@ require 'set'
 
 module Ryac
   module Pipeline
-    class ControlFlowSimplify
-      include SourcePatcher
+    class ControlFlowSimplify < Stage
+      # A collapse can make the enclosing construct collapsible in turn,
+      # so this runs to a fixed point.
+      def fixpoint? = true
 
-      def call(input)
-        source = input
-        loop do
-          ast = Prism.parse(source).value
-          patches = [] #: Array[patch_entry]
-          walk(ast, source, patches)
-          break if patches.empty?
-          new_source = apply_patches(source, patches)
-          break if new_source == source
-          source = new_source
-        end
-        source
+      def collect(ctx, patches)
+        walk(ctx.ast, ctx.source, patches)
       end
 
       private
@@ -54,9 +46,29 @@ module Ryac
               return
             end
           end
+        when Prism::DefNode
+          try_tail_return(node, patches)
         end
         child_position = node.is_a?(Prism::StatementsNode)
         node.compact_child_nodes.each { |child| walk(child, source, patches, child_position) }
+      end
+
+      # The value of a def is its last expression; a trailing `return expr`
+      # only restates that. Splats and multi-value returns build a value the
+      # bare expression list would not, so only the single-value form goes.
+      def try_tail_return(node, patches)
+        body = node.body
+        tail = case body
+               when Prism::StatementsNode then body.body[-1]
+               when Prism::ReturnNode then body
+               end
+        return unless tail.is_a?(Prism::ReturnNode)
+
+        args = tail.arguments&.arguments
+        return unless args && args.size == 1
+        return if args[0].is_a?(Prism::SplatNode)
+
+        patches << mk(tail, args[0].slice)
       end
 
       def try_if(node, source, statement_position)
@@ -174,6 +186,7 @@ module Ryac
         return nil unless stmts && AstUtils.single_statement_body?(stmts)
         body = src(source, stmts)
         return nil if body.include?(';')
+        return nil if condition_assigns_var_used_in_body?(node.predicate, stmts)
         return nil if in_collection_context?(node, source)
         cond = src(source, node.predicate)
         "#{body} #{keyword} #{cond}"
@@ -209,10 +222,26 @@ module Ryac
         assigned.intersect?(read)
       end
 
+      # Every node kind that binds a local: plain writes, compound writes
+      # (||= &&= +=), and multi-assignment targets. In the modifier form the
+      # body parses before the condition runs, so a local the condition
+      # binds reads as a method call there — any of these kinds counts.
+      LOCAL_BINDING_NODES = [
+        Prism::LocalVariableWriteNode,
+        Prism::LocalVariableOrWriteNode,
+        Prism::LocalVariableAndWriteNode,
+        Prism::LocalVariableOperatorWriteNode,
+        Prism::LocalVariableTargetNode
+      ].freeze
+
       def collect_assigned_vars(node)
         vars = Set.new
         traverse(node) do |n|
-          vars << n.name if n.is_a?(Prism::LocalVariableWriteNode)
+          case n
+          when *LOCAL_BINDING_NODES
+            # @type var n: Prism::LocalVariableWriteNode | Prism::LocalVariableOrWriteNode | Prism::LocalVariableAndWriteNode | Prism::LocalVariableOperatorWriteNode | Prism::LocalVariableTargetNode
+            vars << n.name
+          end
         end
         vars
       end

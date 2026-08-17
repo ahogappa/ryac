@@ -2,21 +2,13 @@
 
 module Ryac
   module Pipeline
-    class EndlessMethod
-      include SourcePatcher
+    class EndlessMethod < Stage
+      # A conversion can expose another convertible def (nested singles),
+      # so this runs to a fixed point.
+      def fixpoint? = true
 
-      def call(input)
-        source = input
-        loop do
-          ast = Prism.parse(source).value
-          patches = [] #: Array[patch_entry]
-          walk(ast, source, patches)
-          break if patches.empty?
-          new_source = apply_patches(source, patches)
-          break if new_source == source
-          source = new_source
-        end
-        source
+      def collect(ctx, patches)
+        walk(ctx.ast, ctx.source, patches)
       end
 
       private

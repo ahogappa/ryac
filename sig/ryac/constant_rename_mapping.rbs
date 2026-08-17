@@ -27,6 +27,8 @@ module Ryac
     attr_reader used_short_names: Set[String]
 
     @state: Symbol
+    @by_name: Hash[Symbol, Array[ConstantInfo]]
+    @external_prefixes: Hash[Array[Symbol], ExternalPrefixInfo]
 
     def initialize: (?boot_roots: Set[Symbol]?) -> void
     def empty?: () -> bool

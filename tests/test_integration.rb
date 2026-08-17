@@ -81,9 +81,9 @@ class TestIntegration < Minitest::Test
   # site renamed while the class's defs kept their names, and nothing
   # executed the pair until :unstable listed the stage). So: the minified
   # minifier must reproduce the original minifier's output byte for byte at
-  # EVERY level, on a fixture that walks classes, constants, attrs,
-  # keywords, and the RBS input path (also dead during self-hosting, whose
-  # rbs_files are empty).
+  # EVERY level, on a fixture that carries its own sig/ directory — its RBS
+  # travels the project-root discovery path, which self-hosting (whose sig/
+  # is found by walking up from lib/) does not vary.
 
   # Executing the artifact certifies the paths that run; a constant
   # reference broken on a path nothing executes (an error branch, an unused
@@ -92,7 +92,10 @@ class TestIntegration < Minitest::Test
   # aliases file, or the constants its requires provide.
   def test_every_constant_reference_in_the_artifact_resolves
     artifact = self.class.unstable_artifact
-    issues = ConstantAudit.unresolved(artifact.content, extra_source: artifact.aliases)
+    # Bundler is referenced behind defined?(Bundler) — optional by the
+    # original program's own design, resolvable only where bundler is loaded.
+    issues = ConstantAudit.unresolved(artifact.content, extra_source: artifact.aliases,
+                                      allow: %w[Bundler])
     assert_empty issues.map { |path, line| "#{path} (line #{line})" },
                  'constant references in the minified minifier resolve nowhere — latent NameError'
   end

@@ -47,13 +47,12 @@ module Ryac
   def forwards_parameters_to_super?(def_node)
     found = false
     walk = lambda do |n|
-      # these `return`s leave the lambda, not the enclosing method
-      return if found || !n.is_a?(Prism::Node) # steep:ignore ReturnTypeMismatch
+      next if found || !n.is_a?(Prism::Node)
       # A nested def has its own parameters; its `super` is not about ours.
-      return if n.is_a?(Prism::DefNode) # steep:ignore ReturnTypeMismatch
+      next if n.is_a?(Prism::DefNode)
       if n.is_a?(Prism::ForwardingSuperNode)
         found = true
-        return # steep:ignore ReturnTypeMismatch
+        next
       end
       n.compact_child_nodes.each { |child| walk.call(child) }
     end
@@ -92,7 +91,8 @@ module Ryac
 
         if info.super
           # caller_cpath is always present on super records
-          super_merges << [[info.caller_cpath, key[1], key[2]].freeze, key] # steep:ignore
+          entry = [info.caller_cpath, key[1], key[2]].freeze #: method_key
+          super_merges << [entry, key]
           next
         end
 

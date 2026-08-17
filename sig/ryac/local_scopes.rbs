@@ -32,9 +32,9 @@ module Ryac
 
     attr_reader scopes: Array[Scope]
     attr_reader rename_entries: Hash[location_key, String]
-    attr_reader def_param_names: Hash[[Integer, Integer], Hash[Symbol, String]]
+    attr_reader def_param_names: Hash[line_col_key, Hash[Symbol, String]]
     attr_reader block_param_names: Hash[location_key, Hash[Symbol, String]]
-    attr_reader for_index_names: Hash[[Integer, Integer], String]
+    attr_reader for_index_names: Hash[line_col_key, String]
 
     def initialize: (Prism::ProgramNode program_node) -> void
     def scope_id_at: (Integer offset) -> scope_id?

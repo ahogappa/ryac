@@ -72,10 +72,11 @@ class TestConstantAliaserPipeline < Minitest::Test
       path = File.join(dir, 'scanner.rb')
       File.write(path, code)
       result = Ryac::Minifier.new.call(path, level: MinifyTestHelper::STAGE_RECIPES[2])
-      assert result.content.start_with?('require "prism";A=Prism;'),
-             "requires must precede the alias declaration:\n#{result.content[0, 120]}"
-      assert_includes result.content, 'A::CallNode'
-      refute_includes result.content, 'Prism::CallNode'
+      assert_equal 'require "prism";A=Prism;class Scanner;def run(src) =' \
+                   '(root=Prism.parse(src).value;[A::CallNode,A::DefNode,A::ClassNode,A::ModuleNode]' \
+                   '.count{|klass|root.statements.body.first.is_a?(klass)});end;' \
+                   'puts Scanner.new.run("x = 1")',
+                   result.content
 
       original_out, original_ok = run_ruby_code(code)
       minified_out, minified_ok = run_ruby_code(result.content)
@@ -102,8 +103,10 @@ class TestConstantAliaserPipeline < Minitest::Test
       path = File.join(dir, 'worker.rb')
       File.write(path, code)
       result = Ryac::Minifier.new.call(path, level: MinifyTestHelper::STAGE_RECIPES[2])
-      assert_includes result.content, 'LazyGem::Config'
-      refute_includes result.content, '=LazyGem'
+      assert_equal 'class Worker;def run =(LazyGem::Config.load;LazyGem::Config.load;' \
+                   'LazyGem::Config.load;LazyGem::Config.load);end',
+                   result.content
+      assert_equal '', result.preamble
     end
   end
 

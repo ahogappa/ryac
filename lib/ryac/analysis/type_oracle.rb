@@ -21,7 +21,7 @@ module Ryac
     # Yields every ancestor cpath of the class, including its own.
     # Unresolvable classes yield nothing.
     def each_ancestor_cpath(cpath, singleton, &block)
-      @ancestor_cpaths ||= {} #: Hash[[Array[Symbol], bool], Array[Array[Symbol]]]
+      @ancestor_cpaths ||= {} #: Hash[MethodRenameMapping::class_key, Array[Array[Symbol]]]
       cached = @ancestor_cpaths[[cpath, singleton]] ||= begin
         list = [] #: Array[Array[Symbol]]
         mod = @genv.resolve_cpath(cpath) rescue nil

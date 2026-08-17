@@ -423,6 +423,29 @@ class TestCompactor < Minitest::Test
       @stage.call(code)
   end
 
+  # Grouping must not move statements across the run: an interleaved
+  # statement breaks the run, and a run under the threshold stays plain.
+  def test_singleton_consolidation_preserves_statement_order
+    code = 'class Foo; def self.a; 1; end; X = 1; def self.b; 2; end; def self.c; 3; end; def self.d; 4; end; def self.e; 5; end; end'
+    assert_equal 'class Foo;def self.a;1;end;X=1;class<<self;def b;2;end;def c;3;end;def d;4;end;def e;5;end;end;end',
+      @stage.call(code)
+  end
+
+  # A `def self.x` nested in a grouped member's body defines a singleton
+  # method at runtime either way — it must keep its `self.` inside the
+  # class<<self block (dropping it would target the singleton's singleton).
+  def test_singleton_consolidation_keeps_nested_self_defs
+    code = 'module M; def self.a; def self.inner; 9; end; end; def self.b; 2; end; def self.c; 3; end; def self.d; 4; end; end'
+    out = @stage.call(code)
+    assert_equal 'module M;class<<self;def a;def self.inner;9;end;end;def b;2;end;def c;3;end;def d;4;end;end;end', out
+    Module.new.module_eval(out.sub('module M', 'module MEvalCheck'))
+  end
+
+  def test_top_level_singleton_defs_group_like_class_bodies
+    code = 'def self.a; 1; end; def self.b; 2; end; def self.c; 3; end; def self.d; 4; end'
+    assert_equal 'class<<self;def a;1;end;def b;2;end;def c;3;end;def d;4;end;end', @stage.call(code)
+  end
+
   # --- Alias / Undef ---
 
   def test_alias
@@ -523,6 +546,16 @@ class TestCompactor < Minitest::Test
     code = 'class Foo; def self.a; 1; end; def self.b; 2; end; def self.c; 3; end; def self.d; 4; end; def bar; 5; end; end'
     assert_equal 'class Foo;class<<self;def a;1;end;def b;2;end;def c;3;end;def d;4;end;end;def bar;5;end;end',
       @stage.call(code)
+  end
+
+  # Flow only ends at the Kernel spellings; a receiver makes raise/fail an
+  # ordinary method call and everything after it must survive.
+  def test_receiver_raise_does_not_truncate
+    assert_equal 'logger.raise(1);puts(2)', @stage.call("logger.raise(1)\nputs 2")
+  end
+
+  def test_receiverless_raise_still_truncates
+    assert_equal 'raise("x")', @stage.call("raise \"x\"\nputs 2")
   end
 
   # --- PinnedExpressionNode (line 121) ---
@@ -758,6 +791,6 @@ class TestCompactor < Minitest::Test
   def test_unknown_node_raises_instead_of_dropping_code
     unknown = Object.new
     error = assert_raises(Ryac::MinifyError) { @stage.send(:r, unknown) }
-    assert_match(/Unknown node/, error.message)
+    assert_equal 'Unknown node: Object', error.message
   end
 end

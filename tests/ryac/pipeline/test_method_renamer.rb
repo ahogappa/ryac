@@ -5,6 +5,50 @@ require_relative '../../test_helper'
 class TestMethodRenamer < Minitest::Test
   include MinifyTestHelper
 
+  # A private helper from an included module and a public method inherited
+  # from a superclass meet in the includer's namespace: give both the same
+  # short name and the private helper shadows the public method for every
+  # dispatch through the base. The allocator must keep them apart.
+  def test_inherited_public_and_module_private_do_not_share_a_name
+    code = <<~RUBY
+      module PatchHelper
+        private
+
+        def patch_entry(value)
+          value + 1
+        end
+      end
+
+      class BaseStage
+        def analysis_flag
+          false
+        end
+      end
+
+      class AliasStage < BaseStage
+        include PatchHelper
+
+        def build_result
+          patch_entry(1)
+        end
+      end
+
+      list = [BaseStage.new, AliasStage.new]
+      list.each { |s| puts s.analysis_flag }
+      puts AliasStage.new.build_result
+    RUBY
+    minify_at_level(code, 5)
+  end
+
+  # The compactor writes `ready_now? ==` with a protective space; once the
+  # rename drops the ?, the space must not survive it — a re-minified
+  # artifact would remove it and the self-host fixed point drifts.
+  def test_question_mark_rename_consumes_protective_space
+    code = "class Q;def ready_now?;true;end;end;q=Q.new;puts q.ready_now? == q.ready_now?\n"
+    result = minify_at_level(code, 5)
+    assert_equal 'class Q;def a =!!1;end;a=Q.new;puts a.a==a.a', result.code
+  end
+
   # === L5 group: most verify_output:true tests ===
 
   L5_GROUP_CODE = [

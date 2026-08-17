@@ -1,6 +1,6 @@
 module Ryac
   module Pipeline
-    class Concatenator < Stage
+    class Concatenator
       class GraphSorter
         include TSort[String]
 

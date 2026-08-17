@@ -8,6 +8,7 @@ module Ryac
       def self.new: (entry_path: String, project_root: String, require_paths: Array[String]) -> GemResolution
     end
 
+    def self.minifier_args: (Array[String] gem_names) -> { entry: String | Array[String], project_root: Array[String], gem_require_paths: Array[String] }
     def call: (String gem_name) -> GemResolution
 
     private

@@ -1,7 +1,28 @@
 module Ryac
   module Pipeline
+    class StageContext < Struct[untyped]
+      attr_accessor source: String
+      attr_accessor ast: Prism::ProgramNode
+      attr_accessor analysis: AnalysisResult?
+      attr_accessor aliases: String
+      attr_accessor preamble: String
+
+      def self.new: (String source, Prism::ProgramNode ast, AnalysisResult? analysis, String aliases, String preamble) -> StageContext
+    end
+
     class Stage
-      def call: (String | ConcatenatedSource | DependencyGraph | Array[String] input) -> (String | ConcatenatedSource | AnalysisResult | DependencyGraph)
+      include SourcePatcher
+
+      def self.new: (**untyped) -> Stage
+      def needs_analysis?: () -> bool
+      def fixpoint?: () -> bool
+      def collect: (StageContext ctx, Array[patch_entry] patches) -> void
+      def finish: (StageContext ctx) -> void
+      def call: (String input) -> String
+
+      private
+
+      def analysis: (StageContext ctx) -> AnalysisResult
     end
   end
 end

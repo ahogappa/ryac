@@ -3,6 +3,29 @@
 require_relative '../../test_helper'
 
 class TestFileCollector < Minitest::Test
+  # A broken input file must fail at collection, named and located —
+  # not three stages later as a nameless internal error.
+  def test_syntax_error_names_the_file_and_position
+    require 'tmpdir'
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, 'broken.rb')
+      File.write(path, "def f(\nend\n")
+      err = assert_raises(Ryac::SyntaxError) { Ryac::Pipeline::FileCollector.new.call(path) }
+      assert_equal path, err.path
+      assert_equal 2, err.line
+      assert_equal "#{path}:2:0: unexpected 'end'; expected a `)` to close the parameters", err.message
+    end
+  end
+
+  def test_input_and_internal_errors_split_under_one_root
+    assert_operator Ryac::Pipeline::StageError, :<, Ryac::InputError
+    assert_operator Ryac::Pipeline::InvalidOutputError, :<, Ryac::InternalError
+    assert_operator Ryac::Pipeline::RenameCollisionError, :<, Ryac::InternalError
+    assert_operator Ryac::SyntaxError, :<, Ryac::InputError
+    assert_operator Ryac::MinifyError, :<, Ryac::InputError
+    [Ryac::InputError, Ryac::InternalError].each { |c| assert_operator c, :<, Ryac::Error }
+  end
+
   def setup
     @collector = Ryac::Pipeline::FileCollector.new
     @fixtures_dir = File.expand_path('../../fixtures/multi_file', __dir__)

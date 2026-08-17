@@ -21,7 +21,7 @@ module Ryac
                                | Prism::IndexOperatorWriteNode | Prism::IndexOrWriteNode | Prism::IndexAndWriteNode
 
       @prism_ast: Prism::ProgramNode
-      @inside_singleton_class: bool
+      GROUP_MIN: Integer
       @standard_error_redefined: bool?
 
       def call: (String input_string) -> String
@@ -31,13 +31,16 @@ module Ryac
       def rebuild: () -> Array[String]
       def r: (Prism::Node? node) -> String
       def r_stmt: (Prism::Node? nodes) -> String
+      def singleton_self_def?: (Prism::Node node) -> bool
+      def render_statement_list: (Array[Prism::Node] stmts) -> Array[String]
+      def flush_singleton_run: (Array[Prism::DefNode] run) -> Array[String]
       def r_call: (Prism::CallNode node) -> String
       def r_binary_op: (Prism::CallNode node) -> String
       def r_block_call: (Prism::CallNode node) -> String?
       def r_index_access: (Prism::CallNode node) -> String
       def r_index_assign: (Prism::CallNode node) -> String
       def r_unary: (Prism::CallNode node, String op) -> String
-      def r_def: (Prism::DefNode node) -> String
+      def r_def: (Prism::DefNode node, ?drop_self_receiver: bool) -> String
       def r_lambda: (Prism::LambdaNode node) -> String
       def r_yield: (Prism::YieldNode node) -> String
       def r_if: (Prism::IfNode node) -> String

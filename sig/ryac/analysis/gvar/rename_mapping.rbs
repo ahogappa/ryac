@@ -1,14 +1,16 @@
 module Ryac
   class GvarRenameMapping
+    PERL_SPELLINGS: Hash[Symbol, String]
     BUILT_IN_GLOBALS: Set[Symbol]
 
     @gvars: Hash[Symbol, Array[Prism::Node]]
+    @written_names: Set[Symbol]
     @excluded_names: Set[Symbol]
     @node_short_names: Hash[[Integer, Integer], String]
 
     def initialize: () -> void
 
-    def add_site: (Symbol name, Prism::Node node) -> void
+    def add_site: (Symbol name, Prism::Node node, ?write: bool) -> void
 
     def exclude_name: (Symbol name) -> void
 
