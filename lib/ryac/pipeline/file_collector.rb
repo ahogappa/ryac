@@ -228,9 +228,13 @@ module Ryac
         return unless args && args.size >= 2
 
         path_arg = args[1]
+        path = if path_arg.is_a?(Prism::StringNode)
+          path_arg.unescaped
+        else
+          dir_interpolated_path(path_arg)
+        end
 
-        if path_arg.is_a?(Prism::StringNode)
-          path = path_arg.unescaped
+        if path
           # Treat autoload paths like require_relative for local files
           if path.start_with?('./', '../') || !path.include?('/')
             nodes << {
@@ -264,6 +268,30 @@ module Ryac
             expression: node.slice
           )
         end
+      end
+
+      # "#{__dir__}/mixin/foo" reads as dynamic but is a constant at
+      # collection time: __dir__ is the directory of the file being
+      # collected. Recognizes exactly that shape — a sole receiverless,
+      # argument-less __dir__ interpolation, then a /-prefixed literal
+      # tail — and returns it as the file-relative "./mixin/foo" so the
+      # ordinary relative resolution runs; nil for every other
+      # interpolation.
+      def dir_interpolated_path(path_arg)
+        return nil unless path_arg.is_a?(Prism::InterpolatedStringNode)
+
+        parts = path_arg.parts
+        return nil unless parts.size == 2
+
+        interp, rest = parts
+        return nil unless interp.is_a?(Prism::EmbeddedStatementsNode) && rest.is_a?(Prism::StringNode)
+
+        call = AstUtils.unwrap_statements(interp.statements)
+        return nil unless call.is_a?(Prism::CallNode) &&
+                          call.name == :__dir__ && call.receiver.nil? && call.arguments.nil?
+
+        tail = rest.unescaped
+        tail.start_with?('/') ? ".#{tail}" : nil
       end
 
       def ensure_load_paths(require_paths)

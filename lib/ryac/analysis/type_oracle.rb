@@ -109,7 +109,8 @@ module Ryac
     # One record per call site that dispatches to the method, as plain data:
     #
     #   prism_node       the call in the syntax tree (nil for a super with no
-    #                    syntactic call node of its own)
+    #                    syntactic call node of its own, and for a dispatch
+    #                    synthesized inside an RBS declaration)
     #   super            true for `super` — dispatch from a subclass override
     #   caller_cpath     the class nesting the call sits in
     #   receiver         whether the call is written with an explicit receiver
@@ -131,6 +132,18 @@ module Ryac
           yield CallerInfo.new(prism_node: TypeOracle.raw_prism_node(node), super: true,
                                caller_cpath: node.lenv.cref.cpath, receiver: false,
                                keyword_entries: nil, keyword_splat: false)
+          next
+        end
+
+        # A box whose node is not a syntactic call names no site in the
+        # program — e.g. one synthesized while TypeProf evaluated an RBS
+        # declaration: `[x].map(&:foo)` dispatches to foo from Array#map's
+        # declared signature. Nothing in the source can be rewritten to
+        # follow a rename, so the record carries only the fact that an
+        # unrewritable caller exists.
+        unless node.is_a?(TypeProf::Core::AST::CallBaseNode)
+          yield CallerInfo.new(prism_node: nil, super: false, caller_cpath: nil,
+                               receiver: false, keyword_entries: nil, keyword_splat: false)
           next
         end
 
@@ -235,15 +248,15 @@ module Ryac
     private
 
     # Location key of a TypeProf node, via the Prism node it was built from.
-    # TypeProf models source it may not be able to point back at — its own
-    # code_range raises when a node has no @raw_node. That is reasonable for
-    # an editor, where such a node is never shown, but a node we cannot
-    # locate is one we cannot rename, so this raises rather than inventing a
-    # key that could never match. The conversion stays inside the oracle:
-    # everything outside it holds Prism nodes, and AstUtils keys those.
+    # TypeProf models source it cannot point back at — a node may carry no
+    # @raw_node at all, or an RBS node instead of a Prism one on sig-built
+    # nodes. Either way a node we cannot locate is one we cannot rename, so
+    # this raises rather than inventing a key that could never match. The
+    # conversion stays inside the oracle: everything outside it holds Prism
+    # nodes, and AstUtils keys those.
     def tp_key(node)
       prism_node = TypeOracle.raw_prism_node(node)
-      raise ArgumentError, "no source location behind #{node.class}" unless prism_node
+      raise ArgumentError, "no source location behind #{node.class}" unless prism_node.is_a?(Prism::Node)
 
       AstUtils.location_key(prism_node)
     end

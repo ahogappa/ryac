@@ -21,6 +21,7 @@ module Ryac
       def handle_require_relative: (Prism::CallNode node, Array[require_node_info] nodes, String file_path, ?in_method: bool, ?in_class: bool) -> void
       def handle_require: (Prism::CallNode node, Array[require_node_info] nodes, String file_path, ?in_method: bool, ?in_class: bool) -> void
       def handle_autoload: (Prism::CallNode node, Array[require_node_info] nodes, String file_path, ?in_method: bool, ?in_class: bool) -> void
+      def dir_interpolated_path: (Prism::Node path_arg) -> String?
       def ensure_load_paths: (Array[String] require_paths) -> void
       def collect_rbs_files: (Array[String] entry_paths) -> void
       def collect_rbs_stdlib_files: () -> void

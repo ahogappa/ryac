@@ -97,6 +97,13 @@ module Ryac
             next
           end
 
+          if info.prism_node.nil?
+            # An unrewritable dispatch with no source site: the method is
+            # reached in a way we cannot see, which is exactly what the
+            # zero-call rule below covers — it must not count as a seen call.
+            next
+          end
+
           call_count += 1
 
           next unless info.keyword_entries

@@ -158,4 +158,19 @@ class TestMethodRenamer < Minitest::Test
       'def initialize =(@c=0;@v=nil);end;a=F.new;a.a;puts a.count;a.c;puts a.val;a.b;puts a.val.inspect',
       result.code
   end
+
+  # `[x].map(&:foo)` dispatches to foo from Array#map's RBS declaration —
+  # TypeProf records the caller, but its node is the declaration, not a call
+  # site. Nothing in the source can be rewritten to follow a rename, so the
+  # method keeps its name.
+  def test_symbol_proc_through_declared_iterator_keeps_method_name
+    code = <<~RUBY
+      class Foo
+        def hello_world = "hello"
+      end
+      puts [Foo.new].map(&:hello_world).first
+    RUBY
+    result = minify_at_level(code, 5)
+    assert_equal 'class A;def hello_world ="hello";end;puts [A.new].map(&:hello_world)[0]', result.code
+  end
 end

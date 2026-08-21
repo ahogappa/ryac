@@ -24,6 +24,7 @@ module Ryac
       call_node_to_keys = Hash.new { |h, k| h[k] = [] } #: Hash[location_key, Array[method_key]]
       resolved_call_keys = Set.new
       super_merges = [] #: Array[[method_key, method_key]]
+      sig_dispatch_mids = Set.new
 
       @method_rename_mapping.each_method_key do |key|
         @oracle.each_caller(key[0], key[1], key[2]) do |info|
@@ -31,6 +32,13 @@ module Ryac
             # caller_cpath is always present on super records
             entry = [info.caller_cpath, key[1], key[2]].freeze #: method_key
             super_merges << [entry, key]
+            next
+          end
+
+          if info.prism_node.nil?
+            # The dispatch happens inside an RBS declaration, so there is no
+            # source site to rewrite; the name must survive on every class.
+            sig_dispatch_mids << key[2]
             next
           end
 
@@ -42,6 +50,7 @@ module Ryac
         end
       end
 
+      @method_rename_mapping.exclude_methods_by_mid(sig_dispatch_mids) unless sig_dispatch_mids.empty?
       merge_super_groups(super_merges)
       merge_polymorphic_groups(call_node_to_keys)
       merge_unresolved_calls(resolved_call_keys)
