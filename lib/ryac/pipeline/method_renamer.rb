@@ -87,6 +87,13 @@ module Ryac
           # call_operator_loc was checked at the top of this branch
           patches << { start: node.call_operator_loc.start_offset, end: end_offset, replacement: replacement } # steep:ignore NoMethod
           return
+        elsif transform && !node.call_operator_loc && node.receiver.is_a?(Prism::CallNode)
+          # A comparison-shape transform (.size==0 → ==[]), registered on
+          # the operator call whose receiver is the size query: the patch
+          # swallows the query and the comparison together.
+          receiver_end = node.receiver.receiver.location.end_offset # steep:ignore NoMethod
+          patches << { start: receiver_end, end: node.location.end_offset, replacement: transform }
+          return
         end
 
         return unless node.message_loc

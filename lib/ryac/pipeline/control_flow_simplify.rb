@@ -77,6 +77,9 @@ module Ryac
 
         if node.subsequent.nil?
           return nil unless stmts && AstUtils.single_statement_body?(stmts)
+          if (folded = try_sole_nested_if(node, stmts.body.first, source))
+            return folded
+          end
           body = src(source, stmts)
           return nil if body.include?(';')
           return nil if condition_assigns_var_used_in_body?(node.predicate, stmts)
@@ -101,6 +104,27 @@ module Ryac
           result = "(#{result})" if AstUtils.ternary_needs_parens?(node, source) || if_end_followed_by_operator?(node, source)
           result
         end
+      end
+
+      # `if a` wrapping nothing but `if b` runs the inner body exactly when
+      # a && b: the fold drops a whole if;end frame, and the fixpoint then
+      # offers the merged conditional to the modifier and ternary forms.
+      # Evaluation order is untouched — a, then b, then the body — so no
+      # assignment guard is needed. Only else-less if folds into else-less
+      # if: an elsif node is never a body statement, and if_keyword_loc
+      # rules out the ternary form.
+      def try_sole_nested_if(node, inner, source)
+        return nil unless inner.is_a?(Prism::IfNode) && inner.if_keyword_loc
+        return nil unless inner.subsequent.nil? && inner.statements
+
+        left = logic_operand_text(node.predicate, src(source, node.predicate))
+        right = logic_operand_text(inner.predicate, src(source, inner.predicate))
+        "if #{left}&&#{right};#{src(source, inner.statements)};end"
+      end
+
+      # The operand rule is the Compactor's — CFS emits into its dialect.
+      def logic_operand_text(pred, text)
+        Compactor.loose_logic_operand?(pred, tight: true) ? "(#{text})" : text
       end
 
       def else_text_for_ternary(subsequent, source)

@@ -8,6 +8,14 @@ module Ryac
       MODIFIER_KEYWORD_NODES: Array[singleton(Prism::Node)]
       ASSIGNMENT_NODES: Array[singleton(Prism::Node)]
       PARENS_KEPT_NODES: Array[singleton(Prism::Node)]
+      PARENS_KEPT_CLASSES: Set[singleton(Prism::Node)]
+      JUMP_NODES: Array[singleton(Prism::Node)]
+      LOGIC_LOOSE_OPERANDS: Array[singleton(Prism::Node)]
+      LOGIC_LOOSE_OPERAND_CLASSES: Set[singleton(Prism::Node)]
+      PERCENT_SAFE_WORD: Regexp
+
+      def self.jump_with_value?: (Prism::Node? node) -> bool
+      def self.loose_logic_operand?: (Prism::Node? node, tight: bool) -> bool
 
       # The 24 compound-assignment node classes dispatched by r_compound_write
       # (`+=`-style Operator variants plus `||=`/`&&=` Or/And variants).
@@ -64,7 +72,11 @@ module Ryac
       def r_regexp: (Prism::RegularExpressionNode node) -> String
       def escape_regexp_slash: (String content) -> String
       def r_array: (Prism::ArrayNode node) -> String
-      def r_range: (Prism::RangeNode node) -> String
+      def percent_array_form: (Prism::ArrayNode node) -> String?
+      def r_float: (Prism::FloatNode node) -> String
+      def r_range: (Prism::RangeNode node, ?bare: bool) -> String
+      def r_delimited: (Prism::Node node) -> String
+      def r_flipflop: (Prism::FlipFlopNode node) -> String
       def r_hash: (Prism::HashNode node) -> String
       def r_keyword_hash: (Prism::KeywordHashNode node) -> String
       def r_assoc: (Prism::AssocNode element) -> String
@@ -79,6 +91,7 @@ module Ryac
       def r_singleton_class: (Prism::SingletonClassNode node) -> String
       def r_and: (Prism::AndNode node) -> String
       def r_or: (Prism::OrNode node) -> String
+      def logic_operand: (Prism::Node operand, tight: bool) -> String
       def r_begin: (Prism::BeginNode node) -> String
       def bare_standard_error?: (Array[Prism::node] exceptions) -> bool
       def standard_error_redefined?: () -> bool

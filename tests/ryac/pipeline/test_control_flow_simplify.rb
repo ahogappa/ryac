@@ -150,9 +150,9 @@ class TestControlFlowSimplify < Minitest::Test
   end
 
   def test_iterative_simplification
-    # Nested if → first pass simplifies outer, second pass simplifies inner
+    # Nested if → one pass folds the conditions, the next takes modifier form
     result = @stage.call("if a;if b;c;end;end")
-    assert_equal "c if b if a", result
+    assert_equal "c if a&&b", result
   end
 
   def test_and_condition_wrapped_in_ternary
@@ -296,5 +296,32 @@ class TestControlFlowSimplify < Minitest::Test
 
   def test_unless_in_collection_context_uses_block_form
     assert_equal "[(b if !x)]", @stage.call("[unless x;b;end]")
+  end
+
+  # --- sole nested conditional: an if wrapping only an if folds to && ---
+
+  def test_sole_nested_if_folds_and_takes_modifier_form
+    assert_equal 'puts 1 if a&&b', @stage.call('if a;if b;puts 1;end;end')
+  end
+
+  def test_sole_nested_if_with_multi_statement_body
+    assert_equal 'if a&&b;x;y;end', @stage.call('if a;if b;x;y;end;end')
+  end
+
+  def test_sole_nested_if_parenthesizes_loose_conditions
+    assert_equal 'if (a||c)&&b;x;y;end', @stage.call('if a||c;if b;x;y;end;end')
+  end
+
+  def test_sole_nested_fold_composes_through_the_fixpoint
+    assert_equal 'if a&&!b;x;y;end', @stage.call('if a;unless b;x;y;end;end')
+    assert_equal 'if a&&b&&c;x;y;end', @stage.call('if a;if b;if c;x;y;end;end;end')
+  end
+
+  def test_inner_if_with_else_does_not_fold
+    assert_equal 'b ? x : y if a', @stage.call('if a;if b;x;else;y;end;end')
+  end
+
+  def test_inner_elsif_does_not_fold
+    assert_equal 'if a;if b;x;elsif c;y;end;end', @stage.call('if a;if b;x;elsif c;y;end;end')
   end
 end

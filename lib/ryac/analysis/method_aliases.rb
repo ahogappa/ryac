@@ -5,15 +5,10 @@ module Ryac
   # TypeProf verifies at analysis time that the shorter method
   # is available on the receiver type via inheritance chain.
   #
-  # SELF-HOSTING RULE: because these tables rewrite calls whenever the
-  # receiver type can be proven, and inference over lib/'s own source can
-  # prove a receiver on one self-hosting pass but not the other, code in
-  # lib/ must not use the long side of any entry here where a short synonym
-  # exists — write `size` (never `length`), `any?` (never `empty?`), `[0]`
-  # (never `first`) on our own collections. Otherwise minify(minify(lib))
-  # stops being a fixed point: the transform fires on one pass only. The
-  # self-host containment ratchet derives its patterns from these tables,
-  # so a new row is fenced the day it lands.
+  # SELF-HOSTING NOTE: these rewrites fire only where inference proves
+  # the receiver, and inference over lib/'s own source can shift between
+  # self-hosting passes; the integration suite's fixed-point check is what
+  # catches a rewrite firing on one pass only.
   # Object/Kernel aliases where both spellings name the same method on
   # EVERY receiver — the only rows safe on a receiverless call, which
   # dispatches on whatever self happens to be.
@@ -49,14 +44,40 @@ module Ryac
 
   METHOD_ALIASES = KERNEL_ALIASES.merge(RECEIVER_ALIASES).freeze
 
+  # The literal an emptiness rewrite compares against, per receiver type —
+  # the single fact both transform tables below build on.
+  EMPTY_LITERALS = { Array: '[]', String: '""', Hash: '{}' }.freeze
+
   # Structural method transforms: method call → different syntax
   # Applied only when TypeProf verifies receiver type compatibility.
   # Key: [method_name, :ClassName], Value: replacement string
   METHOD_TRANSFORMS = {
     [:first, :Array] => '[0]',
     [:zero?, :Numeric] => '==0',
-    [:empty?, :Array] => '==[]',
-    [:empty?, :String] => '==""',
-    [:empty?, :Hash] => '=={}',
+    **EMPTY_LITERALS.to_h { |type, lit| [[:empty?, type], "==#{lit}"] },
+  }.freeze
+
+  # The comparison operators the size-comparison transforms recognize, and
+  # the spelling each takes in the rewrite: `> 0` means non-empty for a
+  # size, so it shares the != spelling.
+  SIZE_COMPARISON_OPS = { :== => '==', :!= => '!=', :> => '!=' }.freeze
+
+  # Whole-comparison transforms: `.size==0` and friends collapse to a
+  # literal comparison under the same receiver-type gate as the empty?
+  # rows, one call deeper. Key: [comparison_op, :ClassName], value: the
+  # replacement for `.mid op 0`.
+  SIZE_COMPARISON_TRANSFORMS = SIZE_COMPARISON_OPS.each_with_object(
+    {} #: Hash[[Symbol, Symbol], String]
+  ) { |(op, spelled), table|
+    EMPTY_LITERALS.each { |type, lit| table[[op, type]] = "#{spelled}#{lit}" }
+  }.freeze
+
+  # The inner calls those comparisons recognize, with the types where the
+  # no-argument form means size. String#count requires an argument, so a
+  # bare .count is never a String size query.
+  SIZE_QUERY_MIDS = {
+    size: %i[Array String Hash],
+    length: %i[Array String Hash],
+    count: %i[Array Hash],
   }.freeze
 end

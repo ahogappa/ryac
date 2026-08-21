@@ -320,24 +320,21 @@ class TestCompactor < Minitest::Test
     assert_equal 'x||y', @stage.call('x || y')
   end
 
-  def test_and_keyword
-    assert_equal 'x and y', @stage.call('x and y')
+  def test_and_keyword_becomes_operator
+    assert_equal 'x&&y', @stage.call('x and y')
   end
 
-  def test_or_keyword
-    assert_equal 'x or y', @stage.call('x or y')
+  def test_or_keyword_becomes_operator
+    assert_equal 'x||y', @stage.call('x or y')
   end
 
   def test_and_wraps_or_operand
     assert_equal 'x&&(y||z)', @stage.call('x && (y || z)')
+    assert_equal 'x&&(y||z)', @stage.call('x and (y or z)')
   end
 
-  def test_or_keyword_wraps_and
-    assert_equal 'x or (y and z)', @stage.call('x or (y and z)')
-  end
-
-  def test_and_keyword_wraps_or
-    assert_equal 'x and (y or z)', @stage.call('x and (y or z)')
+  def test_or_drops_parens_around_tighter_and
+    assert_equal 'x||y&&z', @stage.call('x or (y and z)')
   end
 
   # --- Return / Break / Next ---
@@ -792,5 +789,83 @@ class TestCompactor < Minitest::Test
     unknown = Object.new
     error = assert_raises(Ryac::MinifyError) { @stage.send(:r, unknown) }
     assert_equal 'Unknown node: Object', error.message
+  end
+
+  # --- Delimited positions take ranges bare ---
+
+  def test_when_condition_range_is_bare
+    assert_equal 'case x;when 0..10,20..;puts(1);end',
+                 @stage.call("case x\nwhen (0..10), (20..) then puts 1\nend")
+  end
+
+  def test_splat_range_is_bare
+    assert_equal 'a=[*1..2];p(*3..4)', @stage.call("a = [*(1..2)]\np(*(3..4))")
+  end
+
+  def test_argument_and_subscript_ranges_are_bare
+    assert_equal 'f(1..2,k:3..);s[4..];h={a:5..6}',
+                 @stage.call("f((1..2), k: (3..))\ns[(4..)]\nh = { a: (5..6) }")
+  end
+
+  def test_pinned_range_uses_the_pins_own_parens
+    assert_equal 'case y;in ^(0..10);puts(1);end',
+                 @stage.call("case y\nin ^((0..10)) then puts 1\nend")
+  end
+
+  def test_range_keeps_parens_outside_delimited_positions
+    # Receiver and RHS positions still get the defensive parens.
+    assert_equal 'puts((1..3).sum);r=(1..3)', @stage.call("puts (1..3).sum\nr = (1..3)")
+  end
+
+  # --- Flip-flops render structurally, not as a source slice ---
+
+  def test_flipflop_compacts_interior_spacing
+    assert_equal 'if (i==2)..(i==5);puts(i);end',
+                 @stage.call('puts i if (i == 2)..(i == 5)')
+  end
+
+  # --- Floats take their shortest same-value spelling ---
+
+  def test_float_exponent_spellings
+    assert_equal 'p(15e2,5e-4,15e21,0.25,1.5,-3e1)',
+                 @stage.call('p(1500.0, 0.0005, 1.5e+22, 0.25, 1.5, -30.0)')
+  end
+
+  # --- Percent arrays stay percent arrays when static ---
+
+  def test_static_percent_arrays_render_canonically
+    assert_equal 'a=%w[aa bb];b=%w[dd ee];c=%i[ff gg]',
+                 @stage.call("a = %W[aa bb]\nb = %w(dd ee)\nc = %I[ff gg]")
+  end
+
+  def test_interpolating_percent_array_falls_back
+    assert_equal 'x=1;a=["a#{x}","b"]', @stage.call("x = 1\na = %W[a\#{x} b]")
+  end
+
+  # --- and/or always render as the operator form ---
+
+  def test_keyword_and_or_become_operators
+    assert_equal 'a=1;if a&&a>0;puts(9);end;(b=a)||puts(8)',
+                 @stage.call("a = 1\nputs 9 if a and a > 0\nb = a or puts 8")
+  end
+
+  def test_parenthesized_keyword_logic_keeps_its_value
+    # z = (nil or 7) assigns 7; z = nil or 7 assigns nil. The operator form
+    # needs no parens, so the value survives every position.
+    assert_equal 'z=nil||7;p(z)', @stage.call("z = (nil or 7)\np z")
+    assert_equal 'p(1&&2)', @stage.call('p((1 and 2))')
+  end
+
+  def test_backslash_symbol_takes_the_quoted_form
+    # `:$\` does not parse bare; the quoted form carries the raw spelling.
+    assert_equal 'p(:"$\\\\")', @stage.call('p(:"$\\\\")')
+    assert_equal 'a=[:x,:"$\\\\"]', @stage.call('a = %i[x $\\\\]')
+  end
+
+  def test_jump_with_value_keeps_parens_under_operator
+    assert_equal 'def m(x);x&&(return 5);9;end',
+                 @stage.call("def m(x); x and (return 5); 9; end")
+    assert_equal 'def n(x);x&&return;9;end',
+                 @stage.call("def n(x); x and return; 9; end")
   end
 end

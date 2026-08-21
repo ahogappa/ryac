@@ -3,4 +3,8 @@ module Ryac
   RECEIVER_ALIASES: Hash[Symbol, Symbol]
   METHOD_ALIASES: Hash[Symbol, Symbol]
   METHOD_TRANSFORMS: Hash[[Symbol, Symbol], String]
+  EMPTY_LITERALS: Hash[Symbol, String]
+  SIZE_COMPARISON_OPS: Hash[Symbol, String]
+  SIZE_COMPARISON_TRANSFORMS: Hash[[Symbol, Symbol], String]
+  SIZE_QUERY_MIDS: Hash[Symbol, Array[Symbol]]
 end

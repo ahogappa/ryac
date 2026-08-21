@@ -180,7 +180,7 @@ class TestConstantAliaserPipeline < Minitest::Test
     RUBY
     result = minify_at_level(code, 2)
     assert_equal 'class Formatter;A="-";def self.format(str) =str+A+str;end;' \
-                 'def Formatter.short(str) =str[(0..2)];puts Formatter.format("abc");puts Formatter.short("hello")',
+                 'def Formatter.short(str) =str[0..2];puts Formatter.format("abc");puts Formatter.short("hello")',
                  result.code
     assert_equal 'Formatter::SEPARATOR=Formatter::A', result.aliases
   end

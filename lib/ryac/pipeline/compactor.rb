@@ -57,6 +57,7 @@ module Ryac
         when Prism::ClassNode then r_class(node)
         when Prism::ModuleNode then r_module(node)
         when Prism::AndNode then r_and(node)
+        when Prism::FlipFlopNode then r_flipflop(node)
         when Prism::OrNode then r_or(node)
         when Prism::LocalVariableWriteNode then "#{node.name}=#{r(node.value)}"
         when Prism::InstanceVariableWriteNode, Prism::GlobalVariableWriteNode,
@@ -76,7 +77,7 @@ module Ryac
         when Prism::ConstantPathWriteNode then "#{r(node.target)}=#{r(node.value)}"
         when Prism::StringNode then r_string(node)
         when Prism::IntegerNode then node.value.to_s
-        when Prism::FloatNode then node.value.to_s
+        when Prism::FloatNode then r_float(node)
         when Prism::ArrayNode then r_array(node)
         when Prism::RangeNode then r_range(node)
         when Prism::SymbolNode then r_symbol(node)
@@ -92,7 +93,7 @@ module Ryac
         when Prism::RescueModifierNode then "(#{r(node.expression)} rescue #{r(node.rescue_expression)})"
         when Prism::BreakNode then r_break(node)
         when Prism::NextNode then r_next(node)
-        when Prism::SplatNode then node.expression ? "*#{r(node.expression)}" : '*'
+        when Prism::SplatNode then node.expression ? "*#{r_delimited(node.expression)}" : '*'
         when Prism::UntilNode then r_until(node)
         when Prism::AliasMethodNode then "alias #{r_alias_name(node.new_name)} #{r_alias_name(node.old_name)}"
         when Prism::UndefNode then "undef #{node.names.map { |n| r_alias_name(n) }.join(',')}"
@@ -112,7 +113,7 @@ module Ryac
         when Prism::AlternationPatternNode then "#{r(node.left)} | #{r(node.right)}"
         when Prism::CapturePatternNode then "#{r(node.value)}=>#{r_multi_target(node.target)}"
         when Prism::PinnedVariableNode then "^#{r(node.variable)}"
-        when Prism::PinnedExpressionNode then "^(#{r(node.expression)})"
+        when Prism::PinnedExpressionNode then "^(#{r_delimited(node.expression)})"
         when Prism::ImplicitNode then r(node.value)
         when Prism::ShareableConstantNode then r(node.write)
         when Prism::CallTargetNode then "#{r(node.receiver)}.#{node.name.to_s.chomp('=')}"
@@ -125,7 +126,7 @@ module Ryac
              Prism::InstanceVariableReadNode, Prism::GlobalVariableReadNode,
              Prism::ClassVariableReadNode, Prism::ConstantReadNode,
              Prism::RationalNode, Prism::ImaginaryNode, Prism::MatchLastLineNode,
-             Prism::InterpolatedMatchLastLineNode, Prism::FlipFlopNode,
+             Prism::InterpolatedMatchLastLineNode,
              Prism::BackReferenceReadNode, Prism::AliasGlobalVariableNode
           node.slice
         else
@@ -204,7 +205,7 @@ module Ryac
         # ever needs to find these sites by name.
         if node.name == :call && node.receiver
           raw_args = node.arguments&.arguments || []
-          return "#{recv_with_op(node.receiver, call_op)}(#{raw_args.map { |a| r(a) }.join(',')})"
+          return "#{recv_with_op(node.receiver, call_op)}(#{raw_args.map { |a| r_delimited(a) }.join(',')})"
         end
         method_name = node.name
         if setter_call?(node)
@@ -245,7 +246,7 @@ module Ryac
 
       def r_index_access(node)
         raw_args = node.arguments&.arguments || []
-        args_str = raw_args.map { |a| r(a) }.join(',')
+        args_str = raw_args.map { |a| r_delimited(a) }.join(',')
         if node.safe_navigation?
           "#{r(node.receiver)}&.[](#{args_str})"
         else
@@ -256,9 +257,9 @@ module Ryac
       def r_index_assign(node)
         raw_args = node.arguments&.arguments || []
         if node.safe_navigation?
-          "#{r(node.receiver)}&.[]=(#{raw_args.map { |a| r(a) }.join(',')})"
+          "#{r(node.receiver)}&.[]=(#{raw_args.map { |a| r_delimited(a) }.join(',')})"
         else
-          keys = raw_args[0..-2].map { |a| r(a) }.join(',') # steep:ignore NoMethod
+          keys = raw_args[0..-2].map { |a| r_delimited(a) }.join(',') # steep:ignore NoMethod
           "#{r(node.receiver)}[#{keys}]=#{r(raw_args.last)}"
         end
       end
@@ -308,7 +309,7 @@ module Ryac
       def r_yield(node)
         args = node.arguments&.arguments || []
         return 'yield' if args.empty?
-        "yield(#{args.map { |a| r(a) }.join(',')})"
+        "yield(#{args.map { |a| r_delimited(a) }.join(',')})"
       end
 
       def r_if(node)
@@ -359,7 +360,7 @@ module Ryac
       def r_case(node)
         predicate = node.predicate ? " #{r(node.predicate)}" : ''
         body = "case#{predicate};" + node.conditions.map { |wn|
-          conditions = wn.conditions.map { |c| r(c) }.join(',')
+          conditions = wn.conditions.map { |c| r_delimited(c) }.join(',')
           "when #{conditions}#{fmt_body(r_stmt(wn.statements))}"
         }.join(";")
         if node.else_clause
@@ -416,7 +417,7 @@ module Ryac
       def r_jump(keyword, arguments)
         args = arguments&.arguments
         return keyword if args.nil? || args.empty?
-        result = args.map { |a| r(a) }.join(',')
+        result = args.map { |a| r_delimited(a) }.join(',')
         first = args.first
         unwrapped = first.is_a?(Prism::ParenthesesNode) ? AstUtils.unwrap_statements(first) : first
         MODIFIER_KEYWORD_NODES.any? { |t| unwrapped.is_a?(t) } ? "#{keyword}(#{result})" : "#{keyword} #{result}"
@@ -450,7 +451,7 @@ module Ryac
       end
 
       def idx_target(node)
-        keys = (node.arguments&.arguments || []).map { |a| r(a) }.join(',')
+        keys = (node.arguments&.arguments || []).map { |a| r_delimited(a) }.join(',')
         "#{r(node.receiver)}[#{keys}]"
       end
 
@@ -461,7 +462,10 @@ module Ryac
         name = sym.to_s
         if name.match?(/\A[a-zA-Z_]\w*[?!=]?\z/) || BINARY_OPERATORS.include?(sym) || %i[[] []=].include?(sym)
           ":#{name}"
-        elsif name.start_with?('$')
+        elsif name.start_with?('$') && !name.include?('\\')
+          # A backslash never survives the bare form — `:$\` does not parse —
+          # so those fall through to the quoted form, where the raw content
+          # (Prism's value keeps escapes as written) reproduces itself.
           ":#{name}"
         else
           ":\"#{name.gsub('"', '\\"')}\""
@@ -497,23 +501,78 @@ module Ryac
 
       # --- Collections ---
 
+      # A word must survive %w/%i verbatim: no whitespace, brackets, or
+      # backslash (those are the notation's escapes).
+      PERCENT_SAFE_WORD = /\A[^\s\[\]\\]+\z/
+
       def r_array(node)
-        opening = node.opening
-        if opening == "%i[" && node.elements.all? { |e| e.is_a?(Prism::SymbolNode) }
-          # the all?(SymbolNode) / all?(StringNode) guards make &:value/&:content safe
-          "%i[#{node.elements.map(&:value).join(' ')}]" # steep:ignore BlockTypeMismatch
-        elsif opening == "%w[" && node.elements.all? { |e| e.is_a?(Prism::StringNode) }
-          "%w[#{node.elements.map(&:content).join(' ')}]" # steep:ignore BlockTypeMismatch
-        else
-          "[#{node.elements.map { r(_1) }.join(',')}]"
-        end
+        percent_array_form(node) || "[#{node.elements.map { r_delimited(_1) }.join(',')}]"
       end
 
-      def r_range(node)
+      # Any %-array whose elements are static re-renders in canonical
+      # bracket form — including %W(...)/%I(...) spellings, which only pay
+      # for their capital when an element actually interpolates.
+      def percent_array_form(node)
+        opening = node.opening
+        return nil unless opening&.start_with?('%')
+
+        kind = opening[1] #: String
+        # the all?(SymbolNode) / all?(StringNode) guards make &:value/&:content safe
+        words = if kind.casecmp?('i') && node.elements.all? { |e| e.is_a?(Prism::SymbolNode) }
+          node.elements.map { |e| e.value.to_s } # steep:ignore NoMethod
+        elsif kind.casecmp?('w') && node.elements.all? { |e| e.is_a?(Prism::StringNode) }
+          node.elements.map(&:content) # steep:ignore BlockTypeMismatch
+        end
+        return nil unless words&.any?
+        return nil unless words.all? { |w| w.match?(PERCENT_SAFE_WORD) }
+
+        "%#{kind.downcase}[#{words.join(' ')}]"
+      end
+
+      # The shortest spelling that denotes the same decimal value: such a
+      # respelling parses to the identical double, so only the bytes change.
+      # One shape covers plain and exponent forms — pull the digits
+      # together, fold leading/trailing zeros into the exponent — and the
+      # final to_f comparison is a belt-and-suspenders check.
+      def r_float(node)
+        s = node.value.to_s
+        m = s.match(/\A(-?)(\d+)\.(\d+)(?:e([+-]?\d+))?\z/)
+        return s unless m
+
+        frac = m[3].to_s
+        exp = m[4].to_i - frac.size
+        digits = "#{m[2]}#{frac}".sub(/\A0+/, '')
+        digits = digits.sub(/0+\z/) { |z| exp += z.size; '' }
+        return s if digits.empty? || exp == 0
+
+        cand = "#{m[1]}#{digits}e#{exp}"
+        cand.size < s.size && cand.to_f == node.value ? cand : s
+      end
+
+      # Parenthesized by default: `..` binds below almost everything, so in
+      # an unknown position the parens are what keep the parse. A position
+      # with its own delimiters (argument lists, subscripts, array and hash
+      # literals, when conditions, splats, pins) takes the bare form.
+      def r_range(node, bare: false)
         op = node.exclude_end? ? '...' : '..'
         left = node.left ? r(node.left) : ''
         right = node.right ? r(node.right) : ''
-        "(#{left}#{op}#{right})"
+        bare ? "#{left}#{op}#{right}" : "(#{left}#{op}#{right})"
+      end
+
+      def r_delimited(node)
+        inner = AstUtils.unwrap_statements(node)
+        inner.is_a?(Prism::RangeNode) ? r_range(inner, bare: true) : r(node)
+      end
+
+      # A flip-flop keeps its operands parenthesized — their own rendering,
+      # not a slice of the source, so interior spacing compacts like
+      # everything else.
+      def r_flipflop(node)
+        op = node.exclude_end? ? '...' : '..'
+        left = node.left ? "(#{r(node.left)})" : ''
+        right = node.right ? "(#{r(node.right)})" : ''
+        "#{left}#{op}#{right}"
       end
 
       def r_hash(node)
@@ -531,7 +590,7 @@ module Ryac
       def r_assoc(element)
         key = element.key
         val = element.value
-        val_str = r(val)
+        val_str = r_delimited(val)
         if key.is_a?(Prism::SymbolNode) && key.value.to_s.match?(/\A[a-zA-Z_][a-zA-Z0-9_]*\z/)
           key_name = key.value.to_s
           return "#{key_name}:" if val.is_a?(Prism::ImplicitNode)
@@ -639,28 +698,25 @@ module Ryac
 
       # --- Logic ---
 
+      # Always the operator spelling. The keyword forms bind below
+      # assignment, so `and`/`or` accept operands `&&`/`||` cannot take
+      # bare — assignments, jumps with a value, control expressions — and
+      # those operands are parenthesized here. Rendering the keyword would
+      # need the surrounding position to be known (`z=(a and b)` unwrapped
+      # is a different program), and the renderer is position-free.
       def r_and(node)
-        e1 = r(node.left)
-        e2 = r(node.right)
-        if node.operator == 'and'
-          e2 = "(#{e2})" if AstUtils.unwrap_statements(node.right).is_a?(Prism::OrNode)
-          "#{e1} and #{e2}"
-        else
-          e1 = "(#{e1})" if AstUtils.unwrap_statements(node.left).is_a?(Prism::OrNode)
-          e2 = "(#{e2})" if AstUtils.unwrap_statements(node.right).is_a?(Prism::OrNode)
-          "#{e1}&&#{e2}"
-        end
+        "#{logic_operand(node.left, tight: true)}&&#{logic_operand(node.right, tight: true)}"
       end
 
       def r_or(node)
-        e1 = r(node.left)
-        e2 = r(node.right)
-        if node.operator == 'or'
-          e2 = "(#{e2})" if AstUtils.unwrap_statements(node.right).is_a?(Prism::AndNode)
-          "#{e1} or #{e2}"
-        else
-          "#{e1}||#{e2}"
-        end
+        "#{logic_operand(node.left, tight: false)}||#{logic_operand(node.right, tight: false)}"
+      end
+
+      def logic_operand(operand, tight:)
+        # Classified through source parens: `x&&(y||z)` arrives as a
+        # ParenthesesNode operand whose parens must survive.
+        inner = AstUtils.unwrap_statements(operand)
+        Compactor.loose_logic_operand?(inner, tight: tight) ? "(#{r(inner)})" : r(operand)
       end
 
       # --- Error handling ---
@@ -725,7 +781,7 @@ module Ryac
       # --- Other ---
 
       def r_super(node)
-        args = node.arguments&.arguments&.map { |a| r(a) } || []
+        args = node.arguments&.arguments&.map { |a| r_delimited(a) } || []
         args_str = args.join(',')
         args_str.empty? ? 'super()' : "super(#{args_str})"
       end
@@ -845,7 +901,7 @@ module Ryac
         raw_args.each do |arg|
           case arg
           when Prism::SplatNode
-            args << (arg.expression ? "*#{r(arg.expression)}" : '*')
+            args << (arg.expression ? "*#{r_delimited(arg.expression)}" : '*')
           when Prism::KeywordHashNode
             arg.elements.each do |el|
               args << (el.is_a?(Prism::AssocSplatNode) ? "**#{r(el.value)}" : r_assoc(el))
@@ -853,7 +909,7 @@ module Ryac
           when Prism::ForwardingArgumentsNode
             args << '...'
           else
-            args << r(arg)
+            args << r_delimited(arg)
           end
         end
         args << block_pass if block_pass
@@ -1021,16 +1077,48 @@ module Ryac
       # statement itself and no longer parses.
       PARENS_KEPT_NODES = [*ASSIGNMENT_NODES, *AstUtils::MATCH_REBIND_NODES].freeze
 
+      PARENS_KEPT_CLASSES = PARENS_KEPT_NODES.to_set.freeze
+
+      JUMP_NODES = [Prism::ReturnNode, Prism::BreakNode, Prism::NextNode].freeze
+
+      # Operand classes that bind at or below the keyword logic forms —
+      # bare under && or || they would re-associate or fail to parse.
+      # Derived from the paren-keeping and modifier-keyword families, so a
+      # class added there joins this rule with it.
+      LOGIC_LOOSE_OPERANDS = [
+        *PARENS_KEPT_NODES, *MODIFIER_KEYWORD_NODES,
+        Prism::CaseNode, Prism::CaseMatchNode, Prism::ForNode, Prism::BeginNode,
+        Prism::DefNode, Prism::ClassNode, Prism::ModuleNode, Prism::SingletonClassNode,
+        Prism::FlipFlopNode, Prism::LambdaNode
+      ].freeze
+      LOGIC_LOOSE_OPERAND_CLASSES = LOGIC_LOOSE_OPERANDS.to_set.freeze
+
+      # A jump is loose only when it carries a value: `x&&return` parses,
+      # `x&&return 5` does not.
+      def self.jump_with_value?(node)
+        JUMP_NODES.include?(node.class) && !node.arguments.nil? # steep:ignore NoMethod
+      end
+
+      # The one owner of "does this operand need parens under && / ||".
+      # ControlFlowSimplify asks the same question when it folds nested
+      # conditionals into the compacted dialect. An OrNode operand needs
+      # parens under && but not under ||. Prism node classes are concrete,
+      # so a class-keyed Set replaces an is_a? scan.
+      def self.loose_logic_operand?(node, tight:)
+        LOGIC_LOOSE_OPERAND_CLASSES.include?(node.class) ||
+          (tight && node.is_a?(Prism::OrNode)) ||
+          jump_with_value?(node)
+      end
+
       def r_parens(node)
         body = r_stmt(node.body)
         inner = AstUtils.unwrap_statements(node)
-        if node.body.is_a?(Prism::StatementsNode) && node.body.body.size > 1
-          "(#{body})"
-        elsif PARENS_KEPT_NODES.any? { |t| inner.is_a?(t) }
-          "(#{body})"
-        else
-          body
-        end
+        keep = (node.body.is_a?(Prism::StatementsNode) && node.body.body.size > 1) ||
+               PARENS_KEPT_CLASSES.include?(inner.class) ||
+               # `(return 5)` bare after `&&` (or another operator) fails
+               # to parse; a valueless jump is fine bare.
+               Compactor.jump_with_value?(inner)
+        keep ? "(#{body})" : body
       end
 
       def fmt_body(body) = body.nil? || body.empty? ? "" : ";#{body}"

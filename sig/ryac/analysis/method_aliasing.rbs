@@ -1,5 +1,9 @@
 module Ryac
   module AnalysisPhases
     def resolve_method_aliases_and_transforms: (Prism::Node prism_root) -> [Hash[location_key, Symbol], Hash[location_key, String]]
+
+    private
+
+    def register_size_comparison: (Prism::CallNode node, Hash[location_key, String] transform_map, Array[location_key] suppressed_alias_keys) -> void
   end
 end
