@@ -8,7 +8,7 @@ module Ryac
     # Parses source with TypeProf, builds scope mappings,
     # collects constants and their references, and freezes mappings.
     class Analyzer
-      include Ryac
+      include AnalysisPhases
 
       def self.prism_only(source)
         prism_only_from_string(source.content, source: source)
@@ -43,10 +43,9 @@ module Ryac
       end
 
       def call(source)
-        prism_result, nodes, genv = without_stdout_pollution { setup_typeprof(source) }
+        prism_result, @oracle = without_stdout_pollution { setup_typeprof(source) }
         @prism_root = prism_result.value
-        @oracle = TypeOracle.new(genv, nodes)
-        @boot_constant_roots = boot_constant_roots(source.stdlib_requires)
+        @boot_constant_roots = BootConstants.for(source.stdlib_requires)
         @syntax_data = collect_syntax_data(@prism_root)
 
         analyze_keywords_and_scopes
@@ -93,24 +92,14 @@ module Ryac
       end
 
       def setup_typeprof(source)
-        path = "(minify_concat)"
-        content = source.content
-
-        prism_result = Prism.parse(content)
+        prism_result = Prism.parse(source.content)
         # Every input file was parse-checked at collection, so a failure
         # here means an upstream stage broke the text.
         unless prism_result.errors.none?
           raise InvalidOutputError.new('pre-rename source', prism_result.errors)
         end
 
-        service = TypeProf::Core::Service.new({})
-        source.rbs_files.each do |rbs_path, rbs_content|
-          service.update_rbs_file(rbs_path, rbs_content)
-        end
-        service.update_rb_file(path, content)
-        nodes = service.instance_variable_get(:@rb_text_nodes)[path]
-
-        [prism_result, nodes, service.genv]
+        [prism_result, TypeOracle.boot(source.content, source.rbs_files)]
       end
 
       def analyze_keywords_and_scopes
@@ -127,7 +116,7 @@ module Ryac
         # point under self-hosting.
         @local_scopes.allocate(
           kw_def_map: @keyword_rename_mapping.def_node_mapping(@keyword_def_node_registry || {}),
-          var_hints: @keyword_rename_mapping.build_variable_hints { |tp_node| @local_scopes.scope_id_of(tp_node) }
+          var_hints: @keyword_rename_mapping.build_variable_hints { |val_node| @local_scopes.scope_id_of(val_node) }
         )
         @local_scopes.resolve
         @scope_mappings = @local_scopes.scope_mappings
@@ -146,7 +135,7 @@ module Ryac
       end
 
       def analyze_variables_phase
-        @ivar_rename_mapping = IvarRenameMapping.new
+        @ivar_rename_mapping = SiteBucketMapping.new(prefix: '@')
         attr_backed = collect_attr_backed_ivars(@prism_root)
         collect_ivar_definitions(@prism_root, attr_backed)
         scan_dynamic_ivar_access(@prism_root)
@@ -154,7 +143,7 @@ module Ryac
         reserve_attr_ivar_names(@prism_root)
         @ivar_rename_mapping.assign_short_names
 
-        @cvar_rename_mapping = CvarRenameMapping.new
+        @cvar_rename_mapping = SiteBucketMapping.new(prefix: '@@')
         collect_cvar_definitions(@prism_root)
         scan_dynamic_cvar_access(@prism_root)
         merge_inherited_cvars

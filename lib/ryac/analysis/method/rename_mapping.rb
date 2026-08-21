@@ -19,6 +19,10 @@ module Ryac
   class MethodRenameMapping
     include UnionFind
 
+    # Below this many saved characters a rename is churn, not compression.
+    # KeywordRenameMapping applies the same bar.
+    MIN_GROUP_SAVINGS = 2
+
     MethodGroupEntry = Struct.new(:keys, :original_name, :total_occurrences)
 
     def initialize
@@ -133,7 +137,7 @@ module Ryac
         next unless savings_per_use > 0
 
         total_savings = savings_per_use * entry.total_occurrences
-        next unless total_savings > 2
+        next unless total_savings > MIN_GROUP_SAVINGS
 
         assign_short_name(entry.keys, short_name)
         propagate_short_name(entry.keys, short_name, existing_methods, hierarchy)
@@ -222,7 +226,7 @@ module Ryac
       groups.each_value do |keys|
         mid = keys.first[2]
         next if EXCLUDED_METHODS.include?(mid)
-        next if mid.to_s.size <= 2
+        next if mid.to_s.size <= NameGenerator::KEPT_NAME_MAX
 
         total_call_sites = keys.sum { |key| @methods[key][:call_sites].size }
         next if total_call_sites == 0

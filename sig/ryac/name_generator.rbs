@@ -2,8 +2,9 @@ module Ryac
   class NameGenerator
     LETTERS: Array[String]
     DIGITS: Array[String]
+    KEPT_NAME_MAX: Integer
 
-    def initialize: (?Array[String] additional_excluded, ?prefix: String, ?upcase: bool) -> void
+    def initialize: (?(Array[String] | Set[String]) additional_excluded, ?prefix: String, ?upcase: bool) -> void
     def next_name: () -> String
 
     private

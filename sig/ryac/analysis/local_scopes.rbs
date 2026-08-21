@@ -38,7 +38,7 @@ module Ryac
 
     def initialize: (Prism::ProgramNode program_node) -> void
     def scope_id_at: (Integer offset) -> scope_id?
-    def scope_id_of: (Prism::Node | tp_node node) -> scope_id?
+    def scope_id_of: (Prism::Node node) -> scope_id?
     def allocate: (?kw_def_map: Hash[location_key, Hash[Symbol, String]], ?var_hints: Hash[scope_id, Hash[Symbol, String]]) -> self
     def scope_mappings: () -> scope_mapping_table
     def resolve: () -> self

@@ -1,0 +1,11 @@
+module Ryac
+  module AnalysisPhases
+    DYNAMIC_CVAR_METHODS: Array[Symbol]
+    CVAR_WRITE_NODES: Array[Class]
+    type cvar_write_node = Prism::ClassVariableWriteNode | Prism::ClassVariableTargetNode | Prism::ClassVariableOperatorWriteNode | Prism::ClassVariableOrWriteNode | Prism::ClassVariableAndWriteNode
+
+    def collect_cvar_definitions: (Prism::Node prism_root) -> void
+    def scan_dynamic_cvar_access: (Prism::Node prism_root) -> void
+    def merge_inherited_cvars: () -> void
+  end
+end

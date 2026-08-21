@@ -70,10 +70,21 @@ class TestNameGenerator < Minitest::Test
     assert_equal '@@A', gen.next_name
   end
 
-  def test_exclusion_with_upcase
-    # Exclusion is checked before upcase transformation
-    gen = Ryac::NameGenerator.new(%w[a], upcase: true)
+  def test_exclusion_compares_final_names
+    # The exclusion list holds final names — prefix and case included — so
+    # the prefixed families can seed it with what they actually have in hand.
+    gen = Ryac::NameGenerator.new(%w[A], upcase: true)
     assert_equal 'B', gen.next_name
+
+    gen = Ryac::NameGenerator.new(%w[@a @b], prefix: '@')
+    assert_equal '@c', gen.next_name
+  end
+
+  def test_exclusions_accepted_as_a_set
+    # Callers hold kept names as Sets; seeding takes them without a copy
+    # through to_a.
+    gen = Ryac::NameGenerator.new(Set.new(%w[a b]))
+    assert_equal 'c', gen.next_name
   end
 
   def test_no_duplicate_names_in_first_1000

@@ -1,5 +1,7 @@
 module Ryac
   class GvarRenameMapping
+    PREFIX: String
+    KEPT_NAME_MAX: Integer
     PERL_SPELLINGS: Hash[Symbol, String]
     BUILT_IN_GLOBALS: Set[Symbol]
 

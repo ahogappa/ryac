@@ -58,9 +58,11 @@ module Ryac
       best&.id
     end
 
-    # Accepts Prism and TypeProf nodes alike — anything location_key handles.
     def scope_id_of(node)
-      scope_id_at(AstUtils.location_key(node).first)
+      # [0], not .first: the .first→[0] transform is oracle-gated, and a
+      # site the oracle resolves on one self-host pass but not the other
+      # drifts the fixed point by a byte. lib spells the target form.
+      scope_id_at(AstUtils.location_key(node)[0])
     end
 
     # Phase 2: assign short names. kw_def_map is keyed by def location_key,

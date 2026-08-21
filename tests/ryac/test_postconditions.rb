@@ -8,7 +8,7 @@ require_relative '../test_helper'
 # silent corruption into a failed run at the stage that caused it.
 class TestPostconditions < Minitest::Test
   class Probe
-    include Ryac
+    include Ryac::RenameInvariants
   end
 
   def test_output_that_does_not_parse_is_rejected

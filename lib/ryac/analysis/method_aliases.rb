@@ -11,7 +11,9 @@ module Ryac
   # lib/ must not use the long side of any entry here where a short synonym
   # exists — write `size` (never `length`), `any?` (never `empty?`), `[0]`
   # (never `first`) on our own collections. Otherwise minify(minify(lib))
-  # stops being a fixed point: the transform fires on one pass only.
+  # stops being a fixed point: the transform fires on one pass only. The
+  # self-host containment ratchet derives its patterns from these tables,
+  # so a new row is fenced the day it lands.
   # Object/Kernel aliases where both spellings name the same method on
   # EVERY receiver — the only rows safe on a receiverless call, which
   # dispatches on whatever self happens to be.

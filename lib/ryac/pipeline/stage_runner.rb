@@ -32,6 +32,10 @@ module Ryac
         end
 
         result = Compactor.new.call(code)
+        # The compacted text is the dialect every stage downstream assumes.
+        # If it does not parse, the Compactor is the culprit — name it here
+        # instead of letting whichever stage trips first inherit the blame.
+        verify_parses(result, 'compacted')
         aliases = ''
         preamble = ''
 

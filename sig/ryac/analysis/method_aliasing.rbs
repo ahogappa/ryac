@@ -1,0 +1,5 @@
+module Ryac
+  module AnalysisPhases
+    def resolve_method_aliases_and_transforms: (Prism::Node prism_root) -> [Hash[location_key, Symbol], Hash[location_key, String]]
+  end
+end

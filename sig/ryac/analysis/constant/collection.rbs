@@ -1,21 +1,30 @@
-# lib/ryac/analysis/constant/collection.rb defines its methods directly on
-# module Ryac, and those declarations live in sig/ryac.rbs alongside the
-# other collection mixins. This file carries the environment patches that
-# probe_boot_constants needs: methods missing from rbs core and from the
-# Bundler shim shipped inside the rbs gem.
+module Ryac
+  module AnalysisPhases
+    def each_constant_event: (Prism::Node prism_root) { (Symbol, Prism::Node, Array[Symbol]?, bool, bool) -> void } -> void
+    def class_definition_cpath: (Prism::ClassNode | Prism::ModuleNode node, Array[Symbol] nesting) -> Array[Symbol]?
+    def qualified_write_cpath: (Prism::Node target, Array[Symbol] nesting, ?strip_doubled_nesting: bool) -> Array[Symbol]?
+    def syntactic_const_segments: (Prism::Node node) -> Array[Symbol]
+    def struct_definition_write?: (Prism::Node node) -> bool
+    def collect_constants: (Prism::Node prism_root) -> void
+    def exclude_private_constants: (Prism::Node prism_root) -> void
+    def count_constant_references: (Prism::Node prism_root) -> void
+    def increment_constant_read_usage: (Prism::Node node) -> void
+    def resolve_user_defined_cpath: (Prism::Node node) -> Array[Symbol]?
+    def resolve_superclass_path: (Prism::Node superclass_node, Array[Symbol] class_cpath) -> Array[Symbol]?
+    def augment_constant_counts_via_oracle: () -> void
+    def collect_external_references: (Prism::Node prism_root) -> void
+    def precompute_constant_resolution: () -> void
+    def record_constant_read: (Prism::Node node) -> void
+    def mark_chain_prefixes: (Prism::Node node, Set[Integer] counted_prefix_ids) -> void
+    def external_prefix_for: (Prism::Node node) -> Array[Symbol]?
+    def complete_const_chain?: (Prism::Node node) -> bool
+    def required_external_root?: (Symbol root) -> bool
+  end
 
-module Bundler
-  def self.with_unbundled_env: [X] () { () -> X } -> X
-end
+  module BootConstants
+    self.@cache: Hash[Array[String], Set[Symbol]?]
 
-module Process
-  def self.last_status: () -> ::Process::Status?
-end
-
-class IO
-  # `IO.popen([env_hash, cmd, *args])` — the env-hash-inside-the-array form
-  # the boot probe uses; rbs core only types env as a separate leading
-  # argument.
-  def self.popen: [X] (Array[Hash[String, String?] | String] env_and_cmd, ?String mode) { (instance) -> X } -> X
-                | ...
+    def self.for: (Array[String] stdlib_requires) -> Set[Symbol]?
+    def self.probe: (Array[String] stdlib_requires) -> Set[Symbol]?
+  end
 end

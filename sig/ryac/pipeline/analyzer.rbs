@@ -1,7 +1,7 @@
 module Ryac
   module Pipeline
     class Analyzer
-      include Ryac
+      include AnalysisPhases
 
       @syntax_data: syntax_data_map
       # Values are { type: Symbol } or { type: Symbol, args: Array[Symbol] };
@@ -16,7 +16,7 @@ module Ryac
       private
 
       def without_stdout_pollution: [T] () { () -> T } -> T
-      def setup_typeprof: (ConcatenatedSource source) -> [Prism::ParseResult, TypeProf::Core::AST::Node, TypeProf::Core::GlobalEnv]
+      def setup_typeprof: (ConcatenatedSource source) -> [Prism::ParseResult, TypeOracle]
       def analyze_keywords_and_scopes: () -> void
       def analyze_methods_phase: () -> void
       def analyze_variables_phase: () -> void

@@ -44,26 +44,30 @@ module Ryac
       @excluded_names << name
     end
 
+    PREFIX = '$'
+    # Sigil + one character is already minimal — the same rule the
+    # SiteBucketMapping families derive from their prefix.
+    KEPT_NAME_MAX = PREFIX.size + 1
+
     def assign_short_names
       existing_names = Set.new
       @gvars.each_key do |name|
-        existing_names << name.to_s if name.to_s.size <= 2
+        existing_names << name.to_s if name.to_s.size <= KEPT_NAME_MAX
       end
 
-      generator = NameGenerator.new([], prefix: "$")
+      generator = NameGenerator.new(existing_names, prefix: PREFIX)
       sorted_gvars = @gvars.sort_by do |name, nodes|
         -(name.to_s.size * nodes.size)
       end
 
       sorted_gvars.each do |name, nodes|
         next if @excluded_names.include?(name)
-        next if name.to_s.size <= 2
+        next if name.to_s.size <= KEPT_NAME_MAX
         # A global the program only reads is either a built-in this list
         # does not know or nil everywhere — renaming it can only break.
         next unless @written_names.include?(name)
 
         short_name = generator.next_name
-        short_name = generator.next_name while existing_names.include?(short_name)
         savings = (name.to_s.size - short_name.size) * nodes.size
         next unless savings > 0
 

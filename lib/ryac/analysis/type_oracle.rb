@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'typeprof'
+
 module Ryac
   # The one place allowed to talk to TypeProf.
   #
@@ -13,6 +15,27 @@ module Ryac
   # Answers refer to source positions (location keys) or plain values, never
   # to TypeProf objects.
   class TypeOracle
+    # Boots TypeProf over the program and its RBS. This owns the two
+    # internals the boot requires — the Service construction and the
+    # private @rb_text_nodes table behind update_rb_file — so an upstream
+    # change to either breaks here and nowhere else.
+    def self.boot(content, rbs_files)
+      path = '(minify_concat)'
+      service = TypeProf::Core::Service.new({})
+      rbs_files.each do |rbs_path, rbs_content|
+        service.update_rbs_file(rbs_path, rbs_content)
+      end
+      service.update_rb_file(path, content)
+      new(service.genv, service.instance_variable_get(:@rb_text_nodes)[path])
+    end
+
+    # TypeProf keeps the backing Prism node private because an editor has no
+    # reason to ask; the coordinate join (tp_key below) asks constantly,
+    # since Prism is where the syntax being rewritten lives.
+    def self.raw_prism_node(node)
+      node.instance_variable_get(:@raw_node)
+    end
+
     def initialize(genv, tp_root)
       @genv = genv
       @tp_root = tp_root
@@ -71,7 +94,7 @@ module Ryac
       return unless entity
 
       entity.method_call_boxes.each do |call_box|
-        yield AstUtils.location_key(call_box.node)
+        yield tp_key(call_box.node)
       end
     end
 
@@ -80,7 +103,7 @@ module Ryac
       entity = resolve_method(cpath, singleton, mid)
       return [] unless entity
 
-      entity.defs.to_a.map { |d| AstUtils.location_key(d.node) }
+      entity.defs.to_a.map { |d| tp_key(d.node) }
     end
 
     # One record per call site that dispatches to the method, as plain data:
@@ -105,7 +128,7 @@ module Ryac
 
         if node.is_a?(TypeProf::Core::AST::SuperNode) ||
            node.is_a?(TypeProf::Core::AST::ForwardingSuperNode)
-          yield CallerInfo.new(prism_node: AstUtils.prism_node(node), super: true,
+          yield CallerInfo.new(prism_node: TypeOracle.raw_prism_node(node), super: true,
                                caller_cpath: node.lenv.cref.cpath, receiver: false,
                                keyword_entries: nil, keyword_splat: false)
           next
@@ -119,11 +142,11 @@ module Ryac
           entries = kw.keys.zip(kw.vals).filter_map do |sym_node, val_node|
             # @type var val_node: TypeProf::Core::AST::Node
             next unless sym_node.is_a?(TypeProf::Core::AST::SymbolNode)
-            [AstUtils.prism_node(sym_node), AstUtils.prism_node(val_node)] #: [Prism::Node, Prism::Node]
+            [TypeOracle.raw_prism_node(sym_node), TypeOracle.raw_prism_node(val_node)] #: [Prism::Node, Prism::Node]
           end
         end
 
-        yield CallerInfo.new(prism_node: AstUtils.prism_node(node), super: false,
+        yield CallerInfo.new(prism_node: TypeOracle.raw_prism_node(node), super: false,
                              caller_cpath: nil, receiver: !node.recv.nil?,
                              keyword_entries: entries, keyword_splat: splat)
       end
@@ -211,6 +234,20 @@ module Ryac
 
     private
 
+    # Location key of a TypeProf node, via the Prism node it was built from.
+    # TypeProf models source it may not be able to point back at — its own
+    # code_range raises when a node has no @raw_node. That is reasonable for
+    # an editor, where such a node is never shown, but a node we cannot
+    # locate is one we cannot rename, so this raises rather than inventing a
+    # key that could never match. The conversion stays inside the oracle:
+    # everything outside it holds Prism nodes, and AstUtils keys those.
+    def tp_key(node)
+      prism_node = TypeOracle.raw_prism_node(node)
+      raise ArgumentError, "no source location behind #{node.class}" unless prism_node
+
+      AstUtils.location_key(prism_node)
+    end
+
     def resolve_method(cpath, singleton, mid)
       @method_cache ||= {} #: Hash[method_key, TypeProf::Core::MethodEntity?]
       key = [cpath, singleton, mid] #: method_key
@@ -295,9 +332,9 @@ module Ryac
         case node
         when *TP_CALL_NODES
           # @type var node: TypeProf::Core::AST::CallBaseNode
-          (calls[AstUtils.location_key(node)] ||= {})[node.mid] = node
+          (calls[tp_key(node)] ||= {})[node.mid] = node
         when TypeProf::Core::AST::ConstantReadNode
-          consts[AstUtils.location_key(node)] = node
+          consts[tp_key(node)] = node
         end
       end
       @tp_calls_by_loc = calls

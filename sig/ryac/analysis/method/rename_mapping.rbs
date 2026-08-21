@@ -4,6 +4,7 @@ module Ryac
   type method_key = [Array[Symbol], bool, Symbol]
 
   class MethodRenameMapping
+    MIN_GROUP_SAVINGS: Integer
     include UnionFind[method_key]
 
     type class_key = [Array[Symbol], bool]

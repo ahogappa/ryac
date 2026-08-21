@@ -27,6 +27,5 @@ module Ryac
     private
 
     def init_method: (method_key method_key) -> void
-    def count_occurrences: (Array[method_key] keys, Symbol sym) -> Integer
   end
 end

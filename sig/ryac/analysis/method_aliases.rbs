@@ -1,0 +1,6 @@
+module Ryac
+  KERNEL_ALIASES: Hash[Symbol, Symbol]
+  RECEIVER_ALIASES: Hash[Symbol, Symbol]
+  METHOD_ALIASES: Hash[Symbol, Symbol]
+  METHOD_TRANSFORMS: Hash[[Symbol, Symbol], String]
+end

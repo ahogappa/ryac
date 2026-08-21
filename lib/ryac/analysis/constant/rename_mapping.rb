@@ -178,12 +178,10 @@ module Ryac
 
         case kind
         when :internal
-          # Names of one or two characters are left alone, matching the
-          # method and ivar renamers. Beyond the negligible savings, this is
-          # what makes re-minification a fixed point: the names this pass
-          # assigns are themselves 1-2 characters, and a second pass must
-          # not shuffle them again.
-          next if info.original_name.to_s.size <= 2
+          # Kept names make re-minification a fixed point: the names this
+          # pass assigns are themselves KEPT_NAME_MAX or shorter, and a
+          # second pass must not shuffle them again.
+          next if info.original_name.to_s.size <= NameGenerator::KEPT_NAME_MAX
           next unless info.original_name.to_s.size - cand.size > 0
           info.short_name = cand
           @used_short_names << cand

@@ -292,43 +292,17 @@ module Ryac
       end
     end
 
-    # The Prism node a TypeProf node was built from — the other half of the
-    # seam between the two trees, and the only supported way across it.
-    #
-    # TypeProf keeps this private because an editor has no reason to ask; we
-    # ask constantly, since Prism is where the syntax we rewrite actually
-    # lives. Reaching for the ivar in one place at least means a change
-    # upstream breaks here and nowhere else.
-    def self.prism_node(node)
-      node.instance_variable_get(:@raw_node)
-    end
-
     # The single place the analysis and the patchers agree on what "the same
-    # piece of source" is. Analysis walks TypeProf's tree, patching walks
-    # Prism's, and every map between them is keyed by this.
+    # piece of source" is: every map between phases is keyed by this. Prism
+    # nodes only — TypeOracle converts its own tree's nodes before keying,
+    # so the seam between the two trees stays inside the oracle.
     #
     # Byte offsets, because that is the coordinate system patches are applied
     # in — deriving a separate line/column space for the join only gave the two
     # sides a way to disagree.
-    #
-    # TypeProf models source it may not be able to point back at: its nodes
-    # carry no `location`, and its own `code_range` raises when a node has no
-    # `@raw_node`. That is reasonable for an editor, where such a node is never
-    # shown, but a node we cannot locate is one we cannot rename. Every node
-    # reaching here does carry its Prism node — measured over a full
-    # self-hosting run, 10327 of 10330 keys come from `@raw_node` and the rest
-    # are Prism nodes already — so this raises rather than inventing a key that
-    # could never match.
     def self.location_key(node)
-      # duck-typed seam: Prism nodes answer #location, TypeProf nodes don't
-      loc = node.respond_to?(:location) ? node.location : prism_node(node)&.location # steep:ignore NoMethod, ArgumentTypeMismatch
-
-      unless loc.respond_to?(:start_offset)
-        raise ArgumentError, "no source location behind #{node.class}"
-      end
-
-      # The respond_to? guard above has already raised for location-less nodes.
-      [loc.start_offset, loc.end_offset] # steep:ignore NoMethod
+      loc = node.location
+      [loc.start_offset, loc.end_offset]
     end
 
     # The line/column coordinate space (syntax_data and friends) — kept

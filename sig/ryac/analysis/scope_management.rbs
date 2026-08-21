@@ -1,0 +1,5 @@
+module Ryac
+  module RenameInvariants
+    def verify_injective!: (Hash[Symbol, String] mapping, String scope_label) -> void
+  end
+end

@@ -60,13 +60,20 @@ module Ryac
 
         generator = NameGenerator.new
         keyword_map = {} #: Hash[Symbol, String]
-        all_keywords.sort_by { |sym| -sym.to_s.size }.each do |sym|
-          next if sym.to_s.size <= 2
+        occurrences_by_sym = Hash.new(0) #: Hash[Symbol, Integer]
+        keys.each do |k|
+          info = @methods[k]
+          info[:keywords].each { |sym| occurrences_by_sym[sym] += 1 }
+          info[:call_entries].each { |sym, entries| occurrences_by_sym[sym] += entries.size }
+        end
+        # Sorted by total bytes at stake — the same greedy order every other
+        # rename family uses, so the shortest names go where they pay most.
+        all_keywords.sort_by { |sym| -(sym.to_s.size * occurrences_by_sym[sym]) }.each do |sym|
+          next if sym.to_s.size <= NameGenerator::KEPT_NAME_MAX
 
           short = generator.next_name
-          occurrences = count_occurrences(keys, sym)
-          savings = (sym.to_s.size - short.size) * occurrences
-          next unless savings > 2
+          savings = (sym.to_s.size - short.size) * occurrences_by_sym[sym]
+          next unless savings > MethodRenameMapping::MIN_GROUP_SAVINGS
 
           keyword_map[sym] = short
         end
@@ -127,10 +134,10 @@ module Ryac
         keyword_map = @keyword_maps[root] || {}
 
         info[:call_entries].each do |keyword_sym, entries|
-          # Use renamed name if available; for already-short keywords (≤2 chars),
+          # Use renamed name if available; for already-short keywords,
           # use original name to preserve idempotency across re-minification passes
           final_name = keyword_map[keyword_sym]
-          final_name ||= keyword_sym.to_s if keyword_sym.to_s.size <= 2
+          final_name ||= keyword_sym.to_s if keyword_sym.to_s.size <= NameGenerator::KEPT_NAME_MAX
           next unless final_name
 
           entries.each do |entry|
@@ -155,16 +162,6 @@ module Ryac
       return if @methods.key?(method_key)
       @methods[method_key] = { keywords: Set.new, call_entries: {}, excluded: false }
       uf_add(method_key)
-    end
-
-    def count_occurrences(keys, sym)
-      count = 0
-      keys.each do |key|
-        info = @methods[key]
-        count += 1 if info[:keywords].include?(sym)
-        count += (info[:call_entries][sym]&.size || 0)
-      end
-      count
     end
   end
 end
