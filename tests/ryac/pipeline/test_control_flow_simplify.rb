@@ -13,10 +13,11 @@ class TestControlFlowSimplify < Minitest::Test
     assert_equal 'def f = 1', @stage.call('def f = return 1')
   end
 
-  # `return a, b` builds an array and `return *a` splats — the bare
-  # expression list would not, so both keep their return.
-  def test_multi_value_and_splat_returns_kept
-    assert_equal 'def f(x);return x,1;end', @stage.call('def f(x);return x,1;end')
+  # `return a, b` is the array [a, b] spelled longer; `return *a` splats
+  # into a value the bare expression would not, so the splat keeps its
+  # return.
+  def test_multi_value_return_becomes_array
+    assert_equal 'def f(x);[x,1];end', @stage.call('def f(x);return x,1;end')
     assert_equal 'def f(a);return *a;end', @stage.call('def f(a);return *a;end')
   end
 
@@ -27,6 +28,61 @@ class TestControlFlowSimplify < Minitest::Test
   def test_mid_body_return_kept
     assert_equal 'def f(x);return 0 if x.nil?;x*2;end',
                  @stage.call('def f(x);return 0 if x.nil?;x*2;end')
+  end
+
+  # Tail position extends through every construct whose value the def
+  # passes along; dropping the return composes with the modifier and
+  # ternary rewrites inside the same fixpoint.
+  def test_tail_returns_in_both_arms_removed
+    assert_equal 'def f(x);x>0?1:2;end',
+                 @stage.call('def f(x);if x>0;return 1;else;return 2;end;end')
+  end
+
+  def test_tail_returns_in_elsif_chain_removed
+    assert_equal 'def f(x);x>0?:pos : x<0?:neg : :zero;end',
+                 @stage.call('def f(x);if x>0;return :pos;elsif x<0;return :neg;else;return :zero;end;end')
+  end
+
+  def test_tail_guard_if_composes_to_modifier
+    assert_equal 'def f(x);1 if x>0;end',
+                 @stage.call('def f(x);if x>0;return 1;end;end')
+  end
+
+  def test_tail_return_in_modifier_if_removed
+    assert_equal 'def f(x);:neg if x<0;end',
+                 @stage.call('def f(x);return :neg if x<0;end')
+  end
+
+  def test_tail_returns_in_case_removed
+    assert_equal 'def f(x);case x;when 1;:a;when 2;:b;else;:c;end;end',
+                 @stage.call('def f(x);case x;when 1;return :a;when 2;return :b;else;return :c;end;end')
+  end
+
+  def test_tail_returns_in_case_match_removed
+    assert_equal 'def f(x);case x;in Integer;:int;in String;:str;end;end',
+                 @stage.call('def f(x);case x;in Integer;return :int;in String;return :str;end;end')
+  end
+
+  def test_tail_returns_in_def_rescue_removed
+    assert_equal 'def f;go;rescue;:err;end',
+                 @stage.call('def f;return go;rescue;return :err;end')
+  end
+
+  def test_tail_return_with_ensure_removed
+    assert_equal 'def f(log);:val;ensure;log.push(1);end',
+                 @stage.call('def f(log);return :val;ensure;log.push(1);end')
+  end
+
+  # Loops and blocks are opaque: a return there escapes the method for
+  # real. The loop still converts to modifier form around it.
+  def test_return_inside_loop_kept
+    assert_equal 'def f(x);return 1 while x;end',
+                 @stage.call('def f(x);while x;return 1;end;end')
+  end
+
+  def test_return_inside_block_kept
+    assert_equal 'def f(a);a.map{return 1};end',
+                 @stage.call('def f(a);a.map{return 1};end')
   end
   def setup
     @stage = Ryac::Pipeline::ControlFlowSimplify.new

@@ -10,6 +10,7 @@ module Ryac
       def fixpoint? = true
 
       def collect(ctx, patches)
+        @tail_return_ranges = [] #: Array[[Integer, Integer]]
         walk(ctx.ast, ctx.source, patches)
       end
 
@@ -25,14 +26,15 @@ module Ryac
         case node
         when Prism::IfNode
           # an IfNode with an end keyword always has its if/elsif keyword location
-          if node.end_keyword_loc && source.byteslice(node.if_keyword_loc.start_offset, 2) == 'if' # steep:ignore NoMethod
+          if node.end_keyword_loc && !contains_tail_return_patch?(node) &&
+             source.byteslice(node.if_keyword_loc.start_offset, 2) == 'if' # steep:ignore NoMethod
             if (replacement = try_if(node, source, statement_position))
               patches << mk(node, replacement)
               return
             end
           end
         when Prism::UnlessNode
-          if node.end_keyword_loc
+          if node.end_keyword_loc && !contains_tail_return_patch?(node)
             if (replacement = try_unless(node, source, statement_position))
               patches << mk(node, replacement)
               return
@@ -53,22 +55,62 @@ module Ryac
         node.compact_child_nodes.each { |child| walk(child, source, patches, child_position) }
       end
 
-      # The value of a def is its last expression; a trailing `return expr`
-      # only restates that. Splats and multi-value returns build a value the
-      # bare expression list would not, so only the single-value form goes.
+      # The value of a def is its last expression, and "last expression"
+      # extends through every construct whose value the def passes along:
+      # both arms of an if/unless, every when/in body, a begin's body,
+      # rescue and else. A `return expr` in any of those tail positions
+      # only restates the flow, so the keyword goes; `return a, b` is the
+      # array [a, b] spelled longer. Loops and blocks are opaque — a
+      # return there escapes the method for real — and a bare `return`
+      # is not the statement's own value, so both stay. A splat builds a
+      # value the bare expression would not.
       def try_tail_return(node, patches)
-        body = node.body
-        tail = case body
-               when Prism::StatementsNode then body.body[-1]
-               when Prism::ReturnNode then body
-               end
-        return unless tail.is_a?(Prism::ReturnNode)
+        collect_tail_returns(node.body, patches)
+      end
 
-        args = tail.arguments&.arguments
-        return unless args && args.size == 1
-        return if args[0].is_a?(Prism::SplatNode)
+      def collect_tail_returns(node, patches)
+        case node
+        when Prism::ReturnNode
+          args = node.arguments&.arguments
+          return unless args && !args.empty?
+          return if args.any? { |a| a.is_a?(Prism::SplatNode) }
 
-        patches << mk(tail, args[0].slice)
+          replacement = args.size == 1 ? args[0].slice : "[#{args.map(&:slice).join(',')}]"
+          patches << mk(node, replacement)
+          @tail_return_ranges << [node.location.start_offset, node.location.end_offset]
+        when Prism::StatementsNode
+          collect_tail_returns(node.body[-1], patches)
+        when Prism::IfNode
+          collect_tail_returns(node.statements, patches)
+          collect_tail_returns(node.subsequent, patches)
+        when Prism::UnlessNode
+          collect_tail_returns(node.statements, patches)
+          collect_tail_returns(node.else_clause, patches)
+        when Prism::ElseNode, Prism::WhenNode, Prism::InNode
+          collect_tail_returns(node.statements, patches)
+        when Prism::CaseNode, Prism::CaseMatchNode
+          node.conditions.each { |c| collect_tail_returns(c, patches) }
+          collect_tail_returns(node.else_clause, patches)
+        when Prism::BeginNode
+          # The ensure body is not a value position, but its presence
+          # changes nothing about the others: it runs on both spellings.
+          collect_tail_returns(node.statements, patches)
+          collect_tail_returns(node.rescue_clause, patches)
+          collect_tail_returns(node.else_clause, patches)
+        when Prism::RescueNode
+          collect_tail_returns(node.statements, patches)
+          collect_tail_returns(node.subsequent, patches)
+        end
+      end
+
+      # A same-pass conflict guard: a construct on a tail path may itself
+      # be offered as a modifier/ternary rewrite while the return inside
+      # it is already patched. The return wins the pass; the fixpoint
+      # re-offers the outer rewrite on the return-free text.
+      def contains_tail_return_patch?(node)
+        s = node.location.start_offset
+        e = node.location.end_offset
+        @tail_return_ranges.any? { |rs, re| rs >= s && re <= e }
       end
 
       def try_if(node, source, statement_position)

@@ -17,6 +17,8 @@ module Ryac
       def else_text_for_ternary: (Prism::Node? subsequent, String source) -> String?
       def build_ternary: (Prism::Node cond_node, String cond, Prism::Node? then_node, String? then_expr, String? else_expr) -> String
       def try_tail_return: (Prism::DefNode node, Array[patch_entry] patches) -> void
+      def collect_tail_returns: (Prism::Node? node, Array[patch_entry] patches) -> void
+      def contains_tail_return_patch?: (Prism::Node node) -> bool
       def try_unless: (Prism::UnlessNode node, String source, bool statement_position) -> String?
       def try_loop: (Prism::WhileNode | Prism::UntilNode node, String source, bool statement_position, String keyword) -> String?
       def too_complex_for_ternary?: (String? text) -> bool?
