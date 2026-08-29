@@ -533,27 +533,27 @@ module Ryac
       PERCENT_SAFE_WORD = /\A[^\s\[\]\\]+\z/
 
       def r_array(node)
-        percent_array_form(node) || "[#{node.elements.map { r_delimited(_1) }.join(',')}]"
+        bracket = "[#{node.elements.map { r_delimited(_1) }.join(',')}]"
+        percent = percent_array_form(node)
+        percent && percent.bytesize < bracket.bytesize ? percent : bracket
       end
 
-      # Any %-array whose elements are static re-renders in canonical
-      # bracket form — including %W(...)/%I(...) spellings, which only pay
-      # for their capital when an element actually interpolates.
+      # The %-spelling of an all-static word array, whatever the source
+      # wrote — bracket, %w/%i, or a %W/%I that never interpolates. nil
+      # when the elements aren't uniformly plain words; the caller keeps
+      # whichever spelling is shorter (bracket on ties, so single-char
+      # strings stay available to CharShorten).
       def percent_array_form(node)
-        opening = node.opening
-        return nil unless opening&.start_with?('%')
-
-        kind = opening[1] #: String
-        # the all?(SymbolNode) / all?(StringNode) guards make &:value/&:content safe
-        words = if kind.casecmp?('i') && node.elements.all? { |e| e.is_a?(Prism::SymbolNode) }
-          node.elements.map { |e| e.value.to_s } # steep:ignore NoMethod
-        elsif kind.casecmp?('w') && node.elements.all? { |e| e.is_a?(Prism::StringNode) }
-          node.elements.map(&:content) # steep:ignore BlockTypeMismatch
+        elements = node.elements
+        words, kind = if elements.all? { |e| e.is_a?(Prism::SymbolNode) }
+          [elements.map { |e| e.value.to_s }, 'i'] # steep:ignore NoMethod
+        elsif elements.all? { |e| e.is_a?(Prism::StringNode) }
+          [elements.map(&:unescaped), 'w'] # steep:ignore BlockTypeMismatch
         end
         return nil unless words&.any?
         return nil unless words.all? { |w| w.match?(PERCENT_SAFE_WORD) }
 
-        "%#{kind.downcase}[#{words.join(' ')}]"
+        "%#{kind}[#{words.join(' ')}]"
       end
 
       # The shortest spelling that denotes the same decimal value: such a

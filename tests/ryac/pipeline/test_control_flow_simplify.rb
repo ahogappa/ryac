@@ -378,6 +378,20 @@ class TestControlFlowSimplify < Minitest::Test
   end
 
   def test_inner_elsif_does_not_fold
-    assert_equal 'if a;if b;x;elsif c;y;end;end', @stage.call('if a;if b;x;elsif c;y;end;end')
+    assert_equal 'b ? x : c ? y : () if a', @stage.call('if a;if b;x;elsif c;y;end;end')
+  end
+
+  # An elsif chain with no else has nil for its untaken case; `()` spells
+  # that in ternary position, in statement and value position alike.
+  def test_elsif_without_else_to_ternary
+    assert_equal 'a ? b : c ? d : ()', @stage.call('if a;b;elsif c;d;end')
+    assert_equal 'x = (a ? b : c ? d : ())', @stage.call('x = if a;b;elsif c;d;end')
+  end
+
+  # A multiple assignment's comma cannot live inside a ternary branch —
+  # json's IO/limit swap sits in exactly this elsif shape.
+  def test_multi_write_in_elsif_prevents_ternary
+    assert_equal 'if a;b;elsif c;x,y=1,2;end',
+                 @stage.call('if a;b;elsif c;x,y=1,2;end')
   end
 end

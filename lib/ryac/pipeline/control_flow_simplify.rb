@@ -171,6 +171,10 @@ module Ryac
 
       def else_text_for_ternary(subsequent, source)
         case subsequent
+        # An elsif chain that just ends: the if's value is nil when no
+        # branch takes, and `()` says so in ternary position.
+        when nil
+          '()'
         when Prism::ElseNode
           stmts = subsequent.statements
           text = stmts ? src(source, stmts) : nil
@@ -189,6 +193,9 @@ module Ryac
           return nil if else_result.nil?
 
           then_node = stmts.body.first if stmts
+          # same rule as the top-level then: a multiple assignment's comma
+          # cannot live inside a ternary branch
+          return nil if then_node.is_a?(Prism::MultiWriteNode)
           build_ternary(subsequent.predicate, cond, then_node, then_body, else_result)
         end
       end

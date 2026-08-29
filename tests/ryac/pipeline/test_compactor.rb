@@ -109,8 +109,11 @@ class TestCompactor < Minitest::Test
     assert_equal '%w[foo bar]', @stage.call('%w[foo bar]')
   end
 
+  # Two symbols are the exact tie point (`%i[foo bar]` = `[:foo,:bar]`);
+  # ties normalize to bracket form.
   def test_array_percent_i
-    assert_equal '%i[foo bar]', @stage.call('%i[foo bar]')
+    assert_equal '[:foo,:bar]', @stage.call('%i[foo bar]')
+    assert_equal '%i[foo bar baz]', @stage.call('%i[foo bar baz]')
   end
 
   def test_range_inclusive
@@ -869,8 +872,16 @@ class TestCompactor < Minitest::Test
   # --- Percent arrays stay percent arrays when static ---
 
   def test_static_percent_arrays_render_canonically
-    assert_equal 'a=%w[aa bb];b=%w[dd ee];c=%i[ff gg]',
+    assert_equal 'a=%w[aa bb];b=%w[dd ee];c=[:ff,:gg]',
                  @stage.call("a = %W[aa bb]\nb = %w(dd ee)\nc = %I[ff gg]")
+  end
+
+  # Bracket arrays of uniform plain words take the %-spelling when it is
+  # strictly shorter; ties and unsafe words (whitespace, brackets,
+  # backslash escapes, interpolation) keep the bracket form.
+  def test_bracket_arrays_take_percent_form_when_shorter
+    assert_equal 'a=%w[alpha beta];b=%i[al be ce];c=["solo"];d=[:a,:b];e=["x y"];f=["a#{b}"]',
+                 @stage.call(%Q{a = ["alpha", "beta"]\nb = [:al, :be, :ce]\nc = ["solo"]\nd = [:a, :b]\ne = ["x y"]\nf = ["a\#{b}"]})
   end
 
   def test_interpolating_percent_array_falls_back
