@@ -58,6 +58,7 @@ module Ryac
       def r_case: (Prism::CaseNode node) -> String
       def r_case_match: (Prism::CaseMatchNode node) -> String
       def r_in_pattern: (Prism::Node pattern) -> String
+      def r_pattern: (Prism::Node node) -> String
       def r_for: (Prism::ForNode node) -> String
       def r_return: (Prism::ReturnNode node) -> String
       def r_break: (Prism::BreakNode node) -> String

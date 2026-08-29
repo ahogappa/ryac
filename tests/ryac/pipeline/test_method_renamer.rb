@@ -154,8 +154,8 @@ class TestMethodRenamer < Minitest::Test
   def test_call_operator_write_keeps_accessor_pairs
     result = call_operator_write_group
     assert_equal 'class F;def val =@v;def val=(a);@v=a;end;def count =@c;def count=(a);@c=a;end;' \
-      'def a =self.count+=1;def c =self.val||=42;def b =self.val&&=nil;' \
-      'def initialize =(@c=0;@v=nil);end;a=F.new;a.a;puts a.count;a.c;puts a.val;a.b;puts a.val.inspect',
+      'def a =self.count+=1;def c =self.val||=42;def b =self.val&&=();' \
+      'def initialize =(@c=0;@v=());end;a=F.new;a.a;puts a.count;a.c;puts a.val;a.b;puts a.val.inspect',
       result.code
   end
 

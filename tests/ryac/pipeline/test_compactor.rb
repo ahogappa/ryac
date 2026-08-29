@@ -385,7 +385,7 @@ class TestCompactor < Minitest::Test
   end
 
   def test_rescue_modifier
-    assert_equal '(x rescue nil)', @stage.call('x rescue nil')
+    assert_equal '(x rescue ())', @stage.call('x rescue nil')
   end
 
   # --- Lambda ---
@@ -510,6 +510,41 @@ class TestCompactor < Minitest::Test
   def test_capture_pattern
     assert_equal 'case x;in Integer=>n;n;end',
       @stage.call('case x; in Integer => n; n; end')
+  end
+
+  def test_nil_renders_as_empty_parens
+    assert_equal 'a=();b=[(),()];c={x:()};d=foo(());e=(a=())',
+      @stage.call("a = nil\nb = [nil, nil]\nc = { x: nil }\nd = foo(nil)\ne = (a = nil)")
+  end
+
+  def test_nil_in_parameter_defaults
+    assert_equal 'def f(a=(),b:());[a,b,()];end',
+      @stage.call('def f(a = nil, b: nil); [a, b, nil]; end')
+  end
+
+  def test_nil_in_jump_and_yield
+    assert_equal 'def f;yield(());return ();end',
+      @stage.call("def f\n  yield nil\n  return nil\nend")
+  end
+
+  # Pattern positions reject `()` — every pattern shape keeps the nil
+  # spelling, while the case subject (an expression) converts.
+  def test_nil_in_patterns_stays_nil
+    assert_equal 'case ();in nil;1;in [nil,Integer];2;in nil | 1;3;in {a: nil};4;in (nil)=>n;n;end',
+      @stage.call('case nil; in nil; 1; in [nil, Integer]; 2; in nil | 1; 3; in {a: nil}; 4; in (nil) => n; n; end')
+  end
+
+  def test_nil_in_rightward_patterns_stays_nil
+    assert_equal 'v=();v=>nil;w=(v in nil)',
+      @stage.call("v = nil\nv => nil\nw = (v in nil)")
+  end
+
+  # `()` in the input is the same nil literal this pass emits: it must
+  # round-trip (doubled parens normalize to one pair), not collapse to
+  # the empty string.
+  def test_empty_parens_round_trip
+    assert_equal 'x=();y=()',
+      @stage.call("x = ()\ny = (())")
   end
 
   def test_pinned_variable
@@ -852,7 +887,7 @@ class TestCompactor < Minitest::Test
   def test_parenthesized_keyword_logic_keeps_its_value
     # z = (nil or 7) assigns 7; z = nil or 7 assigns nil. The operator form
     # needs no parens, so the value survives every position.
-    assert_equal 'z=nil||7;p(z)', @stage.call("z = (nil or 7)\np z")
+    assert_equal 'z=()||7;p(z)', @stage.call("z = (nil or 7)\np z")
     assert_equal 'p(1&&2)', @stage.call('p((1 and 2))')
   end
 

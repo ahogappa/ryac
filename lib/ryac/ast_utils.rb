@@ -69,6 +69,12 @@ module Ryac
     def ends_with_name_char?(node)
       inner = unwrap_statements(node)
       case inner
+      # Empty parens unwrap to nothing; the rendered `()` ends with ')'.
+      when nil
+        false
+      # nil renders as `()` — ends with ')', not a name char.
+      when Prism::NilNode
+        false
       # Terminals: definitely safe (end with delimiter/sigil/literal)
       when Prism::ParenthesesNode,
            Prism::StringNode, Prism::InterpolatedStringNode,

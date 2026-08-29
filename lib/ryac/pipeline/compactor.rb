@@ -103,22 +103,24 @@ module Ryac
         when Prism::MatchWriteNode then r(node.call)
         when Prism::DefinedNode then r_defined(node)
         when Prism::ForNode then r_for(node)
-        when Prism::MatchRequiredNode then "#{r(node.value)}=>#{r(node.pattern)}"
-        when Prism::MatchPredicateNode then "#{r(node.value)} in #{r(node.pattern)}"
+        when Prism::MatchRequiredNode then "#{r(node.value)}=>#{r_pattern(node.pattern)}"
+        when Prism::MatchPredicateNode then "#{r(node.value)} in #{r_pattern(node.pattern)}"
         when Prism::SingletonClassNode then r_singleton_class(node)
         when Prism::CaseMatchNode then r_case_match(node)
         when Prism::ArrayPatternNode then r_array_pattern(node)
         when Prism::HashPatternNode then r_hash_pattern(node)
         when Prism::FindPatternNode then r_find_pattern(node)
-        when Prism::AlternationPatternNode then "#{r(node.left)} | #{r(node.right)}"
-        when Prism::CapturePatternNode then "#{r(node.value)}=>#{r_multi_target(node.target)}"
+        when Prism::AlternationPatternNode, Prism::CapturePatternNode then r_pattern(node)
         when Prism::PinnedVariableNode then "^#{r(node.variable)}"
         when Prism::PinnedExpressionNode then "^(#{r_delimited(node.expression)})"
         when Prism::ImplicitNode then r(node.value)
         when Prism::ShareableConstantNode then r(node.write)
         when Prism::CallTargetNode then "#{r(node.receiver)}.#{node.name.to_s.chomp('=')}"
         when Prism::KeywordHashNode then r_keyword_hash(node)
-        when Prism::TrueNode, Prism::FalseNode, Prism::NilNode, Prism::SelfNode,
+        # nil spelled as the empty grouped expression: same value, one byte
+        # shorter. Pattern positions reject it and go through r_pattern.
+        when Prism::NilNode then '()'
+        when Prism::TrueNode, Prism::FalseNode, Prism::SelfNode,
              Prism::RedoNode, Prism::RetryNode, Prism::ForwardingSuperNode,
              Prism::ItLocalVariableReadNode, Prism::NumberedReferenceReadNode,
              Prism::SourceEncodingNode, Prism::SourceFileNode, Prism::SourceLineNode,
@@ -293,6 +295,13 @@ module Ryac
             body_node.body.first.is_a?(Prism::ParenthesesNode)
           body_node = body_node.body.first.body # steep:ignore NoMethod
         end
+        # A sole-nil body and an empty body are the same method, and the
+        # empty spelling is what `def f =()` parses back into — emitting it
+        # directly keeps re-minification at a fixed point.
+        if body_node.is_a?(Prism::StatementsNode) && body_node.body.size == 1 &&
+            body_node.body.first.is_a?(Prism::NilNode)
+          body_node = nil
+        end
         body = r_stmt(body_node)
         params_str = all_params.empty? ? "" : "(#{all_params.join(',')})"
         "def #{receiver_prefix}#{method_name}#{params_str}#{fmt_body(body)};end"
@@ -390,9 +399,27 @@ module Ryac
         when Prism::IfNode, Prism::UnlessNode
           keyword = pattern.is_a?(Prism::IfNode) ? 'if' : 'unless'
           # a guard's IfNode always wraps a non-empty statements body
-          "#{r(pattern.statements.body[0])} #{keyword} #{r(pattern.predicate)}" # steep:ignore NoMethod
+          "#{r_pattern(pattern.statements.body[0])} #{keyword} #{r(pattern.predicate)}" # steep:ignore NoMethod
         else
-          r(pattern)
+          r_pattern(pattern)
+        end
+      end
+
+      # Patterns are their own little language: `nil` there is the nil
+      # pattern and `()` is a syntax error, so pattern positions dispatch
+      # through here. Anything that reads the same in both languages —
+      # other literals, constants, pins, capture targets — falls through
+      # to r.
+      def r_pattern(node)
+        case node
+        when Prism::NilNode then 'nil'
+        when Prism::ParenthesesNode
+          # pattern parens always wrap exactly one pattern
+          inner = AstUtils.unwrap_statements(node) #: Prism::Node
+          "(#{r_pattern(inner)})"
+        when Prism::AlternationPatternNode then "#{r_pattern(node.left)} | #{r_pattern(node.right)}"
+        when Prism::CapturePatternNode then "#{r_pattern(node.value)}=>#{r_multi_target(node.target)}"
+        else r(node)
         end
       end
 
@@ -847,7 +874,7 @@ module Ryac
       # --- Pattern matching ---
 
       def r_array_pattern(node)
-        parts = node.requireds.map { |n| r(n) }
+        parts = node.requireds.map { |n| r_pattern(n) }
         if node.rest
           parts << if node.rest.is_a?(Prism::SplatNode) && node.rest.expression
             "*#{r(node.rest.expression)}"
@@ -855,13 +882,13 @@ module Ryac
             '*'
           end
         end
-        parts.concat(node.posts.map { |p| r(p) })
+        parts.concat(node.posts.map { |p| r_pattern(p) })
         "[#{parts.join(',')}]"
       end
 
       def r_hash_pattern(node)
         # hash-pattern keys are always plain SymbolNodes
-        parts = node.elements.map { |a| "#{a.key.value}: #{r(a.value)}" } # steep:ignore NoMethod
+        parts = node.elements.map { |a| "#{a.key.value}: #{r_pattern(a.value)}" } # steep:ignore NoMethod
         if node.rest
           case node.rest
           when Prism::AssocSplatNode
@@ -882,7 +909,7 @@ module Ryac
             '*'
           end
         end
-        parts.concat(node.requireds.map { |n| r(n) })
+        parts.concat(node.requireds.map { |n| r_pattern(n) })
         if node.right
           parts << if node.right.is_a?(Prism::SplatNode) && node.right.expression
             "*#{r(node.right.expression)}"
@@ -1112,6 +1139,10 @@ module Ryac
 
       def r_parens(node)
         body = r_stmt(node.body)
+        # Empty parens ARE the nil literal this renderer emits — keeping
+        # them (instead of collapsing to '') is what makes a second pass
+        # over already-minified source round-trip.
+        return '()' if body.empty?
         inner = AstUtils.unwrap_statements(node)
         keep = (node.body.is_a?(Prism::StatementsNode) && node.body.body.size > 1) ||
                PARENS_KEPT_CLASSES.include?(inner.class) ||
