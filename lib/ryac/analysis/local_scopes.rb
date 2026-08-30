@@ -32,7 +32,8 @@ module Ryac
     NUMBERED_PARAM_RE = /\A_\d+\z/
 
     Scope = Struct.new(:id, :kind, :node, :parent, :owner_call, :mapping, keyword_init: true) do
-      def allocated? = !mapping.nil?
+      # declared on the Scope class itself in the RBS
+      def allocated? = !mapping.nil? # steep:ignore UndeclaredMethodDefinition, NoMethod
     end
 
     attr_reader :scopes
@@ -48,7 +49,7 @@ module Ryac
     # information that arrives keyed by "the scope around this node" —
     # keyword hints and implicit-receiver call sites.
     def scope_id_at(offset)
-      best = nil
+      best = nil #: Scope?
       @scopes.each do |scope|
         range = scope_range(scope)
         next unless range.cover?(offset)
@@ -57,9 +58,11 @@ module Ryac
       best&.id
     end
 
-    # Accepts Prism and TypeProf nodes alike — anything location_key handles.
     def scope_id_of(node)
-      scope_id_at(AstUtils.location_key(node).first)
+      # [0], not .first: the .first→[0] transform is oracle-gated, and a
+      # site the oracle resolves on one self-host pass but not the other
+      # drifts the fixed point by a byte. lib spells the target form.
+      scope_id_at(AstUtils.location_key(node)[0])
     end
 
     # Phase 2: assign short names. kw_def_map is keyed by def location_key,
@@ -77,8 +80,9 @@ module Ryac
 
     # {scope_id => {original => short}} for every scope that allocates names.
     def scope_mappings
-      @scopes.each_with_object({}) do |scope, out|
-        out[scope.id] = scope.mapping if scope.allocated?
+      @scopes.each_with_object({}) do |scope, out| #$ scope_mapping_table
+        # allocated? guarantees mapping is non-nil here.
+        out[scope.id] = scope.mapping if scope.allocated? # steep:ignore ArgumentTypeMismatch
       end
     end
 
@@ -163,9 +167,10 @@ module Ryac
       locals = scope.node.locals
       return unless locals.any?
 
-      unsafe, pinned = scope_constraints(scope.node.statements)
+      # A :top scope's node is always a ProgramNode, which has #statements.
+      unsafe, pinned = scope_constraints(scope.node.statements) # steep:ignore NoMethod
       generator = NameGenerator.new(pinned.map(&:to_s))
-      mapping = {}
+      mapping = {} #: Hash[Symbol, String]
       locals.each do |var|
         mapping[var] = allocated_name(var, unsafe, pinned, generator)
       end
@@ -174,7 +179,7 @@ module Ryac
     end
 
     def allocate_def(scope, kw_def_map, var_hints)
-      node = scope.node
+      node = scope.node #: Prism::DefNode
       return unless node.body
 
       unsafe, pinned = scope_constraints(node.body)
@@ -192,14 +197,14 @@ module Ryac
       reserved = hints.values.dup
       reserved.concat(kw_mapping.values) if kw_mapping
       reserved.concat(pinned.map(&:to_s))
-      keyword_names = {}
+      keyword_names = {} #: Hash[Symbol, String]
       keyword_params.each do |kw|
         keyword_names[kw] = kw_mapping&.[](kw) || kw.to_s
         reserved << keyword_names[kw]
       end
 
       generator = NameGenerator.new(reserved.uniq)
-      mapping = {}
+      mapping = {} #: Hash[Symbol, String]
       claimed = Set.new(keyword_names.values)
       node.locals.each do |var|
         next if unused_rescue.include?(var)
@@ -222,7 +227,7 @@ module Ryac
     end
 
     def allocate_block(scope)
-      node = scope.node
+      node = scope.node #: Prism::BlockNode
       return unless node.body
 
       unsafe, pinned = scope_constraints(node.body)
@@ -231,11 +236,13 @@ module Ryac
       reserved = parent_names + pinned.map(&:to_s)
 
       if !unsafe && use_numbered_params?(node, f_args, parent_names)
-        mapping = {}
-        f_args.each_with_index { |param, idx| mapping[param] = "_#{idx + 1}" }
+        mapping = {} #: Hash[Symbol, String]
+        # use_numbered_params? returns false when f_args contains nil, so every
+        # param here is a Symbol.
+        f_args.each_with_index { |param, idx| mapping[param] = "_#{idx + 1}" } # steep:ignore ArgumentTypeMismatch
       else
         generator = NameGenerator.new(reserved)
-        mapping = {}
+        mapping = {} #: Hash[Symbol, String]
         f_args.each do |param|
           next unless param
           next if param.to_s.match?(/\A_\d*\z/)
@@ -267,7 +274,8 @@ module Ryac
         end
       end
 
-      owner_label = scope.owner_call.name
+      # allocate only calls this when scope.owner_call is present.
+      owner_label = scope.owner_call.name # steep:ignore NoMethod
       verify_injective!(mapping, "block for #{owner_label}")
       scope.mapping = mapping
     end
@@ -278,10 +286,11 @@ module Ryac
     # built around this exact set, and narrowing it reshuffles names without
     # making any of them safer.
     def ancestor_mapping_values(scope)
-      names = []
+      names = [] #: Array[String]
       current = scope.parent
       while current
-        names.concat(current.mapping.values) if current.allocated?
+        # allocated? guarantees mapping is non-nil here.
+        names.concat(current.mapping.values) if current.allocated? # steep:ignore NoMethod
         current = current.parent
       end
       names
@@ -339,7 +348,7 @@ module Ryac
       params = def_node.parameters
       return [] unless params
 
-      names = []
+      names = [] #: Array[Symbol]
       params.keywords&.each do |kw|
         names << kw.name if kw.respond_to?(:name)
       end
@@ -368,7 +377,7 @@ module Ryac
       params = block_parameters(block_node)
       return [] unless params
 
-      params.requireds.select { |r| r.is_a?(Prism::MultiTargetNode) }
+      params.requireds.select { |r| r.is_a?(Prism::MultiTargetNode) } #: Array[Prism::MultiTargetNode]
     end
 
     def use_numbered_params?(block_node, f_args, parent_names)
@@ -412,7 +421,7 @@ module Ryac
     end
 
     def collect_multi_target_names(multi_target_node)
-      names = []
+      names = [] #: Array[Symbol]
       multi_target_node.lefts.each do |p|
         if p.is_a?(Prism::RequiredParameterNode)
           names << p.name
@@ -428,7 +437,7 @@ module Ryac
     end
 
     def collect_extra_block_param_names(prism_params)
-      names = []
+      names = [] #: Array[Symbol]
       prism_params.optionals&.each { |p| names << p.name }
       names << prism_params.rest.name if prism_params.rest.is_a?(Prism::RestParameterNode) && prism_params.rest.name
       prism_params.posts&.each { |p| names << p.name if p.is_a?(Prism::RequiredParameterNode) }
@@ -497,6 +506,7 @@ module Ryac
 
       case node
       when *VARIABLE_NODES
+        # @type var node: prism_variable_node
         record_variable(node, stack)
       when Prism::ForNode
         record_for_index(node, stack)
@@ -525,12 +535,11 @@ module Ryac
       return unless params
 
       mapping = scope.mapping || {}
-      names = {}
+      names = {} #: Hash[Symbol, String]
       each_def_param_name(params) { |sym| names[sym] = mapping[sym] || sym.to_s }
       return unless names.any?
 
-      loc = def_node.location
-      @def_param_names[[loc.start_line, loc.start_column]] = names
+      @def_param_names[AstUtils.line_col_key(def_node)] = names
     end
 
     def each_def_param_name(params, &block)
@@ -549,11 +558,11 @@ module Ryac
 
       params = block_parameters(block_node)
       f_args = block_formal_names(block_node)
-      extra = params ? collect_extra_block_param_names(params) : []
+      extra = params ? collect_extra_block_param_names(params) : [] #: Array[Symbol]
       return unless f_args.compact.any? || extra.any?
 
       mapping = scope.mapping || {}
-      names = {}
+      names = {} #: Hash[Symbol, String]
       f_args.each { |p| names[p] = mapping[p] || p.to_s if p }
       block_multi_targets(block_node).each do |mt|
         collect_multi_target_names(mt).each { |n| names[n] = mapping[n] || n.to_s }
@@ -567,8 +576,7 @@ module Ryac
       idx = for_node.index
       return unless idx.is_a?(Prism::LocalVariableTargetNode)
 
-      loc = for_node.location
-      @for_index_names[[loc.start_line, loc.start_column]] = resolved_name(idx.name, idx.depth, stack)
+      @for_index_names[AstUtils.line_col_key(for_node)] = resolved_name(idx.name, idx.depth, stack)
     end
   end
 end

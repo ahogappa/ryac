@@ -1,0 +1,21 @@
+module Ryac
+  class Error < StandardError
+  end
+
+  class InputError < Error
+  end
+
+  class InternalError < Error
+  end
+
+  class MinifyError < InputError
+  end
+
+  class SyntaxError < InputError
+    attr_reader path: String?
+    attr_reader line: Integer?
+    attr_reader column: Integer?
+
+    def initialize: (String message, ?path: String?, ?line: Integer?, ?column: Integer?) -> void
+  end
+end

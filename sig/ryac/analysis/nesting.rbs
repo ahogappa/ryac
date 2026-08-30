@@ -1,8 +1,8 @@
 module Ryac
   module Nesting
     def self?.each: (Prism::Node root) { (Prism::Node, Array[Symbol], bool, bool) -> void } -> void
-    def self?.each_method_definition: (Prism::Node root) { (Prism::DefNode, [Array[Symbol], bool, Symbol]) -> void } -> void
     def self?.each_meta_call: (Prism::Node root, Array[Symbol] names, ?loose: bool) { (Prism::CallNode, Array[Symbol], bool) -> void } -> void
+    def self?.each_method_definition: (Prism::Node root) { (Prism::DefNode, [Array[Symbol], bool, Symbol]) -> void } -> void
     def self?.path_segments: (Prism::Node constant_path) -> [Array[Symbol], bool]?
     def self?.walk: (Prism::Node? node, Array[Symbol] cpath, bool singleton, bool in_def) { (Prism::Node, Array[Symbol], bool, bool) -> void } -> void
   end

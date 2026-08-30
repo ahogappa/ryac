@@ -98,6 +98,29 @@ class TestDataTypes < Minitest::Test
     assert_equal({}, cs.rbs_files)
   end
 
+  def test_concatenated_source_synthetic_defaults
+    cs = Ryac::Pipeline::ConcatenatedSource.new(content: "x = 1")
+    assert_equal [], cs.file_boundaries
+    assert_equal "x = 1".bytesize, cs.original_size
+    assert_equal [], cs.stdlib_requires
+    assert_equal({}, cs.rbs_files)
+  end
+
+  def test_concatenated_source_with_preserves_provenance
+    fb = Ryac::Pipeline::FileBoundary.new(path: "/a.rb", start_line: 1, end_line: 3)
+    cs = Ryac::Pipeline::ConcatenatedSource.new(
+      content: "long original text", file_boundaries: [fb],
+      original_size: 500, stdlib_requires: ["json"], rbs_files: { "a.rbs" => "class A end" }
+    )
+    rebuilt = cs.with(content: "short")
+    assert_equal "short", rebuilt.content
+    # The rewritten text must not overwrite what describes the collected input.
+    assert_equal 500, rebuilt.original_size
+    assert_equal [fb], rebuilt.file_boundaries
+    assert_equal ["json"], rebuilt.stdlib_requires
+    assert_equal({ "a.rbs" => "class A end" }, rebuilt.rbs_files)
+  end
+
   def test_rename_result_defaults
     rr = Ryac::Pipeline::RenameResult.new(code: "x=1")
     assert_equal "x=1", rr.code
@@ -149,6 +172,19 @@ class TestDataTypes < Minitest::Test
     )
     assert_equal "Foo=A", mr.aliases
     assert_equal "A=Process", mr.preamble
+  end
+
+  def test_minified_result_full_content_attaches_aliases
+    stats = Ryac::Pipeline::CompressionStats.new(
+      original_size: 100, minified_size: 50, compression_ratio: 0.5, file_count: 1
+    )
+    with_aliases = Ryac::Pipeline::MinifiedResult.new(
+      content: "A=Process;code", aliases: "Foo=A", preamble: "A=Process", stats: stats
+    )
+    assert_equal "A=Process;code;Foo=A", with_aliases.full_content
+
+    without = Ryac::Pipeline::MinifiedResult.new(content: "code", stats: stats)
+    assert_equal "code", without.full_content
   end
 
   def test_analysis_result_defaults

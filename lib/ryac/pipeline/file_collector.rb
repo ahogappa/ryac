@@ -6,7 +6,7 @@ module Ryac
   module Pipeline
     # Stage 1: File Collection
     # Discovers all dependencies via static analysis of require/require_relative/autoload
-    class FileCollector < Stage
+    class FileCollector
       # @param entry_path [String, Array<String>] Path(s) to entry point file(s)
       # @return [DependencyGraph] Graph of all discovered files
       # @raise [FileNotFoundError] If a required file doesn't exist
@@ -15,14 +15,15 @@ module Ryac
       def call(entry_path, project_root: nil, gem_names: [], gem_require_paths: [])
         raise NoFilesError.new if entry_path.nil?
 
-        entry_paths = Array(entry_path)
+        entry_paths = Array(entry_path) #: Array[String]
         raise NoFilesError.new if entry_paths.empty?
 
         @graph = DependencyGraph.new
         @visited = Set.new
         @gem_names = gem_names
         @project_roots = if project_root
-          Array(project_root).map { |p| File.expand_path(p) }
+          # Array() leaves only Strings whichever of the two shapes came in
+          Array(project_root).map { |p| File.expand_path(p) } # steep:ignore ArgumentTypeMismatch
         else
           root = find_project_root(entry_paths)
           root ? [root] : []
@@ -58,8 +59,8 @@ module Ryac
 
         # Parse and extract require statements
         require_nodes = extract_require_nodes(file_path, content)
-        dependencies = []
-        in_class_dependencies = []
+        dependencies = [] #: Array[String]
+        in_class_dependencies = [] #: Array[String]
 
         require_nodes.each do |node_info|
           dep_path = node_info[:resolved_path]
@@ -87,7 +88,16 @@ module Ryac
       # Extract require/require_relative/autoload nodes from source
       def extract_require_nodes(file_path, content)
         result = Prism.parse(content)
-        nodes = []
+        # Collection is the only point that still knows which file a byte
+        # came from — a syntax error surfaces here with real coordinates,
+        # or downstream as a nameless internal failure.
+        error = result.errors[0]
+        if error
+          raise Ryac::SyntaxError.new(error.message, path: file_path,
+                                      line: error.location.start_line,
+                                      column: error.location.start_column)
+        end
+        nodes = [] #: Array[require_node_info]
 
         traverse_for_requires(result.value, nodes, file_path)
 
@@ -218,9 +228,13 @@ module Ryac
         return unless args && args.size >= 2
 
         path_arg = args[1]
+        path = if path_arg.is_a?(Prism::StringNode)
+          path_arg.unescaped
+        else
+          dir_interpolated_path(path_arg)
+        end
 
-        if path_arg.is_a?(Prism::StringNode)
-          path = path_arg.unescaped
+        if path
           # Treat autoload paths like require_relative for local files
           if path.start_with?('./', '../') || !path.include?('/')
             nodes << {
@@ -256,6 +270,30 @@ module Ryac
         end
       end
 
+      # "#{__dir__}/mixin/foo" reads as dynamic but is a constant at
+      # collection time: __dir__ is the directory of the file being
+      # collected. Recognizes exactly that shape — a sole receiverless,
+      # argument-less __dir__ interpolation, then a /-prefixed literal
+      # tail — and returns it as the file-relative "./mixin/foo" so the
+      # ordinary relative resolution runs; nil for every other
+      # interpolation.
+      def dir_interpolated_path(path_arg)
+        return nil unless path_arg.is_a?(Prism::InterpolatedStringNode)
+
+        parts = path_arg.parts
+        return nil unless parts.size == 2
+
+        interp, rest = parts
+        return nil unless interp.is_a?(Prism::EmbeddedStatementsNode) && rest.is_a?(Prism::StringNode)
+
+        call = AstUtils.unwrap_statements(interp.statements)
+        return nil unless call.is_a?(Prism::CallNode) &&
+                          call.name == :__dir__ && call.receiver.nil? && call.arguments.nil?
+
+        tail = rest.unescaped
+        tail.start_with?('/') ? ".#{tail}" : nil
+      end
+
       def ensure_load_paths(require_paths)
         require_paths.each do |path|
           $LOAD_PATH.unshift(path) unless $LOAD_PATH.include?(path)
@@ -280,7 +318,7 @@ module Ryac
           versions = Dir.children(gem_rbs_dir) rescue next
           next if versions.empty?
 
-          latest = versions.max_by { |v| Gem::Version.new(v) }
+          latest = versions.max_by { |v| Gem::Version.new(v) } #: String
           load_rbs_from(File.join(gem_rbs_dir, latest))
         end
       end

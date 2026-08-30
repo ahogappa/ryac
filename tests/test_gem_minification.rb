@@ -5,6 +5,7 @@ require 'tempfile'
 require 'fileutils'
 require 'rbconfig'
 require_relative '../lib/ryac'
+require_relative 'support/stage_recipes'
 
 # Test that minified gems pass their own test suites.
 # Excluded from default `rake test` — run with `rake test:gems`.
@@ -87,12 +88,7 @@ class TestGemMinification < Minitest::Test
   # so they run a keyword-only step composition instead — enough pipeline to
   # catch regressions on large real code without asserting a promise the
   # levels don't make.
-  CANARY_STAGES = [
-    Ryac::Minifier::OPTIMIZE,
-    [Ryac::Pipeline::ConstantAliaser],
-    [Ryac::Pipeline::AttrDeclShorten],
-    [Ryac::Pipeline::VariableRenamer, { features: { keywords: true } }]
-  ].freeze
+  CANARY_STAGES = MinifyTestHelper::STAGE_RECIPES[3]
 
   GEMS.each do |gem_name, config|
     [CANARY_STAGES].each do |level|

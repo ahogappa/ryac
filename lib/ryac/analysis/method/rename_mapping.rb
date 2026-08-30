@@ -19,6 +19,10 @@ module Ryac
   class MethodRenameMapping
     include UnionFind
 
+    # Below this many saved characters a rename is churn, not compression.
+    # KeywordRenameMapping applies the same bar.
+    MIN_GROUP_SAVINGS = 2
+
     MethodGroupEntry = Struct.new(:keys, :original_name, :total_occurrences)
 
     def initialize
@@ -62,7 +66,7 @@ module Ryac
     def exclude_methods_by_mid(mids)
       keys_to_remove = @methods.keys.select { |key| mids.include?(key[2]) }
       keys_to_remove.each do |key|
-        data = @methods.delete(key)
+        data = @methods.delete(key) #: method_data
         data[:def_nodes].each { |n| @node_to_key.delete(n.object_id) }
         data[:call_sites].each do |n|
           @node_to_key.delete(n.object_id)
@@ -75,7 +79,8 @@ module Ryac
     def merge_all_by_mid(mid)
       keys = @methods.keys.select { |k| k[2] == mid }
       return if keys.size <= 1
-      keys[1..].each { |k| merge_groups(keys[0], k) }
+      # keys.size > 1 is guaranteed above, so [1..] cannot be nil
+      keys[1..].each { |k| merge_groups(keys[0], k) } # steep:ignore NoMethod
     end
 
     # Inference can silently miss a caller, leaving a def in a group with no
@@ -123,22 +128,22 @@ module Ryac
       group_entries.sort_by! { |entry| -(entry.original_name.size * entry.total_occurrences) }
 
       scope_vars = self.class.build_scope_vars(scope_mappings)
-      existing_methods, hierarchy = oracle ? build_existing_method_names(oracle) : [{}, {}]
+      existing_methods, hierarchy = oracle ? build_existing_method_names(oracle) : [{}, {}] #: [Hash[class_key, Set[String]], hierarchy]
 
       group_entries.each do |entry|
-        short_name = find_shortest_name(entry.keys, scope_vars, existing_methods)
+        short_name = find_shortest_name(entry.keys, scope_vars, existing_methods, hierarchy)
 
         savings_per_use = entry.original_name.size - short_name.size
         next unless savings_per_use > 0
 
         total_savings = savings_per_use * entry.total_occurrences
-        next unless total_savings > 2
+        next unless total_savings > MIN_GROUP_SAVINGS
 
         assign_short_name(entry.keys, short_name)
         propagate_short_name(entry.keys, short_name, existing_methods, hierarchy)
       end
 
-      verify_no_shadowing!
+      verify_no_shadowing!(hierarchy)
       @frozen = true
     end
 
@@ -148,8 +153,13 @@ module Ryac
     # it and the output would still parse. The module_function regression
     # (instance and singleton halves allocated independently) was exactly this
     # shape; this turns any recurrence into a failed run.
-    def verify_no_shadowing!
-      namespaces = Hash.new { |h, k| h[k] = Hash.new { |h2, k2| h2[k2] = Set.new } }
+    #
+    # The namespace a dispatch actually resolves against is the class plus
+    # everything it inherits and includes, so with the hierarchy known the
+    # same rule is enforced per inheritance-effective namespace: two mids on
+    # one final anywhere along a class's ancestor chain shadow each other.
+    def verify_no_shadowing!(hierarchy = {})
+      namespaces = Hash.new { |h, k| h[k] = Hash.new { |h2, k2| h2[k2] = Set.new } } #: Hash[class_key, Hash[String, Set[Symbol]]]
       @methods.each_key do |key|
         cpath, singleton, mid = key
         final = @key_short_names[key] || mid.to_s
@@ -157,10 +167,26 @@ module Ryac
       end
 
       namespaces.each do |(cpath, singleton), finals|
-        collisions = finals.filter_map { |name, mids| [name, mids.to_a] if mids.size > 1 }
+        collisions = finals.filter_map { |name, mids| [name, mids.to_a] if mids.size > 1 } #: Array[[String, Array[Symbol]]]
         next if collisions.empty?
 
         label = "#{cpath.join('::')}#{singleton ? '.' : '#'}"
+        raise Pipeline::RenameCollisionError.new(label, collisions)
+      end
+
+      (hierarchy[:ancestors] || {}).each do |class_key, ancestor_keys|
+        next if ancestor_keys.none?
+
+        merged = Hash.new { |h, k| h[k] = Set.new } #: Hash[String, Set[Symbol]]
+        ([class_key] + ancestor_keys).each do |ck|
+          next unless namespaces.key?(ck)
+          namespaces[ck].each { |final, mids| merged[final].merge(mids) }
+        end
+
+        collisions = merged.filter_map { |name, mids| [name, mids.to_a] if mids.size > 1 } #: Array[[String, Array[Symbol]]]
+        next if collisions.empty?
+
+        label = "#{class_key[0].join('::')}#{class_key[1] ? '.' : '#'} (with ancestors)"
         raise Pipeline::RenameCollisionError.new(label, collisions)
       end
     end
@@ -196,11 +222,11 @@ module Ryac
     private
 
     def build_group_entries(groups)
-      result = []
+      result = [] #: Array[MethodGroupEntry]
       groups.each_value do |keys|
         mid = keys.first[2]
         next if EXCLUDED_METHODS.include?(mid)
-        next if mid.to_s.size <= 2
+        next if mid.to_s.size <= NameGenerator::KEPT_NAME_MAX
 
         total_call_sites = keys.sum { |key| @methods[key][:call_sites].size }
         next if total_call_sites == 0
@@ -218,7 +244,7 @@ module Ryac
     # Class method: the attr coordination inverts scope_mappings the same
     # way for its own collision check, so there is exactly one inversion.
     def self.build_scope_vars(scope_mappings)
-      scope_vars = Hash.new { |h, k| h[k] = Set.new }
+      scope_vars = Hash.new { |h, k| h[k] = Set.new } #: Hash[scope_id, Set[String]]
       scope_mappings.each do |cref_id, mapping|
         mapping.each_value { |mangled| scope_vars[cref_id] << mangled }
       end
@@ -226,24 +252,24 @@ module Ryac
     end
 
     def groups_by_root
-      groups = Hash.new { |h, k| h[k] = [] }
+      groups = Hash.new { |h, k| h[k] = [] } #: Hash[method_key, Array[method_key]]
       @methods.each_key { |key| groups[uf_root(key)] << key }
       groups
     end
 
     def build_existing_method_names(oracle)
-      result = {}
-      includers = Hash.new { |h, k| h[k] = Set.new }
-      ancestors_map = {}
+      result = {} #: Hash[class_key, Set[String]]
+      includers = Hash.new { |h, k| h[k] = Set.new } #: Hash[class_key, Set[class_key]]
+      ancestors_map = {} #: Hash[class_key, Array[class_key]]
 
       @methods.each_key do |key|
-        cache_key = [key[0], key[1]]
+        cache_key = [key[0], key[1]] #: class_key
         next if result.key?(cache_key)
         names = Set.new
-        ancestor_keys = []
+        ancestor_keys = [] #: Array[class_key]
         oracle.each_ancestor_methods(key[0], key[1]) do |ancestor_cpath, s, mids|
           mids.each { |mid| names << mid }
-          ancestor_key = [ancestor_cpath, s]
+          ancestor_key = [ancestor_cpath, s] #: class_key
           if ancestor_key != cache_key
             includers[ancestor_key] << cache_key
             ancestor_keys << ancestor_key
@@ -254,11 +280,12 @@ module Ryac
         ancestors_map[cache_key] = ancestor_keys
       end
 
-      hierarchy = { includers: includers, ancestors: ancestors_map }
+      hierarchy = { includers: includers, ancestors: ancestors_map } #: hierarchy
       [result, hierarchy]
     end
 
-    def find_shortest_name(keys, scope_vars, existing_methods)
+    def find_shortest_name(keys, scope_vars, existing_methods, hierarchy)
+      includers = hierarchy[:includers] || {}
       generator = NameGenerator.new
       loop do
         candidate = generator.next_name
@@ -268,7 +295,12 @@ module Ryac
             cref_id && scope_vars[cref_id].include?(candidate)
           end
           next true if var_collision
-          existing_methods[[key[0], key[1]]]&.include?(candidate) || false
+          class_key = [key[0], key[1]] #: class_key
+          next true if existing_methods[class_key]&.include?(candidate)
+          # The name is also visible in every class that inherits or includes
+          # this one, where a same-named private helper would shadow it for
+          # dispatch through the base — check those namespaces too.
+          (includers[class_key] || []).any? { |ck| existing_methods[ck]&.include?(candidate) }
         end
         return candidate unless collides
       end
@@ -278,7 +310,7 @@ module Ryac
       includers = hierarchy[:includers] || {}
       ancestors = hierarchy[:ancestors] || {}
       keys.each do |key|
-        class_key = [key[0], key[1]]
+        class_key = [key[0], key[1]] #: class_key
         existing_methods[class_key] ||= Set.new
         existing_methods[class_key] << short_name
         (includers[class_key] || []).each do |ck|

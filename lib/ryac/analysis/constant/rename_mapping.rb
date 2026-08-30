@@ -12,8 +12,9 @@ module Ryac
     :char_savings,   # Integer - Net character savings from aliasing
     keyword_init: true
   ) do
-    def initialize(prefix_path: nil, prefix_string: nil, short_name: nil,
+    def initialize(prefix_path: nil, prefix_string: nil, short_name: nil, # steep:ignore UndeclaredMethodDefinition
                    usage_count: nil, char_savings: nil)
+      # @type self: ExternalPrefixInfo
       self.prefix_path = prefix_path || []
       self.prefix_string = prefix_string
       self.short_name = short_name
@@ -32,8 +33,9 @@ module Ryac
     :scope_path,      # Array<Symbol> - Module/class scope where defined
     keyword_init: true
   ) do
-    def initialize(original_name: nil, full_path: nil, short_name: nil,
+    def initialize(original_name: nil, full_path: nil, short_name: nil, # steep:ignore UndeclaredMethodDefinition
                    usage_count: nil, definition_type: nil, scope_path: nil)
+      # @type self: ConstantInfo
       self.original_name = original_name
       self.full_path = full_path || []
       self.short_name = short_name
@@ -59,9 +61,10 @@ module Ryac
     def initialize(boot_roots: nil)
       @boot_roots = boot_roots
       @mappings = {}           # Hash<Array<Symbol>, ConstantInfo> - key is static_cpath
-      @by_name = {}            # Hash<Symbol, Array<ConstantInfo>> - lookup by simple name
+      # keyed by the last path segment
+      @by_name = {}
       @used_short_names = Set.new
-      @external_prefixes = {}  # Hash<Array<Symbol>, ExternalPrefixInfo> - external prefix mappings
+      @external_prefixes = {}
       @prefix_counts = Hash.new(0) # Hash<Array<Symbol>, Integer> - raw prefix reference counts
       @state = :empty
     end
@@ -148,7 +151,7 @@ module Ryac
       end
 
       # Build unified allocation list: [gross_savings_estimate, :internal/:external, object]
-      entries = []
+      entries = [] #: Array[[Integer, Symbol, untyped]]
 
       @mappings.each_value do |info|
         next if skip_class_modules && info.definition_type != :value
@@ -164,35 +167,34 @@ module Ryac
 
       entries.sort_by! { |e| -e[0] }
 
-      # Allocate names in one pass
-      candidate = nil
+      # candidate is assigned on the first iteration and only replaced after
+      candidate = nil #: String?
       entries.each do |_savings, kind, info|
         if candidate.nil?
           candidate = name_generator.next_name
           candidate = name_generator.next_name while existing_names.include?(candidate)
         end
+        cand = candidate #: String
 
         case kind
         when :internal
-          # Names of one or two characters are left alone, matching the
-          # method and ivar renamers. Beyond the negligible savings, this is
-          # what makes re-minification a fixed point: the names this pass
-          # assigns are themselves 1-2 characters, and a second pass must
-          # not shuffle them again.
-          next if info.original_name.to_s.size <= 2
-          next unless info.original_name.to_s.size - candidate.size > 0
-          info.short_name = candidate
-          @used_short_names << candidate
+          # Kept names make re-minification a fixed point: the names this
+          # pass assigns are themselves KEPT_NAME_MAX or shorter, and a
+          # second pass must not shuffle them again.
+          next if info.original_name.to_s.size <= NameGenerator::KEPT_NAME_MAX
+          next unless info.original_name.to_s.size - cand.size > 0
+          info.short_name = cand
+          @used_short_names << cand
 
         when :external
-          saved_per_use = info.prefix_string.size - candidate.size
+          saved_per_use = info.prefix_string.size - cand.size
           next unless saved_per_use > 0
-          declaration_cost = candidate.size + 1 + info.prefix_string.size + 1
+          declaration_cost = cand.size + 1 + info.prefix_string.size + 1
           net_savings = (saved_per_use * info.usage_count) - declaration_cost
           next unless net_savings > 0
-          info.short_name = candidate
+          info.short_name = cand
           info.char_savings = net_savings
-          existing_names << candidate
+          existing_names << cand
           @external_prefixes[info.prefix_path] = info
         end
 
@@ -208,9 +210,10 @@ module Ryac
       renamed.filter_map { |info| build_alias_declaration(info) }
     end
 
-    # Get short name for a constant by static_cpath
+    # Get short name for a constant by static_cpath. The parameter is nilable
+    # for the callers that pass sliced sub-paths; a nil key simply misses.
     def short_name_for_path(static_cpath)
-      info = @mappings[static_cpath]
+      info = static_cpath ? @mappings[static_cpath] : nil
       info&.short_name
     end
 
@@ -249,6 +252,7 @@ module Ryac
 
     # Check if a path is a class or module definition
     def class_or_module_path?(static_cpath)
+      return false unless static_cpath
       info = @mappings[static_cpath]
       info && (info.definition_type == :class || info.definition_type == :module)
     end
@@ -268,7 +272,7 @@ module Ryac
     # Get short name for the prefix of a full external path
     def short_name_for_prefix(full_path)
       return nil if full_path.nil? || full_path.size < 2
-      prefix = full_path[0...-1]
+      prefix = full_path[0...-1] #: Array[Symbol]
       info = @external_prefixes[prefix]
       info&.short_name
     end
@@ -278,14 +282,14 @@ module Ryac
     def generate_prefix_declarations
       sorted = @external_prefixes.values.sort_by { |info| [info.prefix_path.size, -info.char_savings] }
 
-      alias_map = {}
+      alias_map = {} #: Hash[Array[Symbol], String?]
       sorted.map do |info|
         decl_rhs = info.prefix_string
         (info.prefix_path.size - 1).downto(2) do |len|
-          sub = info.prefix_path[0...len]
+          sub = info.prefix_path[0...len] #: Array[Symbol]
           if alias_map.key?(sub)
-            remaining = info.prefix_path[len..].map(&:to_s).join('::')
-            decl_rhs = "#{alias_map[sub]}::#{remaining}"
+            rest = info.prefix_path[len..] #: Array[Symbol]
+            decl_rhs = "#{alias_map[sub]}::#{rest.map(&:to_s).join('::')}"
             break
           end
         end

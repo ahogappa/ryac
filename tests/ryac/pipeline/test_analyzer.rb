@@ -42,10 +42,12 @@ class TestAnalyzer < Minitest::Test
       stdlib_requires: [],
       rbs_files: {}
     )
-    err = assert_raises(Ryac::SyntaxError) do
+    # Inputs are parse-fenced at collection; unparseable text reaching the
+    # analyzer means an upstream stage broke it — an internal failure.
+    err = assert_raises(Ryac::Pipeline::InvalidOutputError) do
       Ryac::Pipeline::Analyzer.new.call(source)
     end
-    assert_equal "at (minify_concat):2:0: unexpected 'end'; expected a `)` to close the parameters", err.message
+    assert_equal "minified pre-rename source does not parse (2:0: unexpected 'end'; expected a `)` to close the parameters)", err.message
   end
 
   # --- rbs_files iteration (line 91) ---
@@ -85,20 +87,14 @@ class TestAnalyzer < Minitest::Test
     assert_equal 'module M;def hello =puts "hi";end;class C;include M;end;C.new.hello', result.code
   end
 
-  # --- find pattern guard ---
+  # --- find patterns ---
 
-  # TypeProf 0.32 cannot ingest find patterns; the analyzer names the
-  # limitation instead of crashing inside the gem.
-  def test_find_pattern_raises_named_error
-    content = "case [1];in [*, x, *rest];puts x;end"
-    source = Ryac::Pipeline::ConcatenatedSource.new(
-      content: content,
-      file_boundaries: [], original_size: content.bytesize, stdlib_requires: [], rbs_files: {}
-    )
-    err = assert_raises(Ryac::MinifyError) do
-      Ryac::Pipeline::Analyzer.new.call(source)
-    end
-    assert_includes err.message, 'find patterns'
+  # Find patterns with NAMED splats never crashed any typeprof — the old
+  # blanket guard rejected them anyway. They must minify. (The anonymous
+  # shapes are covered by the level-test corpus.)
+  def test_named_splat_find_pattern_minifies
+    result = minify_code("case [1, 2, 3]\nin [*pre, mid, *post]\n  puts mid\nend\n")
+    assert_equal 'case [1,2,3];in [*a,b,*c];puts b;end', result.code
   end
 
   # --- lambda with outer scope variable (lines 227-228, 235-241) ---

@@ -1,0 +1,9 @@
+module Ryac
+  module AnalysisPhases
+    GVAR_NODES: Array[Class]
+    type gvar_node = Prism::GlobalVariableReadNode | Prism::GlobalVariableWriteNode | Prism::GlobalVariableTargetNode | Prism::GlobalVariableOperatorWriteNode | Prism::GlobalVariableOrWriteNode | Prism::GlobalVariableAndWriteNode
+
+    def collect_gvar_definitions: (Prism::Node prism_root) -> void
+    def scan_alias_globals: (Prism::Node prism_root) -> void
+  end
+end

@@ -5,12 +5,9 @@ module Ryac
     # Removes unnecessary parentheses from method calls at statement level.
     # Operates as a source patcher: Prism.parse → walk AST → collect patches → apply.
     # Only removes parens; never adds them.
-    class ParenOptimizer
-      def call(input_string, analysis: nil)
-        ast = Prism.parse(input_string).value
-        patches = []
-        walk(ast, input_string, patches, statement_level: true)
-        apply_patches(input_string, patches)
+    class ParenOptimizer < Stage
+      def collect(ctx, patches)
+        walk(ctx.ast, ctx.source, patches, statement_level: true)
       end
 
       private
@@ -137,11 +134,12 @@ module Ryac
         # After hash shorthand (`a:` for `a:a`), `foo a: if cond` is ambiguous.
         raw_args = node.arguments&.arguments || []
         if raw_args.any? { |a| a.is_a?(Prism::KeywordHashNode) }
-          after = source.byteslice(node.closing_loc.end_offset, 10)
+          # opening_loc presence (checked above) implies the paired closing_loc
+          after = source.byteslice(node.closing_loc.end_offset, 10) # steep:ignore NoMethod
           return if after&.match?(/\A (?:if|unless|while|until) /)
         end
 
-        add_paren_removal_patches(node.opening_loc, node.closing_loc, patches)
+        add_paren_removal_patches(node.opening_loc, node.closing_loc, patches) # steep:ignore ArgumentTypeMismatch
       end
 
       def try_remove_yield_parens(node, patches)
@@ -149,7 +147,8 @@ module Ryac
         args = node.arguments&.arguments || []
         return if args.empty?
 
-        add_paren_removal_patches(node.lparen_loc, node.rparen_loc, patches)
+        # lparen_loc presence (checked above) implies the paired rparen_loc
+        add_paren_removal_patches(node.lparen_loc, node.rparen_loc, patches) # steep:ignore ArgumentTypeMismatch
       end
 
       def add_paren_removal_patches(open_loc, close_loc, patches)
@@ -157,13 +156,6 @@ module Ryac
         patches << { start: close_loc.start_offset, end: close_loc.end_offset, replacement: '' }
       end
 
-      def apply_patches(source, patches)
-        result = source.b.dup
-        patches.sort_by { |p| -p[:start] }.each do |patch|
-          result[patch[:start]...patch[:end]] = patch[:replacement]
-        end
-        result.force_encoding(source.encoding)
-      end
     end
   end
 end

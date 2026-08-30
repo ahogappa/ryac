@@ -1,11 +1,13 @@
 module Ryac
   module Pipeline
-    class AttrDeclShorten
+    class AttrDeclShorten < Stage
       include RenamePatcher
 
-      def self.collect_patches_from: (Prism::Node prism_ast, Array[patch_entry] patches, AnalysisResult analysis, ?Hash[Symbol, untyped]? kwargs) -> void
-      def self.postprocess: (String result, AnalysisResult _analysis, String aliases_str, String preamble_str) -> [String, String, String]
-      def collect: (Prism::Node node, Array[patch_entry] patches, AnalysisResult analysis, ?rename_attrs: bool?) -> void
+      @rename_attrs: bool
+
+      def needs_analysis?: () -> bool
+      def initialize: (?rename_attrs: bool) -> void
+      def collect: (StageContext ctx, Array[patch_entry] patches) -> void
 
       private
 

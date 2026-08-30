@@ -1,9 +1,8 @@
 module Ryac
   module Pipeline
-    class EndlessMethod
-      include SourcePatcher
-
-      def call: (String input) -> String
+    class EndlessMethod < Stage
+      def fixpoint?: () -> bool
+      def collect: (StageContext ctx, Array[patch_entry] patches) -> void
 
       private
 

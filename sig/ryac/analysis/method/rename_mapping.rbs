@@ -4,10 +4,14 @@ module Ryac
   type method_key = [Array[Symbol], bool, Symbol]
 
   class MethodRenameMapping
-    include UnionFind
+    MIN_GROUP_SAVINGS: Integer
+    include UnionFind[method_key]
 
     type class_key = [Array[Symbol], bool]
     type method_data = { def_nodes: Array[Prism::Node], call_sites: Array[Prism::Node] }
+    # Both halves optional: assign_short_names substitutes {} when no oracle
+    # is given.
+    type hierarchy = { ?includers: Hash[class_key, Set[class_key]], ?ancestors: Hash[class_key, Array[class_key]] }
 
     class MethodGroupEntry
       attr_accessor keys: Array[method_key]
@@ -21,7 +25,7 @@ module Ryac
     @node_to_key: Hash[Integer, method_key]
     @node_short_names: Hash[[Integer, Integer], String]
     @key_short_names: Hash[method_key, String]
-    @implicit_receiver_sites: Hash[Integer, Integer]
+    @implicit_receiver_sites: Hash[Integer, scope_id]
     @frozen: bool
 
     def initialize: () -> void
@@ -45,7 +49,7 @@ module Ryac
     def each_group_call_site: (method_key method_key) { (Prism::Node, scope_id?) -> void } -> void
 
     def assign_short_names: (scope_mapping_table scope_mappings, ?TypeOracle? oracle) -> void
-    def verify_no_shadowing!: () -> void
+    def verify_no_shadowing!: (?hierarchy hierarchy) -> void
 
     def short_name_for: ([Integer, Integer] node_location_key) -> String?
 
@@ -67,11 +71,11 @@ module Ryac
 
     def groups_by_root: () -> Hash[method_key, Array[method_key]]
 
-    def build_existing_method_names: (TypeOracle oracle) -> [Hash[class_key, Set[String]], Hash[Symbol, Hash[class_key, Set[class_key]]]]
+    def build_existing_method_names: (TypeOracle oracle) -> [Hash[class_key, Set[String]], hierarchy]
 
-    def find_shortest_name: (Array[method_key] keys, Hash[Integer, Set[String]] scope_vars, Hash[class_key, Set[String]] existing_methods) -> String
+    def find_shortest_name: (Array[method_key] keys, Hash[scope_id, Set[String]] scope_vars, Hash[class_key, Set[String]] existing_methods, hierarchy hierarchy) -> String
 
-    def propagate_short_name: (Array[method_key] keys, String short_name, Hash[class_key, Set[String]] existing_methods, Hash[Symbol, Hash[class_key, Set[class_key]]] hierarchy) -> void
+    def propagate_short_name: (Array[method_key] keys, String short_name, Hash[class_key, Set[String]] existing_methods, hierarchy hierarchy) -> void
 
     def assign_short_name: (Array[method_key] keys, String short_name) -> void
   end

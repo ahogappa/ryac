@@ -109,8 +109,11 @@ class TestCompactor < Minitest::Test
     assert_equal '%w[foo bar]', @stage.call('%w[foo bar]')
   end
 
+  # Two symbols are the exact tie point (`%i[foo bar]` = `[:foo,:bar]`);
+  # ties normalize to bracket form.
   def test_array_percent_i
-    assert_equal '%i[foo bar]', @stage.call('%i[foo bar]')
+    assert_equal '[:foo,:bar]', @stage.call('%i[foo bar]')
+    assert_equal '%i[foo bar baz]', @stage.call('%i[foo bar baz]')
   end
 
   def test_range_inclusive
@@ -320,24 +323,21 @@ class TestCompactor < Minitest::Test
     assert_equal 'x||y', @stage.call('x || y')
   end
 
-  def test_and_keyword
-    assert_equal 'x and y', @stage.call('x and y')
+  def test_and_keyword_becomes_operator
+    assert_equal 'x&&y', @stage.call('x and y')
   end
 
-  def test_or_keyword
-    assert_equal 'x or y', @stage.call('x or y')
+  def test_or_keyword_becomes_operator
+    assert_equal 'x||y', @stage.call('x or y')
   end
 
   def test_and_wraps_or_operand
     assert_equal 'x&&(y||z)', @stage.call('x && (y || z)')
+    assert_equal 'x&&(y||z)', @stage.call('x and (y or z)')
   end
 
-  def test_or_keyword_wraps_and
-    assert_equal 'x or (y and z)', @stage.call('x or (y and z)')
-  end
-
-  def test_and_keyword_wraps_or
-    assert_equal 'x and (y or z)', @stage.call('x and (y or z)')
+  def test_or_drops_parens_around_tighter_and
+    assert_equal 'x||y&&z', @stage.call('x or (y and z)')
   end
 
   # --- Return / Break / Next ---
@@ -388,7 +388,7 @@ class TestCompactor < Minitest::Test
   end
 
   def test_rescue_modifier
-    assert_equal '(x rescue nil)', @stage.call('x rescue nil')
+    assert_equal '(x rescue ())', @stage.call('x rescue nil')
   end
 
   # --- Lambda ---
@@ -423,6 +423,29 @@ class TestCompactor < Minitest::Test
       @stage.call(code)
   end
 
+  # Grouping must not move statements across the run: an interleaved
+  # statement breaks the run, and a run under the threshold stays plain.
+  def test_singleton_consolidation_preserves_statement_order
+    code = 'class Foo; def self.a; 1; end; X = 1; def self.b; 2; end; def self.c; 3; end; def self.d; 4; end; def self.e; 5; end; end'
+    assert_equal 'class Foo;def self.a;1;end;X=1;class<<self;def b;2;end;def c;3;end;def d;4;end;def e;5;end;end;end',
+      @stage.call(code)
+  end
+
+  # A `def self.x` nested in a grouped member's body defines a singleton
+  # method at runtime either way — it must keep its `self.` inside the
+  # class<<self block (dropping it would target the singleton's singleton).
+  def test_singleton_consolidation_keeps_nested_self_defs
+    code = 'module M; def self.a; def self.inner; 9; end; end; def self.b; 2; end; def self.c; 3; end; def self.d; 4; end; end'
+    out = @stage.call(code)
+    assert_equal 'module M;class<<self;def a;def self.inner;9;end;end;def b;2;end;def c;3;end;def d;4;end;end;end', out
+    Module.new.module_eval(out.sub('module M', 'module MEvalCheck'))
+  end
+
+  def test_top_level_singleton_defs_group_like_class_bodies
+    code = 'def self.a; 1; end; def self.b; 2; end; def self.c; 3; end; def self.d; 4; end'
+    assert_equal 'class<<self;def a;1;end;def b;2;end;def c;3;end;def d;4;end;end', @stage.call(code)
+  end
+
   # --- Alias / Undef ---
 
   def test_alias
@@ -431,6 +454,16 @@ class TestCompactor < Minitest::Test
 
   def test_undef
     assert_equal 'undef foo', @stage.call('undef foo')
+  end
+
+  # Interpolated symbols cannot drop their colon-quote syntax; plain names
+  # in the same statement still do.
+  def test_alias_interpolated_symbol
+    assert_equal 'alias :"a#{1}" object_id', @stage.call('alias :"a#{1}" :object_id')
+  end
+
+  def test_undef_interpolated_symbol
+    assert_equal 'undef :"m#{2}",to_s', @stage.call('undef :"m#{2}", :to_s')
   end
 
   # --- Defined / POST execution ---
@@ -482,6 +515,41 @@ class TestCompactor < Minitest::Test
       @stage.call('case x; in Integer => n; n; end')
   end
 
+  def test_nil_renders_as_empty_parens
+    assert_equal 'a=();b=[(),()];c={x:()};d=foo(());e=(a=())',
+      @stage.call("a = nil\nb = [nil, nil]\nc = { x: nil }\nd = foo(nil)\ne = (a = nil)")
+  end
+
+  def test_nil_in_parameter_defaults
+    assert_equal 'def f(a=(),b:());[a,b,()];end',
+      @stage.call('def f(a = nil, b: nil); [a, b, nil]; end')
+  end
+
+  def test_nil_in_jump_and_yield
+    assert_equal 'def f;yield(());return ();end',
+      @stage.call("def f\n  yield nil\n  return nil\nend")
+  end
+
+  # Pattern positions reject `()` — every pattern shape keeps the nil
+  # spelling, while the case subject (an expression) converts.
+  def test_nil_in_patterns_stays_nil
+    assert_equal 'case ();in nil;1;in [nil,Integer];2;in nil | 1;3;in {a: nil};4;in (nil)=>n;n;end',
+      @stage.call('case nil; in nil; 1; in [nil, Integer]; 2; in nil | 1; 3; in {a: nil}; 4; in (nil) => n; n; end')
+  end
+
+  def test_nil_in_rightward_patterns_stays_nil
+    assert_equal 'v=();v=>nil;w=(v in nil)',
+      @stage.call("v = nil\nv => nil\nw = (v in nil)")
+  end
+
+  # `()` in the input is the same nil literal this pass emits: it must
+  # round-trip (doubled parens normalize to one pair), not collapse to
+  # the empty string.
+  def test_empty_parens_round_trip
+    assert_equal 'x=();y=()',
+      @stage.call("x = ()\ny = (())")
+  end
+
   def test_pinned_variable
     assert_equal 'case x;in ^y;:yes;end',
       @stage.call('case x; in ^y; :yes; end')
@@ -513,6 +581,16 @@ class TestCompactor < Minitest::Test
     code = 'class Foo; def self.a; 1; end; def self.b; 2; end; def self.c; 3; end; def self.d; 4; end; def bar; 5; end; end'
     assert_equal 'class Foo;class<<self;def a;1;end;def b;2;end;def c;3;end;def d;4;end;end;def bar;5;end;end',
       @stage.call(code)
+  end
+
+  # Flow only ends at the Kernel spellings; a receiver makes raise/fail an
+  # ordinary method call and everything after it must survive.
+  def test_receiver_raise_does_not_truncate
+    assert_equal 'logger.raise(1);puts(2)', @stage.call("logger.raise(1)\nputs 2")
+  end
+
+  def test_receiverless_raise_still_truncates
+    assert_equal 'raise("x")', @stage.call("raise \"x\"\nputs 2")
   end
 
   # --- PinnedExpressionNode (line 121) ---
@@ -748,6 +826,92 @@ class TestCompactor < Minitest::Test
   def test_unknown_node_raises_instead_of_dropping_code
     unknown = Object.new
     error = assert_raises(Ryac::MinifyError) { @stage.send(:r, unknown) }
-    assert_match(/Unknown node/, error.message)
+    assert_equal 'Unknown node: Object', error.message
+  end
+
+  # --- Delimited positions take ranges bare ---
+
+  def test_when_condition_range_is_bare
+    assert_equal 'case x;when 0..10,20..;puts(1);end',
+                 @stage.call("case x\nwhen (0..10), (20..) then puts 1\nend")
+  end
+
+  def test_splat_range_is_bare
+    assert_equal 'a=[*1..2];p(*3..4)', @stage.call("a = [*(1..2)]\np(*(3..4))")
+  end
+
+  def test_argument_and_subscript_ranges_are_bare
+    assert_equal 'f(1..2,k:3..);s[4..];h={a:5..6}',
+                 @stage.call("f((1..2), k: (3..))\ns[(4..)]\nh = { a: (5..6) }")
+  end
+
+  def test_pinned_range_uses_the_pins_own_parens
+    assert_equal 'case y;in ^(0..10);puts(1);end',
+                 @stage.call("case y\nin ^((0..10)) then puts 1\nend")
+  end
+
+  def test_range_keeps_parens_outside_delimited_positions
+    # Receiver and RHS positions still get the defensive parens.
+    assert_equal 'puts((1..3).sum);r=(1..3)', @stage.call("puts (1..3).sum\nr = (1..3)")
+  end
+
+  # --- Flip-flops render structurally, not as a source slice ---
+
+  def test_flipflop_compacts_interior_spacing
+    assert_equal 'if (i==2)..(i==5);puts(i);end',
+                 @stage.call('puts i if (i == 2)..(i == 5)')
+  end
+
+  # --- Floats take their shortest same-value spelling ---
+
+  def test_float_exponent_spellings
+    assert_equal 'p(15e2,5e-4,15e21,0.25,1.5,-3e1)',
+                 @stage.call('p(1500.0, 0.0005, 1.5e+22, 0.25, 1.5, -30.0)')
+  end
+
+  # --- Percent arrays stay percent arrays when static ---
+
+  def test_static_percent_arrays_render_canonically
+    assert_equal 'a=%w[aa bb];b=%w[dd ee];c=[:ff,:gg]',
+                 @stage.call("a = %W[aa bb]\nb = %w(dd ee)\nc = %I[ff gg]")
+  end
+
+  # Bracket arrays of uniform plain words take the %-spelling when it is
+  # strictly shorter; ties and unsafe words (whitespace, brackets,
+  # backslash escapes, interpolation) keep the bracket form.
+  def test_bracket_arrays_take_percent_form_when_shorter
+    assert_equal 'a=%w[alpha beta];b=%i[al be ce];c=["solo"];d=[:a,:b];e=["x y"];f=["a#{b}"]',
+                 @stage.call(%Q{a = ["alpha", "beta"]\nb = [:al, :be, :ce]\nc = ["solo"]\nd = [:a, :b]\ne = ["x y"]\nf = ["a\#{b}"]})
+  end
+
+  def test_interpolating_percent_array_falls_back
+    assert_equal 'x=1;a=["a#{x}","b"]', @stage.call("x = 1\na = %W[a\#{x} b]")
+  end
+
+  # --- and/or always render as the operator form ---
+
+  def test_keyword_and_or_become_operators
+    assert_equal 'a=1;if a&&a>0;puts(9);end;(b=a)||puts(8)',
+                 @stage.call("a = 1\nputs 9 if a and a > 0\nb = a or puts 8")
+  end
+
+  def test_parenthesized_keyword_logic_keeps_its_value
+    # z = (nil or 7) assigns 7; z = nil or 7 assigns nil. The operator form
+    # needs no parens, so the value survives every position.
+    assert_equal 'z=()||7;p(z)', @stage.call("z = (nil or 7)\np z")
+    assert_equal 'p(1&&2)', @stage.call('p((1 and 2))')
+  end
+
+  def test_backslash_symbol_takes_the_quoted_form
+    # `:$\` does not parse bare; the quoted form carries the raw spelling.
+    assert_equal 'p(:"$\\\\")', @stage.call('p(:"$\\\\")')
+    assert_equal 'a=[:x,:"$\\\\"]', @stage.call('a = %i[x $\\\\]')
+  end
+
+  def test_jump_with_value_keeps_parens_under_operator
+    assert_equal 'def m(x);x&&(return 5);9;end',
+                 @stage.call("def m(x); x and (return 5); 9; end")
+    assert_equal 'def n(x);x&&return;9;end',
+                 @stage.call("def n(x); x and return; 9; end")
   end
 end

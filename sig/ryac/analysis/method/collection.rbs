@@ -1,0 +1,25 @@
+module Ryac
+  module AnalysisPhases
+    def collect_method_definitions: (Prism::Node prism_root) -> void
+    def resolve_method_calls: () -> void
+    def scan_dynamic_method_references: (Prism::Node prism_root) -> void
+    def collect_visibility_modifier_methods: (Prism::Node prism_root) -> void
+    def collect_alias_undef_methods: (Prism::Node prism_root) -> void
+
+    DYNAMIC_DISPATCH_METHODS: Array[Symbol]
+    VISIBILITY_MODIFIERS: Array[Symbol]
+    UNRESOLVED_CALL_NODES: Array[Class]
+
+    private
+
+    def link_module_function_variant: (Prism::DefNode def_node, method_key method_key) -> void
+    def merge_super_groups: (Array[[method_key, method_key]] super_merges) -> void
+    def merge_polymorphic_groups: (Hash[location_key, Array[method_key]] call_node_to_keys) -> void
+    def merge_unresolved_calls: (Set[location_key] resolved_call_keys) -> void
+    def classify_unresolved_call: (Symbol mid, Prism::Node node) -> Symbol
+
+    public
+      def collect_shorthand_pun_methods: (Prism::Node prism_root) -> void
+      def collect_attr_write_exclusions: (Prism::Node prism_root) -> void
+  end
+end

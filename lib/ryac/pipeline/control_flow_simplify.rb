@@ -4,21 +4,14 @@ require 'set'
 
 module Ryac
   module Pipeline
-    class ControlFlowSimplify
-      include SourcePatcher
+    class ControlFlowSimplify < Stage
+      # A collapse can make the enclosing construct collapsible in turn,
+      # so this runs to a fixed point.
+      def fixpoint? = true
 
-      def call(input)
-        source = input
-        loop do
-          ast = Prism.parse(source).value
-          patches = []
-          walk(ast, source, patches)
-          break if patches.empty?
-          new_source = apply_patches(source, patches)
-          break if new_source == source
-          source = new_source
-        end
-        source
+      def collect(ctx, patches)
+        @tail_return_ranges = [] #: Array[[Integer, Integer]]
+        walk(ctx.ast, ctx.source, patches)
       end
 
       private
@@ -32,14 +25,16 @@ module Ryac
       def walk(node, source, patches, statement_position = false)
         case node
         when Prism::IfNode
-          if node.end_keyword_loc && source.byteslice(node.if_keyword_loc.start_offset, 2) == 'if'
+          # an IfNode with an end keyword always has its if/elsif keyword location
+          if node.end_keyword_loc && !contains_tail_return_patch?(node) &&
+             source.byteslice(node.if_keyword_loc.start_offset, 2) == 'if' # steep:ignore NoMethod
             if (replacement = try_if(node, source, statement_position))
               patches << mk(node, replacement)
               return
             end
           end
         when Prism::UnlessNode
-          if node.end_keyword_loc
+          if node.end_keyword_loc && !contains_tail_return_patch?(node)
             if (replacement = try_unless(node, source, statement_position))
               patches << mk(node, replacement)
               return
@@ -53,9 +48,69 @@ module Ryac
               return
             end
           end
+        when Prism::DefNode
+          try_tail_return(node, patches)
         end
         child_position = node.is_a?(Prism::StatementsNode)
         node.compact_child_nodes.each { |child| walk(child, source, patches, child_position) }
+      end
+
+      # The value of a def is its last expression, and "last expression"
+      # extends through every construct whose value the def passes along:
+      # both arms of an if/unless, every when/in body, a begin's body,
+      # rescue and else. A `return expr` in any of those tail positions
+      # only restates the flow, so the keyword goes; `return a, b` is the
+      # array [a, b] spelled longer. Loops and blocks are opaque — a
+      # return there escapes the method for real — and a bare `return`
+      # is not the statement's own value, so both stay. A splat builds a
+      # value the bare expression would not.
+      def try_tail_return(node, patches)
+        collect_tail_returns(node.body, patches)
+      end
+
+      def collect_tail_returns(node, patches)
+        case node
+        when Prism::ReturnNode
+          args = node.arguments&.arguments
+          return unless args && !args.empty?
+          return if args.any? { |a| a.is_a?(Prism::SplatNode) }
+
+          replacement = args.size == 1 ? args[0].slice : "[#{args.map(&:slice).join(',')}]"
+          patches << mk(node, replacement)
+          @tail_return_ranges << [node.location.start_offset, node.location.end_offset]
+        when Prism::StatementsNode
+          collect_tail_returns(node.body[-1], patches)
+        when Prism::IfNode
+          collect_tail_returns(node.statements, patches)
+          collect_tail_returns(node.subsequent, patches)
+        when Prism::UnlessNode
+          collect_tail_returns(node.statements, patches)
+          collect_tail_returns(node.else_clause, patches)
+        when Prism::ElseNode, Prism::WhenNode, Prism::InNode
+          collect_tail_returns(node.statements, patches)
+        when Prism::CaseNode, Prism::CaseMatchNode
+          node.conditions.each { |c| collect_tail_returns(c, patches) }
+          collect_tail_returns(node.else_clause, patches)
+        when Prism::BeginNode
+          # The ensure body is not a value position, but its presence
+          # changes nothing about the others: it runs on both spellings.
+          collect_tail_returns(node.statements, patches)
+          collect_tail_returns(node.rescue_clause, patches)
+          collect_tail_returns(node.else_clause, patches)
+        when Prism::RescueNode
+          collect_tail_returns(node.statements, patches)
+          collect_tail_returns(node.subsequent, patches)
+        end
+      end
+
+      # A same-pass conflict guard: a construct on a tail path may itself
+      # be offered as a modifier/ternary rewrite while the return inside
+      # it is already patched. The return wins the pass; the fixpoint
+      # re-offers the outer rewrite on the return-free text.
+      def contains_tail_return_patch?(node)
+        s = node.location.start_offset
+        e = node.location.end_offset
+        @tail_return_ranges.any? { |rs, re| rs >= s && re <= e }
       end
 
       def try_if(node, source, statement_position)
@@ -64,6 +119,9 @@ module Ryac
 
         if node.subsequent.nil?
           return nil unless stmts && AstUtils.single_statement_body?(stmts)
+          if (folded = try_sole_nested_if(node, stmts.body.first, source))
+            return folded
+          end
           body = src(source, stmts)
           return nil if body.include?(';')
           return nil if condition_assigns_var_used_in_body?(node.predicate, stmts)
@@ -90,8 +148,33 @@ module Ryac
         end
       end
 
+      # `if a` wrapping nothing but `if b` runs the inner body exactly when
+      # a && b: the fold drops a whole if;end frame, and the fixpoint then
+      # offers the merged conditional to the modifier and ternary forms.
+      # Evaluation order is untouched — a, then b, then the body — so no
+      # assignment guard is needed. Only else-less if folds into else-less
+      # if: an elsif node is never a body statement, and if_keyword_loc
+      # rules out the ternary form.
+      def try_sole_nested_if(node, inner, source)
+        return nil unless inner.is_a?(Prism::IfNode) && inner.if_keyword_loc
+        return nil unless inner.subsequent.nil? && inner.statements
+
+        left = logic_operand_text(node.predicate, src(source, node.predicate))
+        right = logic_operand_text(inner.predicate, src(source, inner.predicate))
+        "if #{left}&&#{right};#{src(source, inner.statements)};end"
+      end
+
+      # The operand rule is the Compactor's — CFS emits into its dialect.
+      def logic_operand_text(pred, text)
+        Compactor.loose_logic_operand?(pred, tight: true) ? "(#{text})" : text
+      end
+
       def else_text_for_ternary(subsequent, source)
         case subsequent
+        # An elsif chain that just ends: the if's value is nil when no
+        # branch takes, and `()` says so in ternary position.
+        when nil
+          '()'
         when Prism::ElseNode
           stmts = subsequent.statements
           text = stmts ? src(source, stmts) : nil
@@ -110,6 +193,9 @@ module Ryac
           return nil if else_result.nil?
 
           then_node = stmts.body.first if stmts
+          # same rule as the top-level then: a multiple assignment's comma
+          # cannot live inside a ternary branch
+          return nil if then_node.is_a?(Prism::MultiWriteNode)
           build_ternary(subsequent.predicate, cond, then_node, then_body, else_result)
         end
       end
@@ -173,6 +259,7 @@ module Ryac
         return nil unless stmts && AstUtils.single_statement_body?(stmts)
         body = src(source, stmts)
         return nil if body.include?(';')
+        return nil if condition_assigns_var_used_in_body?(node.predicate, stmts)
         return nil if in_collection_context?(node, source)
         cond = src(source, node.predicate)
         "#{body} #{keyword} #{cond}"
@@ -208,10 +295,26 @@ module Ryac
         assigned.intersect?(read)
       end
 
+      # Every node kind that binds a local: plain writes, compound writes
+      # (||= &&= +=), and multi-assignment targets. In the modifier form the
+      # body parses before the condition runs, so a local the condition
+      # binds reads as a method call there — any of these kinds counts.
+      LOCAL_BINDING_NODES = [
+        Prism::LocalVariableWriteNode,
+        Prism::LocalVariableOrWriteNode,
+        Prism::LocalVariableAndWriteNode,
+        Prism::LocalVariableOperatorWriteNode,
+        Prism::LocalVariableTargetNode
+      ].freeze
+
       def collect_assigned_vars(node)
         vars = Set.new
         traverse(node) do |n|
-          vars << n.name if n.is_a?(Prism::LocalVariableWriteNode)
+          case n
+          when *LOCAL_BINDING_NODES
+            # @type var n: Prism::LocalVariableWriteNode | Prism::LocalVariableOrWriteNode | Prism::LocalVariableAndWriteNode | Prism::LocalVariableOperatorWriteNode | Prism::LocalVariableTargetNode
+            vars << n.name
+          end
         end
         vars
       end

@@ -11,7 +11,8 @@ module Ryac
       :require_nodes,         # Array<Hash>: {type:, path:, line:, in_class:} for require/autoload nodes
       :in_class_dependencies  # Array<String>: Absolute paths of files required inside class/module bodies
     ) do
-      def initialize(path:, content:, dependencies:, require_nodes:, in_class_dependencies: [])
+      # declared on the Data class itself in the RBS
+      def initialize(path:, content:, dependencies:, require_nodes:, in_class_dependencies: []) # steep:ignore UndeclaredMethodDefinition
         super
       end
     end
@@ -77,15 +78,24 @@ module Ryac
     )
 
     # Output of Stage 2 (Concatenator), input to Stage 3 (Minifier)
+    #
+    # Stages that rewrite the text rebuild this with #with(content: ...):
+    # original_size and file_boundaries describe the collected input, not the
+    # current text, and #with is what keeps them traveling unchanged.
     ConcatenatedSource = Data.define(
       :content,          # String: All files joined with separators
-      :file_boundaries,  # Array<FileBoundary>: For debugging/source mapping
-      :original_size,    # Integer: Total bytes before concatenation
+      :file_boundaries,  # Array<FileBoundary>: Line ranges are true at concatenation only; the pipeline rewrites the text from compaction on
+      :original_size,    # Integer: Bytes of the input the content descends from
       :stdlib_requires,  # Array<String>: Standard library requires to preserve
       :rbs_files         # Hash<String, String>: path -> RBS content for TypeProf
     ) do
-      def initialize(content:, file_boundaries:, original_size:, stdlib_requires:, rbs_files: {})
-        super
+      # A source built straight from a string (tests, sub-pipelines) has no
+      # file ancestry: everything but the content defaults away, and its
+      # original size is the content itself.
+      def initialize(content:, file_boundaries: [], original_size: nil, stdlib_requires: [], rbs_files: {}) # steep:ignore UndeclaredMethodDefinition
+        super(content: content, file_boundaries: file_boundaries,
+              original_size: original_size || content.bytesize,
+              stdlib_requires: stdlib_requires, rbs_files: rbs_files)
       end
     end
 
@@ -93,7 +103,7 @@ module Ryac
     AnalysisResult = Data.define(
       :prism_ast,                  # Prism::ProgramNode for rebuild
       :scope_mappings,             # Hash: cref_id -> variable mapping
-      :constant_mapping,           # ConstantRenameMapping (frozen, includes external prefixes)
+      :constant_mapping,           # ConstantRenameMapping — short names are assigned by ConstantAliaser#collect, the only stage that reads it
       :rename_map,                 # Hash<location_key, String>: method short names + attr coordinate adjustments
       :method_alias_map,           # Hash<location_key, Symbol>: method alias replacements
       :method_transform_map,       # Hash<location_key, String>: structural transforms (e.g. .first → [0])
@@ -114,7 +124,7 @@ module Ryac
       :cvar_rename_entries,        # Hash<location_key, String>: class variable renames
       :gvar_rename_entries         # Hash<location_key, String>: global variable renames
     ) do
-      def initialize(local_rename_entries: {}, keyword_rename_entries: {}, ivar_rename_entries: {}, attr_ivar_entries: {}, cvar_rename_entries: {}, gvar_rename_entries: {}, **kwargs)
+      def initialize(local_rename_entries: {}, keyword_rename_entries: {}, ivar_rename_entries: {}, attr_ivar_entries: {}, cvar_rename_entries: {}, gvar_rename_entries: {}, **kwargs) # steep:ignore UndeclaredMethodDefinition
         super(local_rename_entries: local_rename_entries, keyword_rename_entries: keyword_rename_entries, ivar_rename_entries: ivar_rename_entries, attr_ivar_entries: attr_ivar_entries, cvar_rename_entries: cvar_rename_entries, gvar_rename_entries: gvar_rename_entries, **kwargs)
       end
     end
@@ -127,26 +137,42 @@ module Ryac
       :file_count         # Integer: Number of files processed
     )
 
-    # Internal return type for L2-L5 rename pipeline stages
+    # Internal return type of the rename stages: the parts of the program,
+    # not yet assembled. code deliberately carries no requires and no
+    # preamble — the Minifier joins the parts into MinifiedResult#content,
+    # which is why the field is not called content.
     RenameResult = Data.define(
-      :code,      # String: Minified Ruby code (without declarations)
+      :code,      # String: Minified Ruby code alone (no requires, no preamble)
       :aliases,   # String: Backward-compatible constant alias declarations (e.g. "MyClass=A;Foo=B")
       :preamble   # String: External prefix declarations (e.g. "A=Process") — must execute before code
     ) do
-      def initialize(code:, aliases: '', preamble: '')
+      def initialize(code:, aliases: '', preamble: '') # steep:ignore UndeclaredMethodDefinition
         super
       end
     end
 
-    # Final output of the pipeline
+    # Final output of the pipeline.
+    #
+    # content is the assembled runnable program: stdlib requires, then the
+    # preamble, then the minified code. preamble is a slice of content
+    # carried separately so callers that split output can identify it —
+    # never something to append to content again. aliases are the one part
+    # kept out: optional compatibility shims, attached by full_content or
+    # written to their own file.
     MinifiedResult = Data.define(
-      :content,   # String: Minified Ruby code
+      :content,   # String: requires + preamble + minified code
       :aliases,   # String: Backward-compatible constant alias declarations
-      :preamble,  # String: External prefix declarations
+      :preamble,  # String: External prefix declarations (already included in content)
       :stats      # CompressionStats
     ) do
-      def initialize(content:, aliases: '', preamble: '', stats:)
+      def initialize(content:, aliases: '', preamble: '', stats:) # steep:ignore UndeclaredMethodDefinition
         super
+      end
+
+      # The program with its alias shims attached — what a caller runs when
+      # not splitting the aliases into a separate file.
+      def full_content # steep:ignore UndeclaredMethodDefinition
+        aliases.empty? ? content : "#{content};#{aliases}" # steep:ignore NoMethod
       end
     end
   end

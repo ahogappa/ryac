@@ -1,9 +1,7 @@
 module Ryac
   module Pipeline
-    class CharShorten
-      include SourcePatcher
-
-      def call: (String input) -> String
+    class CharShorten < Stage
+      def collect: (StageContext ctx, Array[patch_entry] patches) -> void
 
       private
 

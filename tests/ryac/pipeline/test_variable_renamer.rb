@@ -115,7 +115,9 @@ class TestVariableRenamer < Minitest::Test
     code = 'class T;def walk(node,depth:);depth;end;end;' \
            'x=Object.const_get(:T).new;puts x.walk(1,depth:5)'
     result = minify_at_level(code, 3)
-    assert_includes result.code, 'def walk(a,depth:)'
+    assert_equal 'class T;def walk(a,depth:) =depth;end;' \
+                 'a=Object.const_get(:T).new;puts a.walk(1,depth:5)',
+                 result.code
   end
 
   # === L4 group: ivars, cvars, gvars, multi-assign (verify_output: true) ===

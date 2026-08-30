@@ -36,12 +36,12 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   spec.add_dependency "prism", ">= 1.4.0"
-  # 0.32.0 is the first release containing the constant-resolution fixes this
-  # gem relies on; 0.31.x aborts while analyzing some real-world sources.
+  # The floor is the first release with the constant-resolution fixes this
+  # gem relies on; older releases abort while analyzing some real-world
+  # sources.
   spec.add_dependency "typeprof", ">= 0.32.0"
   # rbs is a transitive dependency via typeprof, but the bound belongs here:
-  # from 4.1.0 on, TypeProf::Core::Service.new never finishes loading the core
-  # RBS files, which hangs every run that reaches the rename stages.
+  # past the upper bound, TypeProf::Core::Service.new never finishes loading
+  # the core RBS files, which hangs every run that reaches the rename stages.
   spec.add_dependency "rbs", ">= 3.6.0", "< 4.1.0"
-  spec.add_dependency "rubocop"
 end

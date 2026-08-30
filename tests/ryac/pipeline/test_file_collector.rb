@@ -3,6 +3,29 @@
 require_relative '../../test_helper'
 
 class TestFileCollector < Minitest::Test
+  # A broken input file must fail at collection, named and located —
+  # not three stages later as a nameless internal error.
+  def test_syntax_error_names_the_file_and_position
+    require 'tmpdir'
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, 'broken.rb')
+      File.write(path, "def f(\nend\n")
+      err = assert_raises(Ryac::SyntaxError) { Ryac::Pipeline::FileCollector.new.call(path) }
+      assert_equal path, err.path
+      assert_equal 2, err.line
+      assert_equal "#{path}:2:0: unexpected 'end'; expected a `)` to close the parameters", err.message
+    end
+  end
+
+  def test_input_and_internal_errors_split_under_one_root
+    assert_operator Ryac::Pipeline::StageError, :<, Ryac::InputError
+    assert_operator Ryac::Pipeline::InvalidOutputError, :<, Ryac::InternalError
+    assert_operator Ryac::Pipeline::RenameCollisionError, :<, Ryac::InternalError
+    assert_operator Ryac::SyntaxError, :<, Ryac::InputError
+    assert_operator Ryac::MinifyError, :<, Ryac::InputError
+    [Ryac::InputError, Ryac::InternalError].each { |c| assert_operator c, :<, Ryac::Error }
+  end
+
   def setup
     @collector = Ryac::Pipeline::FileCollector.new
     @fixtures_dir = File.expand_path('../../fixtures/multi_file', __dir__)
@@ -179,6 +202,36 @@ class TestFileCollector < Minitest::Test
       assert_equal formatter_path, autoload_nodes.first[:resolved_path]
     ensure
       $LOAD_PATH.delete(fixture_dir)
+    end
+  end
+
+  def test_autoload_with_dir_interpolation_collects_dependency
+    fixture_dir = File.join(@fixtures_dir, 'autoload_dir_test')
+    entry_path = File.join(fixture_dir, 'main.rb')
+    helper_path = File.join(fixture_dir, 'mixin', 'helper.rb')
+
+    graph = @collector.call(entry_path)
+    entry = graph[entry_path]
+    autoload_nodes = entry.require_nodes.select { |n| n[:type] == :autoload }
+    assert_equal 1, autoload_nodes.size
+    assert_equal helper_path, autoload_nodes.first[:resolved_path]
+    assert graph[helper_path], "autoloaded file should be collected"
+  end
+
+  # The __dir__ exception is exactly one shape; any other interpolation is
+  # still dynamic and still fails loudly.
+  def test_autoload_with_non_dir_interpolation_raises
+    Dir.mktmpdir do |tmpdir|
+      entry = File.join(tmpdir, 'entry.rb')
+      File.write(entry, <<~'RUBY')
+        prefix = 'helper'
+        autoload :Helper, "./#{prefix}"
+      RUBY
+
+      error = assert_raises Ryac::Pipeline::DynamicRequireError do
+        @collector.call(entry)
+      end
+      assert_equal %(Dynamic require at #{entry}:2: autoload :Helper, "./\#{prefix}"), error.message
     end
   end
 

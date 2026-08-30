@@ -7,20 +7,30 @@ module Ryac
     LETTERS = ('a'..'z').to_a.freeze
     DIGITS = ('0'..'9').to_a.freeze
 
+    # A one- or two-character name is as short as this generator's own
+    # output; the rename families keep such names untouched, so a second
+    # minification pass reassigns nothing and the output is a fixed point.
+    KEPT_NAME_MAX = 2
+
+    # additional_excluded holds FINAL names — prefix and case included —
+    # which is what every caller has in hand (kept originals, reserved
+    # names). Comparing before prefixing would make seeding useless to the
+    # prefixed families and force each to re-check by hand.
     def initialize(additional_excluded = [], prefix: "", upcase: false)
       @index = 0
       @prefix = prefix
       @upcase = upcase
-      @excluded = Set.new(additional_excluded) if additional_excluded.any?
+      @excluded = Set.new(additional_excluded)
     end
 
     def next_name
       loop do
         name = index_to_name(@index)
         @index += 1
-        next if @excluded&.include?(name)
         name = name.upcase if @upcase
-        return "#{@prefix}#{name}"
+        final = "#{@prefix}#{name}"
+        next if @excluded.include?(final)
+        return final
       end
     end
 

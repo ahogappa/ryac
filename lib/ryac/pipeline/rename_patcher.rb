@@ -7,14 +7,6 @@ module Ryac
     module RenamePatcher
       private
 
-      def apply_patches(source, patches)
-        result = source.b.dup
-        patches.sort_by { |p| -p[:start] }.each do |patch|
-          result[patch[:start]...patch[:end]] = patch[:replacement].b
-        end
-        result.force_encoding('UTF-8')
-      end
-
       def walk_prism(node, &block)
         return unless node
         result = yield node
@@ -56,7 +48,7 @@ module Ryac
       def patch_def_params(node, patches, analysis, param_names_key)
         return unless node.parameters
 
-        syntax_key = [node.location.start_line, node.location.start_column]
+        syntax_key = AstUtils.line_col_key(node)
         data = analysis.syntax_data[syntax_key]
         return unless data
 
@@ -65,7 +57,7 @@ module Ryac
         # and whether it can differs between the original and the minified
         # text. Self-hosting then never reaches a fixed point. `any?` has no
         # such rewrite.
-        param_names = data[param_names_key] || {}
+        param_names = data[param_names_key] || {} #: Hash[Symbol, String]
         return unless param_names.any?
 
         params = node.parameters
@@ -120,11 +112,17 @@ module Ryac
         end
       end
 
+      # Shared tail of the rest/**rest/&block patchers: Prism types their
+      # name_loc as nullable, but a named parameter always carries one.
+      def patch_named_param(name, name_loc, param_names, patches)
+        short = param_names[name]
+        return unless name_loc && short && short != name.to_s
+        patches << { start: name_loc.start_offset, end: name_loc.end_offset, replacement: short }
+      end
+
       def patch_rest_param(rest, param_names, patches)
         return unless rest.is_a?(Prism::RestParameterNode) && rest.name
-        short = param_names[rest.name]
-        return unless short && short != rest.name.to_s
-        patches << { start: rest.name_loc.start_offset, end: rest.name_loc.end_offset, replacement: short }
+        patch_named_param(rest.name, rest.name_loc, param_names, patches)
       end
 
       def patch_post_params(posts, param_names, patches)
@@ -148,16 +146,12 @@ module Ryac
 
       def patch_keyword_rest(keyword_rest, param_names, patches)
         return unless keyword_rest.is_a?(Prism::KeywordRestParameterNode) && keyword_rest.name
-        short = param_names[keyword_rest.name]
-        return unless short && short != keyword_rest.name.to_s
-        patches << { start: keyword_rest.name_loc.start_offset, end: keyword_rest.name_loc.end_offset, replacement: short }
+        patch_named_param(keyword_rest.name, keyword_rest.name_loc, param_names, patches)
       end
 
       def patch_block_param_node(block, param_names, patches)
         return unless block.is_a?(Prism::BlockParameterNode) && block.name
-        short = param_names[block.name]
-        return unless short && short != block.name.to_s
-        patches << { start: block.name_loc.start_offset, end: block.name_loc.end_offset, replacement: short }
+        patch_named_param(block.name, block.name_loc, param_names, patches)
       end
 
       def patch_block_params(node, patches, block_param_names_map)
@@ -198,11 +192,11 @@ module Ryac
       end
 
       def patch_for_node(node, patches, analysis, mangled_key)
-        syntax_key = [node.location.start_line, node.location.start_column]
+        syntax_key = AstUtils.line_col_key(node)
         data = analysis.syntax_data[syntax_key]
         return unless data
 
-        target_name = data[mangled_key]
+        target_name = data[mangled_key] #: String?
         return unless target_name
 
         idx = node.index

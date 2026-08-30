@@ -1,0 +1,27 @@
+module Ryac
+  module AnalysisPhases
+    def collect_keyword_info: (Prism::Node prism_root) -> void
+
+    private
+
+    def each_attr_declaration: (Prism::Node prism_root, Array[Symbol] methods, ?require_class_body: bool) { (Prism::CallNode, Array[Symbol], bool, Symbol) -> void } -> void
+    def def_keyword_names: (Prism::DefNode def_node) -> Array[Symbol]
+    def def_keyword_rest?: (Prism::DefNode def_node) -> bool
+    def collect_keyword_call_sites: (Prism::Node prism_root) -> void
+    def forwards_parameters_to_super?: (Prism::DefNode def_node) -> bool
+    def register_keyword_calls: () -> Hash[Symbol, untyped]
+    def merge_super_forwarding: (Array[[method_key, method_key]] super_merges) -> void
+    def merge_polymorphic_keyword_groups: (Hash[location_key, Array[method_key]] call_node_to_keys) -> void
+    def exclude_unreachable_keyword_methods: (Array[method_key] zero_call_keys, Array[[method_key, method_key]] super_merges) -> void
+    def exclude_unresolved_keyword_calls: (Prism::Node prism_root, Set[location_key] resolved_site_keys) -> void
+    def carries_keyword_arguments?: (Prism::CallNode call_node) -> bool
+
+    public
+      @keyword_def_node_registry: Hash[method_key, Array[Prism::DefNode]]
+      @keyword_forwarding_super_keys: Set[method_key]
+
+      private
+
+      def exclude_method_valued_shorthand_calls: (Prism::Node prism_root) -> void
+  end
+end

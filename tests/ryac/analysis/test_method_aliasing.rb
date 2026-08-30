@@ -18,6 +18,10 @@ class TestMethodAliasing < Minitest::Test
     'class G;def m(a);a.empty?;end;end;puts G.new.m([])',
     'class H;def m(s);s.empty?;end;end;puts H.new.m("")',
     'class I;def m(h);h.empty?;end;end;puts I.new.m({})',
+    'class J;def m(a);a.size == 0;end;end;puts J.new.m([])',
+    'class K;def m(s);s.length != 0;end;end;puts K.new.m("x")',
+    'class L;def m(h);h.count > 0;end;end;puts L.new.m({})',
+    'class M;def m(s);s.length > 2;end;end;puts M.new.m("abc")',
   ].join(';')
 
   L5_GROUP_EXPECTED =
@@ -30,7 +34,11 @@ class TestMethodAliasing < Minitest::Test
     'class F;def m(a) =a==0;end;puts F.new.m(0);' \
     'class G;def m(a) =a==[];end;puts G.new.m([]);' \
     'class H;def m(a) =a=="";end;puts H.new.m("");' \
-    'class I;def m(a) =a=={};end;puts I.new.m({})'
+    'class I;def m(a) =a=={};end;puts I.new.m({});' \
+    'class J;def m(a) =a==[];end;puts J.new.m([]);' \
+    'class K;def m(a) =a!="";end;puts K.new.m(?x);' \
+    'class L;def m(a) =a!={};end;puts L.new.m({});' \
+    'class M;def m(a) =a.size>2;end;puts M.new.m("abc")'
 
   def l5_group
     @l5_group ||= minify_at_level(L5_GROUP_CODE, 5)

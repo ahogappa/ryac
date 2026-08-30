@@ -8,7 +8,7 @@ require_relative '../test_helper'
 # silent corruption into a failed run at the stage that caused it.
 class TestPostconditions < Minitest::Test
   class Probe
-    include Ryac
+    include Ryac::RenameInvariants
   end
 
   def test_output_that_does_not_parse_is_rejected
@@ -16,7 +16,11 @@ class TestPostconditions < Minitest::Test
     error = assert_raises(Ryac::Pipeline::InvalidOutputError) do
       minifier.send(:verify_parses, 'def f(', 'content')
     end
-    assert_match(/content does not parse/, error.message)
+    assert_equal 'minified content does not parse (1:6: unexpected end-of-input; ' \
+                 'expected a `)` to close the parameters; 1:6: unexpected end-of-input, ' \
+                 'assuming it is closing the parent top level context; ' \
+                 '1:0: expected an `end` to close the `def` statement)',
+                 error.message
   end
 
   def test_duplicated_parameter_names_are_rejected_as_unparseable
@@ -31,12 +35,19 @@ class TestPostconditions < Minitest::Test
     minifier.send(:verify_parses, '', 'aliases')
   end
 
+  def test_analysis_stage_rejects_the_standalone_driver
+    error = assert_raises(Ryac::InternalError) do
+      Ryac::Pipeline::ConstantAliaser.new.call('x = 1')
+    end
+    assert_equal 'Ryac::Pipeline::ConstantAliaser needs analysis; run it through StageRunner',
+                 error.message
+  end
+
   def test_two_locals_collapsing_into_one_name_is_rejected
     error = assert_raises(Ryac::Pipeline::RenameCollisionError) do
       Probe.new.verify_injective!({ code: 'c', rbs_files: 'c' }, 'def run_stages')
     end
-    assert_match(/def run_stages/, error.message)
-    assert_match(/code, rbs_files -> c/, error.message)
+    assert_equal 'rename collision in def run_stages: code, rbs_files -> c', error.message
   end
 
   def test_distinct_local_names_pass
@@ -52,7 +63,8 @@ class TestPostconditions < Minitest::Test
     shorts[[[:AstUtils], false, :expressionish?]] = 'g'
 
     error = assert_raises(Ryac::Pipeline::RenameCollisionError) { mapping.verify_no_shadowing! }
-    assert_match(/AstUtils#/, error.message)
+    assert_equal 'rename collision in AstUtils#: unwrap_statements, expressionish? -> g',
+                 error.message
   end
 
   def test_renamed_method_landing_on_a_kept_name_is_rejected

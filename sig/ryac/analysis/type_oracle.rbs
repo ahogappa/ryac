@@ -1,5 +1,12 @@
 module Ryac
+  # The TypeProf aliases live with the one class allowed to touch them.
+  type tp_node = TypeProf::Core::AST::Node
+  type tp_genv = TypeProf::Core::GlobalEnv
+
   class TypeOracle
+    def self.boot: (String content, Hash[String, String] rbs_files) -> TypeOracle
+    def self.raw_prism_node: (tp_node node) -> Prism::Node?
+
     class CallerInfo
       attr_accessor prism_node: Prism::Node?
       attr_accessor super: bool
@@ -13,12 +20,16 @@ module Ryac
 
     TP_CALL_NODES: Array[Class]
 
-    @genv: TypeProf::Core::GlobalEnv
-    @tp_root: TypeProf::Core::AST::Node
-    @tp_calls_by_loc: Hash[location_key, Hash[Symbol, TypeProf::Core::AST::Node]]?
-    @tp_consts_by_loc: Hash[location_key, TypeProf::Core::AST::ConstantReadNode]?
+    @genv: tp_genv
+    @tp_root: tp_node
+    @ancestor_cpaths: Hash[MethodRenameMapping::class_key, Array[Array[Symbol]]]
+    @const_resolution_cache: Hash[location_key, Array[Symbol]?]
+    @method_cache: Hash[method_key, TypeProf::Core::MethodEntity?]
+    # Both built by build_tp_indexes before first read.
+    @tp_calls_by_loc: Hash[location_key, Hash[Symbol, TypeProf::Core::AST::CallBaseNode]]
+    @tp_consts_by_loc: Hash[location_key, TypeProf::Core::AST::ConstantReadNode]
 
-    def initialize: (TypeProf::Core::GlobalEnv genv, TypeProf::Core::AST::Node tp_root) -> void
+    def initialize: (tp_genv genv, tp_node tp_root) -> void
 
     def each_ancestor_cpath: (Array[Symbol] cpath, bool singleton) { (Array[Symbol]) -> void } -> void
     def each_ancestor_methods: (Array[Symbol] cpath, bool singleton) { (Array[Symbol], bool, Array[String]) -> void } -> void
@@ -37,11 +48,14 @@ module Ryac
 
     private
 
+    def tp_key: (tp_node node) -> location_key
     def resolve_method: (Array[Symbol] cpath, bool singleton, Symbol mid) -> untyped
+    def every_receiver_base_type: (Prism::CallNode prism_call_node) { (untyped) -> boolish } -> bool
     def type_responds_to?: (untyped mod, bool singleton, Symbol mid) -> bool
     def mod_is_or_inherits?: (untyped mod, untyped target) -> bool
-    def tp_call_for: (Prism::Node prism_node, Symbol mid) -> TypeProf::Core::AST::Node?
+    def tp_call_for: (Prism::Node prism_node, Symbol mid) -> TypeProf::Core::AST::CallBaseNode?
     def tp_const_for: (Prism::Node prism_node) -> TypeProf::Core::AST::ConstantReadNode?
-    def resolve_tp_const: (TypeProf::Core::AST::Node node) -> Array[Symbol]?
+    def build_tp_indexes: () -> void
+    def resolve_tp_const: (tp_node node) -> Array[Symbol]?
   end
 end

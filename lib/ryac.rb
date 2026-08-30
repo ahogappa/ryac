@@ -1,8 +1,9 @@
 # frozen_string_literal: true
 
-require 'typeprof'
 require 'prism'
 require 'rbconfig'
+
+require_relative "ryac/errors"
 require_relative "ryac/ast_utils"
 require_relative "ryac/version"
 require_relative "ryac/name_generator"
@@ -17,9 +18,8 @@ require_relative "ryac/analysis/method_aliasing"
 require_relative "ryac/union_find"
 require_relative "ryac/analysis/method/rename_mapping"
 require_relative "ryac/analysis/method/collection"
-require_relative "ryac/analysis/ivar/rename_mapping"
+require_relative "ryac/analysis/site_bucket_mapping"
 require_relative "ryac/analysis/ivar/collection"
-require_relative "ryac/analysis/cvar/rename_mapping"
 require_relative "ryac/analysis/cvar/collection"
 require_relative "ryac/analysis/gvar/rename_mapping"
 require_relative "ryac/analysis/gvar/collection"
@@ -27,9 +27,3 @@ require_relative "ryac/analysis/keyword/rename_mapping"
 require_relative "ryac/analysis/keyword/collection"
 require_relative "ryac/minifier"
 require_relative "ryac/gem_resolver"
-
-module Ryac
-  class Error < StandardError; end
-  class MinifyError < Error; end
-  class SyntaxError < Error; end
-end

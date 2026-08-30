@@ -5,6 +5,11 @@ source "https://rubygems.org"
 # Specify your gem's dependencies in ryac.gemspec
 gemspec
 
+# Tracks master: the corpus exercises pattern shapes (anonymous-splat find
+# patterns, `**nil`, bare block pipes) that no released typeprof ingests
+# yet. Bump the gemspec floor to the next typeprof release when it ships.
+gem "typeprof", github: "ruby/typeprof"
+
 gem "rake", "~> 13.0"
 
 group :development, :test do

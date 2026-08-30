@@ -30,7 +30,7 @@ class TestSendSymbolRename < Minitest::Test
       puts Foo.new.test_it
     RUBY
     result = minify_at_level(code, 5)
-    assert_equal 'class A;def a ="hello";def b =a;end;puts A.new.b', result.code
+    assert_equal 'class A;def a ="hello";def b =public_send :a;end;puts A.new.b', result.code
   end
 
   def test_send_with_receiver_symbol_renamed

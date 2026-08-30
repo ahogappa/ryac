@@ -1,26 +1,34 @@
 module Ryac
   module Pipeline
-    class Analyzer < Stage
-      include Ryac
+    class Analyzer
+      include AnalysisPhases
 
-      def call: (ConcatenatedSource source) -> AnalysisResult
-      def syntax_data_for: (Prism::ProgramNode prism_ast) -> Hash[Array[Integer], Hash[Symbol, syntax_value]]
+      @syntax_data: syntax_data_map
+      # Values are { type: Symbol } or { type: Symbol, args: Array[Symbol] };
+      # kept untyped-valued because syntax_value has no Array member.
+      @meta_node_map: Hash[location_key, meta_node_entry]
+
       def self.prism_only: (ConcatenatedSource source) -> AnalysisResult
       def self.prism_only_from_string: (String content, ?source: ConcatenatedSource?) -> AnalysisResult
+      def call: (ConcatenatedSource source) -> AnalysisResult
+      def syntax_data_for: (Prism::ProgramNode prism_ast) -> syntax_data_map
 
       private
 
       def without_stdout_pollution: [T] () { () -> T } -> T
-      def setup_typeprof: (ConcatenatedSource source) -> [Prism::ParseResult, TypeProf::Core::AST::Node, TypeProf::Core::GlobalEnv]
+      def setup_typeprof: (ConcatenatedSource source) -> [Prism::ParseResult, TypeOracle]
       def analyze_keywords_and_scopes: () -> void
       def analyze_methods_phase: () -> void
       def analyze_variables_phase: () -> void
       def analyze_constants_phase: () -> void
       def precompute_rename_entries: () -> Hash[location_key, String]
       def build_analysis_result: (Prism::ParseResult prism_result, ConcatenatedSource source, Hash[location_key, String] rename_map, Hash[location_key, Symbol] method_alias_map, Hash[location_key, String] method_transform_map, Hash[location_key, Hash[Symbol, String]] attr_rename_map, Hash[location_key, String] attr_ivar_entries, Hash[location_key, String] local_rename_entries) -> AnalysisResult
+
+      META_CALL_METHODS: Array[Symbol]
+
       def precompute_meta_nodes: () -> void
-      def collect_syntax_data: (Prism::ProgramNode prism_ast) -> Hash[Array[Integer], Hash[Symbol, syntax_value]]
-      def traverse_prism: (Prism::Node node, Hash[Array[Integer], Hash[Symbol, syntax_value]] data) -> void
+      def collect_syntax_data: (Prism::ProgramNode prism_ast) -> syntax_data_map
+      def traverse_prism: (Prism::Node node, syntax_data_map data) -> void
     end
   end
 end

@@ -1,9 +1,7 @@
 module Ryac
   module Pipeline
-    class BooleanShorten
-      include SourcePatcher
-
-      def call: (String input) -> String
+    class BooleanShorten < Stage
+      def collect: (StageContext ctx, Array[patch_entry] patches) -> void
 
       private
 

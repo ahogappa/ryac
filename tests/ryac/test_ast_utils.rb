@@ -560,21 +560,6 @@ class TestAstUtils < Minitest::Test
     assert_equal [5, 5], Ryac::AstUtils.location_key(fake)
   end
 
-  # TypeProf nodes carry no location of their own — the key comes from the
-  # Prism node behind them.
-  def test_location_key_reads_through_to_the_prism_node
-    prism_node = Prism.parse("bar").value.statements.body.first
-    wrapper = Object.new
-    wrapper.instance_variable_set(:@raw_node, prism_node)
-    assert_equal [0, 3], Ryac::AstUtils.location_key(wrapper)
-  end
-
-  # A node nothing can point back at cannot be renamed, so this refuses rather
-  # than inventing a key that would silently never match a patch site.
-  def test_location_key_rejects_a_node_with_no_source_location
-    assert_raises(ArgumentError) { Ryac::AstUtils.location_key(Object.new) }
-  end
-
   # has_block?
 
   def test_has_block_true

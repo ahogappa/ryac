@@ -1,10 +1,29 @@
 # frozen_string_literal: true
 
 require_relative '../../test_helper'
+require 'tmpdir'
 
 class TestConcatenator < Minitest::Test
   def setup
     @concatenator = Ryac::Pipeline::Concatenator.new
+  end
+
+  # Prism reports byte offsets; splicing them into a String as character
+  # indices shifts every slice that follows a multibyte character. A comment
+  # with an em-dash before a require is enough to reproduce.
+  def test_require_removal_after_multibyte_bytes
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, 'dep.rb'), "DEP = 1\n")
+      entry = File.join(dir, 'entry.rb')
+      File.write(entry, "# — this dash is three bytes, one character\nrequire_relative 'dep'\nmodule M\nend\nputs DEP\n")
+
+      graph = Ryac::Pipeline::FileCollector.new.call(entry, project_root: dir)
+      result = @concatenator.call(graph)
+
+      assert_equal "DEP = 1\n\n# — this dash is three bytes, one character\nmodule M\nend\nputs DEP\n",
+                   result.content
+      assert_equal Encoding::UTF_8, result.content.encoding
+    end
   end
 
   def test_single_file
@@ -215,7 +234,7 @@ class TestConcatenator < Minitest::Test
     )
     result = @concatenator.call(graph)
     assert_empty result.stdlib_requires, "in-method require must not be hoisted"
-    assert_includes result.content, 'require "stackprof"', "in-method require must stay in place"
+    assert_equal content, result.content, "in-method require must stay in place"
   end
 
   def test_top_level_stdlib_require_still_hoisted
@@ -237,7 +256,7 @@ class TestConcatenator < Minitest::Test
     )
     result = @concatenator.call(graph)
     assert_equal ["zlib"], result.stdlib_requires
-    refute_includes result.content, 'require "zlib"'
+    assert_equal "class R\nend", result.content
   end
 
   def test_autoload_declaration_removed_when_dependency_inlined

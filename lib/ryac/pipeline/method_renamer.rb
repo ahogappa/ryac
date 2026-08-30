@@ -3,28 +3,24 @@
 module Ryac
   module Pipeline
     # Method renaming: renames method definitions and call sites.
-    class MethodRenamer
+    class MethodRenamer < Stage
       include RenamePatcher
 
-      def self.collect_patches_from(prism_ast, patches, analysis, _kwargs = nil)
-        new.run_collect(prism_ast, patches, analysis)
-      end
+      def needs_analysis? = true
 
-      def self.postprocess(result, _analysis, aliases_str, preamble_str)
-        [result, aliases_str, preamble_str]
-      end
-
-      def run_collect(prism_ast, patches, analysis)
+      def collect(ctx, patches)
+        analysis = analysis(ctx)
         rename_map = analysis.rename_map
         method_alias_map = analysis.method_alias_map
         @negated_transforms = {}
         @source_bytes = analysis.source.content
-        collect_patches(prism_ast, patches, analysis, rename_map, method_alias_map)
+        collect_patches(ctx.ast, patches, analysis, rename_map, method_alias_map)
       end
 
       private
 
       def collect_patches(node, patches, analysis, rename_map, method_alias_map)
+        # @type var callback: ^(Prism::Node) -> void
         callback = proc { |subnode|
           handle_node(subnode, patches, analysis, rename_map, method_alias_map)
         }
@@ -88,7 +84,15 @@ module Ryac
             end_offset += 1 if @source_bytes.getbyte(end_offset) == 0x20 # consume space after ?
             replacement = "#{replacement}?"
           end
-          patches << { start: node.call_operator_loc.start_offset, end: end_offset, replacement: replacement }
+          # call_operator_loc was checked at the top of this branch
+          patches << { start: node.call_operator_loc.start_offset, end: end_offset, replacement: replacement } # steep:ignore NoMethod
+          return
+        elsif transform && !node.call_operator_loc && node.receiver.is_a?(Prism::CallNode)
+          # A comparison-shape transform (.size==0 → ==[]), registered on
+          # the operator call whose receiver is the size query: the patch
+          # swallows the query and the comparison together.
+          receiver_end = node.receiver.receiver.location.end_offset # steep:ignore NoMethod
+          patches << { start: receiver_end, end: node.location.end_offset, replacement: transform }
           return
         end
 
@@ -111,7 +115,17 @@ module Ryac
           msg_slice = node.message_loc.slice
           replacement = replacement.chomp('=') unless msg_slice.end_with?('=')
         end
-        patches << { start: node.message_loc.start_offset, end: node.message_loc.end_offset, replacement: replacement }
+
+        end_offset = node.message_loc.end_offset
+        # The compactor separates a ?/!-ending name from an =-starting
+        # operator with one protective space. A rename that drops the ?/!
+        # must take the space with it — left behind, re-minification removes
+        # it and the self-host fixed point drifts by a byte per site.
+        if node.name.to_s.end_with?('?', '!') && !replacement.end_with?('?', '!') &&
+           @source_bytes.getbyte(end_offset) == 0x20 && @source_bytes.getbyte(end_offset + 1) == 0x3D # ' ' then '='
+          end_offset += 1
+        end
+        patches << { start: node.message_loc.start_offset, end: end_offset, replacement: replacement }
       end
 
       SEND_METHODS = %i[send __send__ public_send].freeze

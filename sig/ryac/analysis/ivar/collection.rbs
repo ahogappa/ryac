@@ -1,0 +1,26 @@
+module Ryac
+  module AnalysisPhases
+    DYNAMIC_IVAR_METHODS: Array[Symbol]
+    ATTR_DECLARATION_METHODS: Array[Symbol]
+    IVAR_WRITE_NODES: Array[Class]
+    type ivar_write_node = Prism::InstanceVariableWriteNode | Prism::InstanceVariableTargetNode | Prism::InstanceVariableOperatorWriteNode | Prism::InstanceVariableOrWriteNode | Prism::InstanceVariableAndWriteNode
+
+    def collect_ivar_definitions: (Prism::Node prism_root, Hash[Array[Symbol], Set[Symbol]] attr_backed) -> void
+    def collect_attr_backed_ivars: (Prism::Node prism_root) -> Hash[Array[Symbol], Set[Symbol]]
+    def scan_dynamic_ivar_access: (Prism::Node prism_root) -> void
+    def merge_inherited_ivars: () -> void
+    def scan_dynamic_sigil_access: (Prism::Node prism_root, Array[Symbol] methods, SiteBucketMapping mapping) -> void
+    def merge_inherited_sites: (SiteBucketMapping mapping) -> void
+    def reserve_attr_ivar_names: (Prism::Node prism_root) -> void
+    def coordinate_attr_renames: (Prism::Node prism_root, Hash[location_key, String] rename_map, Hash[location_key, String] attr_ivar_entries) -> Hash[location_key, Hash[Symbol, String]]
+
+    type attr_info = Hash[Symbol, untyped]
+
+    def classify_attr_declarations: (Prism::Node prism_root) -> [Array[attr_info], Array[attr_info]]
+    def collect_ivar_nodes_by_key: (Prism::Node prism_root) -> Hash[[Array[Symbol], Symbol], Array[Prism::Node]]
+    def assign_ivar_driven_names: (Array[attr_info] path_b_info, Hash[[Array[Symbol], Symbol], Array[Prism::Node]] ivar_nodes_by_key, Hash[[Array[Symbol], Symbol], String] path_a_mapping, Hash[location_key, String] rename_map) -> [Hash[[Array[Symbol], Symbol], String], Hash[[Array[Symbol], Symbol], Symbol]]
+    def apply_ivar_renames: (Hash[[Array[Symbol], Symbol], Array[Prism::Node]] ivar_nodes_by_key, Hash[[Array[Symbol], Symbol], String] combined_mapping, Hash[location_key, String] attr_ivar_entries) -> void
+    def apply_accessor_call_renames: (Array[attr_info] path_a_info, Array[attr_info] path_b_info, Hash[[Array[Symbol], Symbol], Symbol] path_b_method_mapping, Hash[location_key, String] rename_map) -> void
+    def build_attr_rename_map: (Array[attr_info] path_a_info, Array[attr_info] path_b_info, Hash[[Array[Symbol], Symbol], Symbol] path_b_method_mapping) -> Hash[location_key, Hash[Symbol, String]]
+  end
+end

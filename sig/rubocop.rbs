@@ -1,9 +1,0 @@
-module RuboCop
-  module Cop
-    class Registry
-      def self.global: () -> Registry
-      def find_by_cop_name: (String name) -> singleton(RuboCop::Cop::Base)?
-      def initialize: (Array[singleton(RuboCop::Cop::Base)] cops) -> void
-    end
-  end
-end
