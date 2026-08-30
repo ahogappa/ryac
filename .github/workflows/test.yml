@@ -17,7 +17,7 @@ jobs:
       matrix:
         # Both ends of the range the gemspec claims to support. Without the
         # lower entry, required_ruby_version is an untested assertion.
-        ruby-version: ["3.3", "4.0"]
+        ruby-version: ["3.4", "4.0"]
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
