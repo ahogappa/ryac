@@ -218,11 +218,16 @@ module ConstantAudit
     probe = +''
     requires.each { |lib| probe << "begin;require #{lib.inspect};rescue LoadError;end;" }
     probe << 'STDIN.read.split("\n").each { |p| begin; Object.const_get(p); puts p; rescue NameError, LoadError, ArgumentError; end }'
-    # Unbundled, like the pipeline's own boot probe: the audited program's
-    # lazy requires may name gems outside the test Gemfile, and bundler's
-    # environment would hide them from the probe.
+    # A reference is sound if it resolves in either environment the program
+    # can run under. Unbundled, the audited program's lazy requires may name
+    # gems outside the test Gemfile that bundler's environment would hide.
+    # Bundled, the Gemfile's git-sourced gems are visible where plain
+    # require finds something else entirely — Ruby 3.3 ships a pre-Core
+    # typeprof as a bundled gem, so TypeProf::Core references prove out
+    # only here.
     run = -> { Open3.capture3({ 'RUBYOPT' => nil }, RbConfig.ruby, '-e', probe, stdin_data: candidates.join("\n"))[0] }
-    out = defined?(Bundler) ? Bundler.with_unbundled_env(&run) : run.call
-    out.split("\n").to_set
+    unbundled = defined?(Bundler) ? Bundler.with_unbundled_env(&run) : run.call
+    bundled = Open3.capture3(RbConfig.ruby, '-e', probe, stdin_data: candidates.join("\n"))[0]
+    (unbundled.split("\n") + bundled.split("\n")).to_set
   end
 end

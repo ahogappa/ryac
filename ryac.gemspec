@@ -15,9 +15,10 @@ Gem::Specification.new do |spec|
                      "preserves functional equivalence through scope-aware analysis."
   spec.homepage = "https://github.com/ahogappa/ryac"
   spec.license = "MIT"
-  # Set by the hard floor of typeprof, which requires Ruby >= 3.3. Nothing in
-  # lib/ needs anything newer; the suite passes on 3.3 and on 4.0.
-  spec.required_ruby_version = ">= 3.3.0"
+  # 3.3 was dropped deliberately: it ships a pre-Core typeprof as a bundled
+  # gem, which shadows the one this project needs in any unbundled context.
+  # The suite passes on 3.4 and on 4.0.
+  spec.required_ruby_version = ">= 3.4.0"
 
   spec.metadata["homepage_uri"] = spec.homepage
   spec.metadata["source_code_uri"] = "https://github.com/ahogappa/ryac"
