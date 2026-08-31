@@ -101,6 +101,37 @@ module Ryac
         (value.name == :define && receiver.name == :Data)
     end
 
+    # Files a dynamic require can load at runtime reference the program's
+    # constants by their original names — reopening its modules, subclassing
+    # its classes, reading its value constants. Collect every constant name
+    # such a file mentions, plus constant-shaped symbols (`const_get(:Name)`
+    # reaches a constant without spelling a reference), so alias generation
+    # can keep exactly the names this surface needs. nil when the program
+    # has no lazy sources — no surface, no pruning evidence.
+    def collect_lazy_constant_mentions(lazy_sources)
+      return nil if lazy_sources.empty?
+
+      mentioned = Set.new #: Set[Symbol]
+      lazy_sources.each do |src|
+        result = Prism.parse(src)
+        next unless result.success?
+
+        AstUtils.each_node(result.value) do |node|
+          case node
+          when Prism::ConstantReadNode, Prism::ConstantWriteNode, Prism::ConstantTargetNode,
+               Prism::ConstantOperatorWriteNode, Prism::ConstantOrWriteNode, Prism::ConstantAndWriteNode,
+               Prism::ConstantPathNode, Prism::ConstantPathTargetNode
+            name = node.name
+            mentioned << name if name
+          when Prism::SymbolNode
+            value = node.unescaped
+            mentioned << value.to_sym if value.match?(/\A[A-Z][A-Za-z0-9_]*\z/)
+          end
+        end
+      end
+      mentioned
+    end
+
     def collect_constants(prism_root)
       each_constant_event(prism_root) do |kind, node, cpath, singleton, in_def|
         case kind

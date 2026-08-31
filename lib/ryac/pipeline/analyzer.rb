@@ -168,7 +168,10 @@ module Ryac
       end
 
       def analyze_constants_phase
-        @constant_mapping = ConstantRenameMapping.new(boot_roots: @boot_constant_roots)
+        @constant_mapping = ConstantRenameMapping.new(
+          boot_roots: @boot_constant_roots,
+          lazy_mentions: collect_lazy_constant_mentions(@lazy_sources)
+        )
         collect_constants(@prism_root)
         exclude_private_constants(@prism_root)
         count_constant_references(@prism_root)

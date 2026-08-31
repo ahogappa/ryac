@@ -298,6 +298,49 @@ class TestConstantAliaserPipeline < Minitest::Test
                  result.code
   end
 
+  LAZY_PRUNE_CODE = <<~RUBY
+    module Engine
+      RATE = 44_100
+      SECRET_SEED = 1234
+      LOOKUP_TABLE = [1, 2, 3]
+      class Driver
+        def base = RATE + SECRET_SEED + LOOKUP_TABLE.size
+      end
+    end
+    puts Engine::Driver.new.base
+  RUBY
+
+  # A file a dynamic require loads at runtime: reopens the module,
+  # subclasses a class, reads one value constant and reaches another
+  # through const_get. SECRET_SEED it never mentions.
+  LAZY_PRUNE_SOURCE = <<~RUBY
+    module Engine
+      class TurboDriver < Driver
+        def spin = RATE + Engine.const_get(:LOOKUP_TABLE).size
+      end
+    end
+  RUBY
+
+  # With a dynamic-load surface declared, that surface enumerates the
+  # external readers: value-constant aliases survive only for names a lazy
+  # source mentions (as a reference or a constant-shaped symbol), while the
+  # class/module skeleton always survives — it is the boot contract a
+  # launcher outside the analyzed world spells.
+  def test_lazy_sources_prune_unmentioned_value_constant_aliases
+    result = minify_at_level(LAZY_PRUNE_CODE, 4, lazy_sources: [LAZY_PRUNE_SOURCE])
+    assert_equal 'module C;E=44100;B=1234;A=[1,2,3];class D;def a =E+B+A.size;end;end;puts C::D.new.a',
+                 result.code
+    assert_equal 'Engine=C;C::Driver=C::D;C::LOOKUP_TABLE=C::A;C::RATE=C::E', result.aliases
+  end
+
+  # No lazy sources means no enumeration of external readers — any code may
+  # spell any original name, so every rename stays restorable.
+  def test_without_lazy_sources_every_alias_survives
+    result = minify_at_level(LAZY_PRUNE_CODE, 4)
+    assert_equal 'Engine=C;C::Driver=C::D;C::LOOKUP_TABLE=C::A;C::RATE=C::E;C::SECRET_SEED=C::B',
+                 result.aliases
+  end
+
   # Prism models `A, B = ...` as ConstantTargetNodes rather than
   # ConstantWriteNodes. Missing them renamed every reference while leaving the
   # definitions untouched, so the short names were never assigned to anything.

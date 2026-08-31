@@ -13,7 +13,7 @@ This project takes an **aggressive optimization** approach. In Ruby, even commen
 - **Multi-file support**: Follows `require_relative` and `autoload` to collect and concatenate dependencies into a single output
 - **Whitespace & comment removal**: Strips all unnecessary whitespace and comments
 - **AST transformations**: Boolean/char shortening, constant folding, control flow simplification, endless methods, parenthesis optimization
-- **Constant aliasing**: Renames user-defined constants and shortens repeated external constant paths
+- **Constant aliasing**: Renames user-defined constants and shortens repeated external constant paths, emitting backward-compat aliases; a program that loads files dynamically at runtime (e.g. optcarrot's drivers) has enumerated its external readers, so its value-constant aliases prune to the names those files mention (the class/module skeleton always stays restorable)
 - **Variable renaming**: Shortens local variables, keyword arguments, instance/class/global variables
 - **Method renaming**: Shortens method names with `send(:sym)` coordination and attr-backed ivar optimization
 - **Method alias shortening**: Replaces long stdlib method names with shorter aliases (e.g., `collect` → `map`)

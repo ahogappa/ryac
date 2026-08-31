@@ -5,6 +5,7 @@ module Ryac
     def qualified_write_cpath: (Prism::Node target, Array[Symbol] nesting, ?strip_doubled_nesting: bool) -> Array[Symbol]?
     def syntactic_const_segments: (Prism::Node node) -> Array[Symbol]
     def struct_definition_write?: (Prism::Node node) -> bool
+    def collect_lazy_constant_mentions: (Array[String] lazy_sources) -> Set[Symbol]?
     def collect_constants: (Prism::Node prism_root) -> void
     def exclude_private_constants: (Prism::Node prism_root) -> void
     def count_constant_references: (Prism::Node prism_root) -> void
