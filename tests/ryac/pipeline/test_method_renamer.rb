@@ -40,6 +40,34 @@ class TestMethodRenamer < Minitest::Test
     minify_at_level(code, 5)
   end
 
+  # A bare call whose short name matches any local visible at the site —
+  # including one inherited from an enclosing scope through a block, and
+  # ones the local renamer never touched — parses as a variable read, and
+  # the call silently disappears. The optcarrot frame-153 bug: sprite
+  # evaluation sat in a `0.step do` block, its short name collided with a
+  # main-loop local, and rendering diverged with no error raised.
+  def test_implicit_call_avoids_locals_visible_through_block
+    code = <<~RUBY
+      class Machine
+        def bump_total
+          @total = (@total || 0) + 1
+        end
+
+        def run(cycle_count)
+          limit = cycle_count
+          2.times do
+            bump_total if limit > 0
+          end
+          @total
+        end
+      end
+      puts Machine.new.run(1)
+    RUBY
+    result = minify_at_level(code, 5)
+    assert_equal 'class A;def c =@a=(@a||0)+1;def a(a) =(b=a;2.times{c if b>0};@a);end;puts A.new.a(1)',
+                 result.code
+  end
+
   # The compactor writes `ready_now? ==` with a protective space; once the
   # rename drops the ?, the space must not survive it — a re-minified
   # artifact would remove it and the self-host fixed point drifts.

@@ -134,7 +134,7 @@ class TestVariableRenamer < Minitest::Test
 
   L4_GROUP_EXPECTED = 'class B;def initialize(a) =@a=a;def g =@a;end;puts B.new(1).g;' \
     'class C;def initialize =@a=0;def m =(@a+=1;@a);end;a=C.new;a.m;puts a.m;' \
-    'class D;@@a=0;def initialize =@@a+=1;def self.count =@@a;end;D.new;puts D.count;' \
+    'class D;@@a=0;def initialize =@@a+=1;def self.a =@@a;end;D.new;puts D.a;' \
     'class E;def m =($a=42;$a);end;puts E.new.m;' \
     'class G;def m;a,@a=1,2;@a;end;end;puts G.new.m;' \
     'class H;def m;a,@@a=1,2;@@a;end;end;puts H.new.m;' \

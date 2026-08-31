@@ -151,7 +151,7 @@ module Ryac
       used_ivar_names = @ivar_rename_mapping.node_mapping.values.to_set
       used_ivar_names.merge(path_a_mapping.values)
       used_method_names = rename_map.values.to_set
-      scope_vars = MethodRenameMapping.build_scope_vars(@scope_mappings)
+      scope_vars = @scope_visible_names
       generator = NameGenerator.new(prefix: "@")
 
       path_b_info

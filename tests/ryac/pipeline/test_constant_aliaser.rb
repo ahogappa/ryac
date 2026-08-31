@@ -311,7 +311,7 @@ class TestConstantAliaserPipeline < Minitest::Test
            "end\n" \
            "p CPU.new.tick(2)"
     result = minify_at_level(code, 4)
-    assert_equal 'class E;A=12;B,C,D=(1..3).map{_1*A};def tick(a) =a==1?B : a==2?C : D;end;p E.new.tick(2)',
+    assert_equal 'class E;A=12;B,C,D=(1..3).map{_1*A};def a(a) =a==1?B : a==2?C : D;end;p E.new.a(2)',
                  result.code
   end
 end

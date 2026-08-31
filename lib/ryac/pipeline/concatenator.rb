@@ -136,7 +136,8 @@ module Ryac
           file_boundaries: file_boundaries,
           original_size: original_size,
           stdlib_requires: stdlib_requires.uniq,
-          rbs_files: graph.rbs_files
+          rbs_files: graph.rbs_files,
+          lazy_sources: graph.lazy_files.values
         )
       end
 

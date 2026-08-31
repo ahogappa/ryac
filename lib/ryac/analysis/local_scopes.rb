@@ -86,6 +86,26 @@ module Ryac
       end
     end
 
+    # {scope_id => post-rename local names visible inside that scope}: its own
+    # locals plus those of enclosing scopes, looking through block and lambda
+    # boundaries the way variable lookup does. Locals a scope keeps (never
+    # renamed, or already short) count the same as renamed ones — a bare call
+    # whose new name matches any visible local parses as that local, not the
+    # method, so collision guards must see the full set.
+    def visible_local_names
+      @scopes.to_h do |scope|
+        names = Set.new #: Set[String]
+        current = scope #: Scope?
+        while current
+          mapping = current.mapping || {}
+          current.node.locals.each { |var| names << (mapping[var] || var.to_s) }
+          break unless %i[block lambda].include?(current.kind)
+          current = current.parent
+        end
+        [scope.id, names]
+      end
+    end
+
     # Phase 3 outputs.
     attr_reader :rename_entries, :def_param_names, :block_param_names, :for_index_names
 

@@ -123,6 +123,11 @@ module Ryac
         when Prism::IfNode
           traverse_for_requires(node.statements, nodes, file_path, in_method: in_method, in_class: in_class)
           traverse_for_requires(node.subsequent, nodes, file_path, in_method: in_method, in_class: in_class)
+        when Prism::UnlessNode
+          traverse_for_requires(node.statements, nodes, file_path, in_method: in_method, in_class: in_class)
+          traverse_for_requires(node.else_clause, nodes, file_path, in_method: in_method, in_class: in_class)
+        when Prism::ElseNode
+          traverse_for_requires(node.statements, nodes, file_path, in_method: in_method, in_class: in_class)
         when Prism::BeginNode
           traverse_for_requires(node.statements, nodes, file_path, in_method: in_method, in_class: in_class)
         end
@@ -163,13 +168,39 @@ module Ryac
             resolved_path: resolve_relative_path(arg.unescaped, file_path)
           }
         else
-          return if in_method
+          if in_method
+            collect_lazy_candidates(arg, file_path)
+            return
+          end
 
           raise DynamicRequireError.new(
             file_path,
             line: node.location.start_line,
             expression: node.slice
           )
+        end
+      end
+
+      # A dynamic require inside a method stays a runtime require, but when
+      # its path starts with a static directory ("driver/#{name}"), the
+      # files it can load exist on disk right now. They are not bundled —
+      # the laziness survives — but they will run against the minified
+      # program, calling and overriding its methods by their original
+      # names, so the analyzer gets to read them.
+      def collect_lazy_candidates(arg, file_path)
+        return unless arg.is_a?(Prism::InterpolatedStringNode)
+
+        head = arg.parts.first
+        return unless head.is_a?(Prism::StringNode)
+
+        slash = head.unescaped.rindex('/')
+        prefix = slash && head.unescaped[0..slash]
+        return unless prefix
+
+        dir = File.expand_path(prefix, File.dirname(file_path))
+        Dir.glob(File.join(dir, '*.rb')).sort.each do |path|
+          next if @visited.include?(path)
+          @graph.lazy_files[path] ||= File.read(path, encoding: Encoding::UTF_8)
         end
       end
 

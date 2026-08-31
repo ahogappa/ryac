@@ -5,8 +5,9 @@ module Ryac
 
       @stdlib_requires: Array[String]
       @rbs_files: Hash[String, String]
+      @lazy_sources: Array[String]
 
-      def initialize: (?stdlib_requires: Array[String], ?rbs_files: Hash[String, String]) -> void
+      def initialize: (?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_sources: Array[String]) -> void
       def call: (String code, Array[Minifier::stage_entry] stage_defs) -> RenameResult
 
       private

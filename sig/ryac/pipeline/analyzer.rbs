@@ -9,6 +9,8 @@ module Ryac
       @meta_node_map: Hash[location_key, meta_node_entry]
 
       @method_policy: Symbol
+      @lazy_sources: Array[String]
+      @scope_visible_names: Hash[scope_id, Set[String]]
 
       def self.prism_only: (ConcatenatedSource source) -> AnalysisResult
       def self.prism_only_from_string: (String content, ?source: ConcatenatedSource?) -> AnalysisResult

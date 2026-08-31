@@ -3,6 +3,7 @@ module Ryac
     def collect_method_definitions: (Prism::Node prism_root) -> void
     def collect_dynamic_ivar_attr_exclusions: (Prism::Node prism_root) -> void
     def collect_string_literal_mentions: (Prism::Node prism_root) -> void
+    def collect_lazy_source_mentions: (Array[String] lazy_sources) -> void
     def resolve_method_calls: () -> void
     def scan_dynamic_method_references: (Prism::Node prism_root) -> void
     def collect_visibility_modifier_methods: (Prism::Node prism_root) -> void

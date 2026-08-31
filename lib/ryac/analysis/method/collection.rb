@@ -121,6 +121,36 @@ module Ryac
       @method_rename_mapping.exclude_methods_by_mid(mentioned.to_set) unless mentioned.empty?
     end
 
+    # Files a dynamic require can load at runtime (optcarrot's driver/
+    # plugins) run against the minified program: they call its methods and
+    # override them in subclasses, all by original name. Every name such a
+    # file defines or calls keeps its spelling under the safe policy.
+    def collect_lazy_source_mentions(lazy_sources)
+      mentioned = Set.new
+      lazy_sources.each do |src|
+        result = Prism.parse(src)
+        next unless result.success?
+
+        AstUtils.each_node(result.value) do |node|
+          case node
+          when Prism::DefNode
+            mentioned << node.name
+          when Prism::CallNode
+            mentioned << node.name
+            mentioned.merge(AstUtils.symbol_arguments(node)) if ATTR_DECLARATION_METHODS.include?(node.name)
+          when Prism::CallOperatorWriteNode, Prism::CallOrWriteNode, Prism::CallAndWriteNode
+            mentioned << node.read_name << node.write_name
+          end
+        end
+      end
+      return if mentioned.empty?
+
+      excluded = @method_rename_mapping.method_mids.select { |mid|
+        mentioned.include?(mid) || mentioned.include?(mid.to_s.chomp('=').to_sym)
+      }
+      @method_rename_mapping.exclude_methods_by_mid(excluded.to_set) unless excluded.empty?
+    end
+
     # Visibility resets at every reopen of this module, so each collection
     # file's `private` covers that file alone.
     private

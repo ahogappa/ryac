@@ -49,6 +49,7 @@ module Ryac
       def call(source)
         prism_result, @oracle = without_stdout_pollution { setup_typeprof(source) }
         @prism_root = prism_result.value
+        @lazy_sources = source.lazy_sources
         @boot_constant_roots = BootConstants.for(source.stdlib_requires)
         @syntax_data = collect_syntax_data(@prism_root)
 
@@ -124,6 +125,7 @@ module Ryac
         )
         @local_scopes.resolve
         @scope_mappings = @local_scopes.scope_mappings
+        @scope_visible_names = @local_scopes.visible_local_names
       end
 
       def analyze_methods_phase
@@ -138,9 +140,10 @@ module Ryac
         collect_shorthand_pun_methods(@prism_root)
         if @method_policy == :safe
           collect_string_literal_mentions(@prism_root)
+          collect_lazy_source_mentions(@lazy_sources)
           @method_rename_mapping.exclude_uncalled_methods
         end
-        @method_rename_mapping.assign_short_names(@scope_mappings, @oracle)
+        @method_rename_mapping.assign_short_names(@scope_visible_names, @oracle)
       end
 
       def analyze_variables_phase

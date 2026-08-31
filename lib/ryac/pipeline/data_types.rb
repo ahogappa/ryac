@@ -20,13 +20,14 @@ module Ryac
     # Represents the dependency relationships between files
     # Uses adjacency list for efficient topological sort
     class DependencyGraph
-      attr_reader :files, :adjacency, :in_degrees, :rbs_files
+      attr_reader :files, :adjacency, :in_degrees, :rbs_files, :lazy_files
 
       def initialize
         @files = {}       # Hash<String, FileEntry>: path -> entry mapping
         @adjacency = {}   # Hash<String, Array<String>>: path -> dependent paths (files that require this one)
         @in_degrees = {}  # Hash<String, Integer>: path -> number of dependencies
         @rbs_files = {}   # Hash<String, String>: path -> RBS content
+        @lazy_files = {}  # Hash<String, String>: path -> content a dynamic require can load at runtime
       end
 
       # Add a file entry to the graph
@@ -87,15 +88,17 @@ module Ryac
       :file_boundaries,  # Array<FileBoundary>: Line ranges are true at concatenation only; the pipeline rewrites the text from compaction on
       :original_size,    # Integer: Bytes of the input the content descends from
       :stdlib_requires,  # Array<String>: Standard library requires to preserve
-      :rbs_files         # Hash<String, String>: path -> RBS content for TypeProf
+      :rbs_files,        # Hash<String, String>: path -> RBS content for TypeProf
+      :lazy_sources      # Array<String>: files a dynamic require can load at runtime — not bundled, but analyzed
     ) do
       # A source built straight from a string (tests, sub-pipelines) has no
       # file ancestry: everything but the content defaults away, and its
       # original size is the content itself.
-      def initialize(content:, file_boundaries: [], original_size: nil, stdlib_requires: [], rbs_files: {}) # steep:ignore UndeclaredMethodDefinition
+      def initialize(content:, file_boundaries: [], original_size: nil, stdlib_requires: [], rbs_files: {}, lazy_sources: []) # steep:ignore UndeclaredMethodDefinition
         super(content: content, file_boundaries: file_boundaries,
               original_size: original_size || content.bytesize,
-              stdlib_requires: stdlib_requires, rbs_files: rbs_files)
+              stdlib_requires: stdlib_requires, rbs_files: rbs_files,
+              lazy_sources: lazy_sources)
       end
     end
 
