@@ -28,6 +28,10 @@ module Ryac
       # true → the runner re-parses and re-collects until no patches remain.
       def fixpoint? = false
 
+      # Keyword options this stage needs the analysis batch's Analyzer to
+      # honor. The runner merges every batch member's contribution.
+      def analysis_options = {}
+
       def collect(ctx, patches)
         raise NotImplementedError, "#{self.class}#collect must be implemented"
       end

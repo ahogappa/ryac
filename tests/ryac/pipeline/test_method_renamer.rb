@@ -159,6 +159,45 @@ class TestMethodRenamer < Minitest::Test
       result.code
   end
 
+  # Short names are allocated per group, so an explicit setter def cannot
+  # promise the `<name>=` spelling its call sites would need — the pair
+  # keeps its name (the same doctrine as accessor pairs in compound
+  # writes). The getter beside it still renames.
+  def test_plain_setter_def_keeps_name
+    code = <<~RUBY
+      class Screen
+        def brightness=(v)
+          @b = v
+        end
+        def level = @b
+      end
+      s = Screen.new
+      s.brightness = 5
+      puts s.level
+    RUBY
+    result = minify_at_level(code, 5)
+    assert_equal 'class A;def brightness=(a);@b=a;end;def a =@b;end;a=A.new;a.brightness=5;puts a.a',
+                 result.code
+  end
+
+  # Renaming an attr renames its backing ivar with it; a class that
+  # assigns ivars dynamically keeps writing the original spelling, so the
+  # attr keeps its name there (optcarrot's Config pattern).
+  def test_attr_in_dynamic_ivar_class_keeps_name
+    code = <<~RUBY
+      class Config
+        attr_reader :romfile_path
+        def initialize
+          instance_variable_set(:"@romfile_path", "game.nes")
+        end
+      end
+      puts Config.new.romfile_path
+    RUBY
+    result = minify_at_level(code, 5)
+    assert_equal 'class A;attr :romfile_path;def initialize =instance_variable_set :"@romfile_path","game.nes";end;puts A.new.romfile_path',
+                 result.code
+  end
+
   # `[x].map(&:foo)` dispatches to foo from Array#map's RBS declaration —
   # TypeProf records the caller, but its node is the declaration, not a call
   # site. Nothing in the source can be rewritten to follow a rename, so the

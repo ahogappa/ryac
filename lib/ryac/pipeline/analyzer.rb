@@ -42,6 +42,10 @@ module Ryac
         )
       end
 
+      def initialize(method_policy: :aggressive)
+        @method_policy = method_policy
+      end
+
       def call(source)
         prism_result, @oracle = without_stdout_pollution { setup_typeprof(source) }
         @prism_root = prism_result.value
@@ -125,12 +129,17 @@ module Ryac
       def analyze_methods_phase
         @method_rename_mapping = MethodRenameMapping.new
         collect_method_definitions(@prism_root)
+        collect_dynamic_ivar_attr_exclusions(@prism_root)
         resolve_method_calls
         collect_alias_undef_methods(@prism_root)
         scan_dynamic_method_references(@prism_root)
         collect_visibility_modifier_methods(@prism_root)
         collect_attr_write_exclusions(@prism_root)
         collect_shorthand_pun_methods(@prism_root)
+        if @method_policy == :safe
+          collect_string_literal_mentions(@prism_root)
+          @method_rename_mapping.exclude_uncalled_methods
+        end
         @method_rename_mapping.assign_short_names(@scope_mappings, @oracle)
       end
 

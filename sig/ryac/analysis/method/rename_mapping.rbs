@@ -42,6 +42,8 @@ module Ryac
 
     def merge_blind_def_groups: () -> void
 
+    def exclude_uncalled_methods: () -> void
+
     def add_unresolved_sites_for_mid: (Symbol mid, Array[Prism::Node] call_nodes) -> void
 
     def group_keys: (method_key method_key) -> Array[method_key]

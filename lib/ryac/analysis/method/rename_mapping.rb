@@ -101,6 +101,19 @@ module Ryac
       (blind_mids & sited_mids).each { |mid| merge_all_by_mid(mid) }
     end
 
+    # A def no resolved call reaches is either dead or called from outside
+    # the program (a library's public surface, a runner script requiring
+    # the bundle) — renaming it is unsound both ways, so the safe policy
+    # drops those names before assignment.
+    def exclude_uncalled_methods
+      mids = Set.new
+      groups_by_root.each_value do |keys|
+        sites = keys.sum { |key| @methods[key][:call_sites].size }
+        keys.each { |key| mids << key[2] } if sites.zero?
+      end
+      exclude_methods_by_mid(mids) unless mids.empty?
+    end
+
     def add_unresolved_sites_for_mid(mid, call_nodes)
       target_key = @methods.keys.find { |k| k[2] == mid }
       return unless target_key

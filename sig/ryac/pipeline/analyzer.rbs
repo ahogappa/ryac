@@ -8,8 +8,11 @@ module Ryac
       # kept untyped-valued because syntax_value has no Array member.
       @meta_node_map: Hash[location_key, meta_node_entry]
 
+      @method_policy: Symbol
+
       def self.prism_only: (ConcatenatedSource source) -> AnalysisResult
       def self.prism_only_from_string: (String content, ?source: ConcatenatedSource?) -> AnalysisResult
+      def initialize: (?method_policy: Symbol) -> void
       def call: (ConcatenatedSource source) -> AnalysisResult
       def syntax_data_for: (Prism::ProgramNode prism_ast) -> syntax_data_map
 

@@ -16,6 +16,7 @@ module Ryac
       def self.new: (**untyped) -> Stage
       def needs_analysis?: () -> bool
       def fixpoint?: () -> bool
+      def analysis_options: () -> Hash[Symbol, untyped]
       def collect: (StageContext ctx, Array[patch_entry] patches) -> void
       def finish: (StageContext ctx) -> void
       def call: (String input) -> String

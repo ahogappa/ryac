@@ -67,7 +67,9 @@ module Ryac
           stdlib_requires: @stdlib_requires,
           rbs_files: @rbs_files
         )
-        analysis = Analyzer.new.call(source)
+        options = {} #: Hash[Symbol, untyped]
+        batch.each { |stage| options.merge!(stage.analysis_options) }
+        analysis = Analyzer.new(**options).call(source)
 
         ctx = StageContext.new(code, analysis.prism_ast, analysis, '', '')
         patches = [] #: Array[patch_entry]
