@@ -70,6 +70,7 @@ class TestCLIGemOption < Minitest::Test
           -a, --aliases FILE               Write constant alias declarations to FILE
           -g, --gem GEM_NAMES              Minify installed gem(s) by name (comma-separated)
           -c, --compress LEVEL             Set compression level (stable or unstable)
+          -p, --pack FORMAT                Emit a self-extracting file (self or zlib)
           -h, --help                       Display this help message
           -v, --version                    Display version
     HELP

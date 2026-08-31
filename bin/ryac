@@ -8,7 +8,8 @@ options = {
   output: nil,
   aliases: nil,
   level: nil,
-  gems: nil
+  gems: nil,
+  pack: nil
 }
 
 parser = OptionParser.new do |opts|
@@ -29,6 +30,16 @@ parser = OptionParser.new do |opts|
   opts.on("-c", "--compress LEVEL", "Set compression level (stable or unstable)") do |value|
     begin
       options[:level] = Ryac::Minifier.resolve_level(value)
+    rescue ArgumentError => e
+      warn "Error: #{e.message}"
+      warn opts
+      exit 1
+    end
+  end
+
+  opts.on("-p", "--pack FORMAT", "Emit a self-extracting file (self or zlib)") do |value|
+    begin
+      options[:pack] = Ryac::Packer.resolve_format(value)
     rescue ArgumentError => e
       warn "Error: #{e.message}"
       warn opts
@@ -108,9 +119,12 @@ begin
     result.full_content
   end
 
+  content = Ryac::Packer.pack(content, options[:pack]) if options[:pack]
+
   if options[:output]
-    File.write(options[:output], content)
+    File.binwrite(options[:output], content)
   else
+    $stdout.binmode if options[:pack]
     puts content
   end
 

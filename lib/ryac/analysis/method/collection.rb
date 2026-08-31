@@ -307,7 +307,8 @@ module Ryac
       @method_rename_mapping.exclude_methods_by_mid(punned) if punned.any?
     end
 
-    VISIBILITY_MODIFIERS = %i[private protected public module_function].freeze
+    VISIBILITY_MODIFIERS = %i[private protected public module_function
+                              private_class_method public_class_method].freeze
 
     def collect_visibility_modifier_methods(prism_root)
       excluded_mids = Set.new

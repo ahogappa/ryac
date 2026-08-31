@@ -68,6 +68,29 @@ class TestMethodRenamer < Minitest::Test
                  result.code
   end
 
+  # A name passed to a visibility modifier is data the renamer cannot move
+  # with the def — the class-method variants count too. The packer's own
+  # `private_class_method :lzss_compress` broke self-hosting when only the
+  # instance-side modifiers were recognized.
+  def test_private_class_method_symbol_keeps_its_def
+    code = <<~RUBY
+      class Toolbox
+        def self.sharpen_blade(edge)
+          edge * 2
+        end
+        def self.build_result(input)
+          sharpen_blade(input) + 1
+        end
+        private_class_method :sharpen_blade
+      end
+      puts Toolbox.build_result(20)
+    RUBY
+    result = minify_at_level(code, 5)
+    assert_equal 'class A;def self.sharpen_blade(a) =a*2;def self.a(a) =sharpen_blade(a)+1;' \
+                 'private_class_method :sharpen_blade;end;puts A.a(20)',
+                 result.code
+  end
+
   # The compactor writes `ready_now? ==` with a protective space; once the
   # rename drops the ?, the space must not survive it — a re-minified
   # artifact would remove it and the self-host fixed point drifts.

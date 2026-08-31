@@ -44,6 +44,9 @@ bin/ryac path/to/entry.rb -o minified.rb
 # Write constant aliases to a separate file
 bin/ryac path/to/entry.rb -o minified.rb -a aliases.rb
 
+# Emit a self-extracting packed file (self = zero dependencies, zlib = smaller)
+bin/ryac path/to/entry.rb -o packed.rb --pack self
+
 # Multiple entry points
 bin/ryac file1.rb file2.rb
 
@@ -84,6 +87,15 @@ There are exactly two levels, named for their promise. The default is **`stable`
 | `unstable` | + Method renaming, attr-backed ivar coordination | A program can defeat method renaming by construction (names inside strings, `eval`'d source, `send(computed)`), so this works only when the program plays along. Verified by self-hosting. |
 
 Finer configurations are not levels: the pipeline is built from steps, and callers can pass an explicit stage list in place of a level name (`Minifier#call(path, level: [...stage defs...])`). The unit tests pin each step's behavior through exactly that mechanism.
+
+### Packed output
+
+`--pack` is an output format, orthogonal to the levels: it wraps the minified program in a self-extracting stub — a short plain-Ruby decoder followed by the compressed bytes after `__END__`. On optcarrot it takes the artifact from 37% of the original source to 19.4% (`self`) or 15.1% (`zlib`).
+
+- `--pack self` inlines a pure-Ruby LZSS decoder (282 bytes) — no `require` at all, runs anywhere Ruby runs
+- `--pack zlib` deflates via the zlib default gem — smaller, but dead on a Ruby built without it
+
+A packed file is a main-program format: the stub reads its own `__END__` data and `eval`s the program with `$0` as the file name, so `ruby packed.rb` runs it and a `$PROGRAM_NAME == __FILE__` launcher still fires. It cannot be `require`d — only the main script has `DATA` — and a program that itself uses `__END__` or reads `DATA` is refused with an error.
 
 See [`tests/ryac/pipeline/`](tests/ryac/pipeline/) for per-stage transformation examples, and [`tests/ryac/levels/`](tests/ryac/levels/) for end-to-end compression examples.
 

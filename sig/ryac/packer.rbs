@@ -1,0 +1,12 @@
+module Ryac
+  module Packer
+    FORMATS: Array[Symbol]
+    SELF_STUB: String
+    ZLIB_STUB: String
+
+    def self.resolve_format: (String | Symbol value) -> Symbol
+    def self.pack: (String source, String | Symbol format) -> String
+    def self.reject_data_readers: (String source) -> void
+    def self.lzss_compress: (String data) -> String
+  end
+end
