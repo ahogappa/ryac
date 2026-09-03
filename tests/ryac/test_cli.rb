@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative '../test_helper'
+require 'tmpdir'
 
 class TestCLIGemOption < Minitest::Test
   MINIFY_BIN = File.expand_path('../../bin/ryac', __dir__)
@@ -71,8 +72,66 @@ class TestCLIGemOption < Minitest::Test
           -g, --gem GEM_NAMES              Minify installed gem(s) by name (comma-separated)
           -c, --compress LEVEL             Set compression level (stable or unstable)
           -p, --pack FORMAT                Emit a self-extracting file (self or zlib)
+          -d, --driver FILE                Write the lazy regions to FILE as a runner (ruby FILE CORE --exec EXPR)
           -h, --help                       Display this help message
           -v, --version                    Display version
     HELP
+  end
+
+  LAZY_FIXTURE = File.expand_path('../fixtures/lazy_plugins/main.rb', __dir__)
+
+  # The two-file layout on the lazy_plugins fixture: the core loads as a
+  # library (its launch is guarded), the runner registers the regions and
+  # starts the program with --exec, its own arguments gone from ARGV and
+  # everything after "--" untouched. The expression is code outside the
+  # bundle: it spells the skeleton (aliased) and an entry point no code in
+  # the bundle calls, which the safe policy therefore never renames.
+  def test_driver_option_splits_a_runner_that_loads_the_core
+    Dir.mktmpdir do |dir|
+      core = File.join(dir, 'minify.rb')
+      driver = File.join(dir, 'driver.rb')
+      _stdout, stderr, status = Open3.capture3(RbConfig.ruby, MINIFY_BIN, LAZY_FIXTURE, '-o', core, '--driver', driver)
+      assert status.success?, "minify --driver failed: #{stderr}"
+      result = Ryac::Minifier.new.call(LAZY_FIXTURE, level: :stable)
+      assert_equal expected_stderr_for(result), stderr
+
+      expected_core, expected_driver = Ryac::DriverFile.split(result.full_content)
+      assert_equal expected_core, File.read(core)
+      assert_equal expected_driver, File.read(driver)
+
+      stdout, stderr, status = Open3.capture3(
+        RbConfig.ruby, driver, core,
+        '--exec', 'p(Engine::Loader.boot(:turbo) || Engine::Loader.boot(:plain)); p ARGV',
+        'game.nes', '--', '--exec', 'ignored'
+      )
+      assert status.success?, "the runner failed: #{stderr}"
+      assert_equal "[15, 25, 35]\n[\"game.nes\", \"--\", \"--exec\", \"ignored\"]\n", stdout
+    end
+  end
+
+  def test_driver_option_needs_an_output_file
+    _stdout, stderr, status = Open3.capture3(RbConfig.ruby, MINIFY_BIN, LAZY_FIXTURE, '--driver', 'driver.rb')
+    assert_equal 1, status.exitstatus
+    assert_equal "Error: --driver needs -o for the core file\n", stderr
+  end
+
+  def test_driver_option_rejects_aliases_file_and_pack
+    _stdout, stderr, status = Open3.capture3(RbConfig.ruby, MINIFY_BIN, LAZY_FIXTURE, '-o', 'x.rb', '-a', 'a.rb', '--driver', 'd.rb')
+    assert_equal 1, status.exitstatus
+    assert_equal "Error: --driver cannot be combined with -a (the runner loads the core with its aliases)\n", stderr
+
+    _stdout, stderr, status = Open3.capture3(RbConfig.ruby, MINIFY_BIN, LAZY_FIXTURE, '-o', 'x.rb', '--pack', 'self', '--driver', 'd.rb')
+    assert_equal 1, status.exitstatus
+    assert_equal "Error: --driver cannot be combined with --pack (a packed core cannot be loaded)\n", stderr
+  end
+
+  def test_driver_option_needs_a_program_with_lazy_regions
+    Dir.mktmpdir do |dir|
+      entry = File.expand_path('../fixtures/multi_file/independent_a.rb', __dir__)
+      _stdout, stderr, status = Open3.capture3(RbConfig.ruby, MINIFY_BIN, entry, '-o', File.join(dir, 'x.rb'), '--driver', File.join(dir, 'd.rb'))
+      assert_equal 2, status.exitstatus
+      assert_equal "Error: cannot write a driver file: the program has no lazy regions\n", stderr
+      refute File.exist?(File.join(dir, 'x.rb'))
+    end
   end
 end

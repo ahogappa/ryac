@@ -97,10 +97,13 @@ class TestAnalyzer < Minitest::Test
     assert_equal 'case [1,2,3];in [*a,b,*c];puts b;end', result.code
   end
 
-  # --- lambda with outer scope variable (lines 227-228, 235-241) ---
+  # --- lambda with outer scope variable ---
 
+  # A lambda keeps its parameter names, so the def's `x` must not become
+  # `a`: the lambda body would then read its own `a` (2) where it read `x`
+  # (1). This pin once said exactly that, with verification switched off.
   def test_lambda_outer_scope_variable
-    result = minify_at_level("def foo\n  x = 1\n  f = ->(a) { puts x }\n  f.call(2)\nend\nfoo\n", Ryac::Minifier::DEFAULT_LEVEL, verify_output: false)
-    assert_equal 'def a =(a=1;b=->(a){puts a};b.(2));a', result.code
+    result = minify_at_level("def foo\n  x = 1\n  f = ->(a) { puts x }\n  f.call(2)\nend\nfoo\n", Ryac::Minifier::DEFAULT_LEVEL)
+    assert_equal 'def a =(b=1;c=->(a){puts b};c.(2));a', result.code
   end
 end

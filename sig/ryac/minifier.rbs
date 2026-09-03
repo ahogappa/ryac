@@ -14,7 +14,7 @@ module Ryac
     STAGES: Hash[Symbol, Array[stage_entry]]
 
     def self.derive_unstable: (Array[stage_entry] stable) -> Array[stage_entry]
-    def self.run_stages: (String code, Array[stage_entry] stages, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_sources: Array[String]) -> Pipeline::RenameResult
+    def self.run_stages: (String code, Array[stage_entry] stages, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String]) -> Pipeline::RenameResult
 
     include Pipeline::SourcePatcher
 

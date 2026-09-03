@@ -11,9 +11,10 @@ This project takes an **aggressive optimization** approach. In Ruby, even commen
 ## Features
 
 - **Multi-file support**: Follows `require_relative` and `autoload` to collect and concatenate dependencies into a single output
+- **Dynamic requires**: A `require_relative "driver/#{name}"` inside a method bundles every file under that directory as a lazy region — registered at load, run the moment the require would have run — so a driver's own `require "ffi"` keeps its optional-dependency timing while the whole program shares one rename table (see [Dynamic requires](#dynamic-requires))
 - **Whitespace & comment removal**: Strips all unnecessary whitespace and comments
 - **AST transformations**: Boolean/char shortening, constant folding, control flow simplification, endless methods, parenthesis optimization
-- **Constant aliasing**: Renames user-defined constants and shortens repeated external constant paths, emitting backward-compat aliases; a program that loads files dynamically at runtime (e.g. optcarrot's drivers) has enumerated its external readers, so its value-constant aliases prune to the names those files mention (the class/module skeleton always stays restorable)
+- **Constant aliasing**: Renames user-defined constants and shortens repeated external constant paths, emitting backward-compat aliases; once a program's dynamically loaded files are bundled, the only reader left outside is a launcher, which spells the class/module skeleton (`Optcarrot::NES.new.run`) and never a value constant — so value-constant aliases are dropped and the skeleton's kept
 - **Variable renaming**: Shortens local variables, keyword arguments, instance/class/global variables
 - **Method renaming**: Shortens method names with `send(:sym)` coordination and attr-backed ivar optimization
 - **Method alias shortening**: Replaces long stdlib method names with shorter aliases (e.g., `collect` → `map`)
@@ -46,6 +47,9 @@ bin/ryac path/to/entry.rb -o minified.rb -a aliases.rb
 
 # Emit a self-extracting packed file (self = zero dependencies, zlib = smaller)
 bin/ryac path/to/entry.rb -o packed.rb --pack self
+
+# Keep the program a pure library and put its lazy regions in a runner
+bin/ryac path/to/entry.rb -o minify.rb --driver driver.rb
 
 # Multiple entry points
 bin/ryac file1.rb file2.rb
@@ -88,6 +92,34 @@ There are exactly two levels, named for their promise. The default is **`stable`
 
 Finer configurations are not levels: the pipeline is built from steps, and callers can pass an explicit stage list in place of a level name (`Minifier#call(path, level: [...stage defs...])`). The unit tests pin each step's behavior through exactly that mechanism.
 
+### Dynamic requires
+
+A file the program loads by a computed path — optcarrot's `require_relative "driver/#{name}_#{type}"` inside `Driver.load_each` — is outside any static dependency graph, yet it runs against the program: subclassing its classes, reading its instance variables, overriding its methods. Renaming one side and not the other breaks exactly there. When the computed path starts with a static directory, ryac bundles every `.rb` file under it (and whatever those files require that nothing static did) into the same closed world, so the rename table covers both sides, and writes each as a *lazy region*:
+
+```ruby
+RYAC_LAZY["optcarrot/driver/sdl2_video"] = -> { ...the file, minified... }
+```
+
+The region's body runs when the original require would have run — a short loader keeps Ruby's contract (once and `true`, `false` on a repeat, a failed run stays retryable, an unregistered path falls through to a real `require_relative` relative to the bundle), and the require sites are rewritten to call it. So `require "ffi"` and `ffi_lib "SDL2"` at a driver's top level still execute only when that driver is selected, and the auto-selection's `rescue LoadError` still walks on to the next one.
+
+The output is still one file. For optcarrot, it stands in for `lib/optcarrot.rb` under upstream's unmodified `bin/optcarrot`:
+
+```bash
+bin/ryac gem_tests/optcarrot/lib/optcarrot.rb -o /path/to/optcarrot/lib/optcarrot.rb
+cd /path/to/optcarrot && bin/optcarrot examples/Lan_Master.nes
+```
+
+A constant only a region defines (`SDL2Video`, the `SDL2` module) keeps its name — it does not exist until the region runs, so no alias at the end of the file could restore it — and an external constant a region references is never hoisted into the preamble. Neither costs much: a region's own names are few, and its references to the core rename like everything else.
+
+Or keep the program a pure library and put the regions in a runner of their own:
+
+```bash
+bin/ryac gem_tests/optcarrot/lib/optcarrot.rb -o minify.rb --driver driver.rb
+ruby driver.rb minify.rb --exec "Optcarrot::NES.new.run" examples/Lan_Master.nes
+```
+
+`minify.rb` is the loader, the core and its aliases — nothing that runs. `driver.rb` loads it, registers the regions and evals the `--exec` expression at top level, its own two arguments already gone from `ARGV` so the program's option parsing sees only what follows (anything after `--` is never read). The split assumes the program loads its dynamic files after boot, from a method — the shape that made them lazy; a dynamic require the core ran while loading would miss its region. The expression is code outside the bundle, so it can spell only what survives outside: the class/module skeleton, which the aliases restore, and methods the program itself never calls — under `stable`'s safe policy an uncalled def keeps its name, and a launcher's entry point (`NES#run`) is exactly that. `--driver` needs `-o`, and cannot be combined with `-a` or with `--pack` (a packed core cannot be loaded).
+
 ### Packed output
 
 `--pack` is an output format, orthogonal to the levels: it wraps the minified program in a self-extracting stub — a short plain-Ruby decoder followed by the compressed bytes after `__END__`. On optcarrot it takes the artifact from 37% of the original source to 19.4% (`self`) or 15.1% (`zlib`).
@@ -103,7 +135,7 @@ See [`tests/ryac/pipeline/`](tests/ryac/pipeline/) for per-stage transformation 
 
 The supported boundary is defined by two programs, both verified in CI:
 
-- **[Optcarrot](https://github.com/mame/optcarrot) at `stable`** — the minified emulator matches the original frame-for-frame across the 180-frame demo and three scripted play scenarios (1,820 frames of title menus, piece rotation, pausing and button mashing) ([`tests/test_optcarrot.rb`](tests/test_optcarrot.rb))
+- **[Optcarrot](https://github.com/mame/optcarrot) at `stable`** — the minified emulator matches the original frame-for-frame across the 180-frame demo and three scripted play scenarios (1,820 frames of title menus, piece rotation, pausing and button mashing), and, standing in for `lib/optcarrot.rb` under upstream's own `bin/optcarrot`, its bundled png and wav drivers write the same frame and samples as the original's ([`tests/test_optcarrot.rb`](tests/test_optcarrot.rb))
 - **This minifier itself at `unstable`** — the minified minifier re-minifies the original source to identical output, and minifying its own output is a byte-identical fixed point ([`tests/test_integration.rb`](tests/test_integration.rb))
 
 Whether `unstable` holds for a given program depends on the program. Optcarrot stops at `stable` because it defeats method renaming by construction: it builds its CPU/PPU cores as source strings and `eval`s them, scans that text for `@ivar` names with a regexp, and dispatches through `send(computed_symbol)` — method names survive inside strings, out of reach of static analysis. The sinatra and rubocop suites run in CI as regression canaries on a keyword-only step composition, but they sit outside this boundary and do not define it.

@@ -9,10 +9,11 @@ module Ryac
       :content,               # String: Raw file content
       :dependencies,          # Array<String>: Absolute paths of required files (top-level requires only)
       :require_nodes,         # Array<Hash>: {type:, path:, line:, in_class:} for require/autoload nodes
-      :in_class_dependencies  # Array<String>: Absolute paths of files required inside class/module bodies
+      :in_class_dependencies, # Array<String>: Absolute paths of files required inside class/module bodies
+      :lazy                   # Boolean: reached only through a dynamic require — bundled as a lazy region, run on demand
     ) do
       # declared on the Data class itself in the RBS
-      def initialize(path:, content:, dependencies:, require_nodes:, in_class_dependencies: []) # steep:ignore UndeclaredMethodDefinition
+      def initialize(path:, content:, dependencies:, require_nodes:, in_class_dependencies: [], lazy: false) # steep:ignore UndeclaredMethodDefinition
         super
       end
     end
@@ -20,14 +21,18 @@ module Ryac
     # Represents the dependency relationships between files
     # Uses adjacency list for efficient topological sort
     class DependencyGraph
-      attr_reader :files, :adjacency, :in_degrees, :rbs_files, :lazy_files
+      attr_reader :files, :adjacency, :in_degrees, :rbs_files
 
       def initialize
         @files = {}       # Hash<String, FileEntry>: path -> entry mapping
         @adjacency = {}   # Hash<String, Array<String>>: path -> dependent paths (files that require this one)
         @in_degrees = {}  # Hash<String, Integer>: path -> number of dependencies
         @rbs_files = {}   # Hash<String, String>: path -> RBS content
-        @lazy_files = {}  # Hash<String, String>: path -> content a dynamic require can load at runtime
+      end
+
+      # The files bundled as lazy regions, in path order.
+      def lazy_paths
+        @files.each_value.select(&:lazy).map(&:path).sort
       end
 
       # Add a file entry to the graph
@@ -89,16 +94,16 @@ module Ryac
       :original_size,    # Integer: Bytes of the input the content descends from
       :stdlib_requires,  # Array<String>: Standard library requires to preserve
       :rbs_files,        # Hash<String, String>: path -> RBS content for TypeProf
-      :lazy_sources      # Array<String>: files a dynamic require can load at runtime — not bundled, but analyzed
+      :lazy_files        # Array<String>: paths of the files bundled as lazy regions (see LazyRegions)
     ) do
       # A source built straight from a string (tests, sub-pipelines) has no
       # file ancestry: everything but the content defaults away, and its
       # original size is the content itself.
-      def initialize(content:, file_boundaries: [], original_size: nil, stdlib_requires: [], rbs_files: {}, lazy_sources: []) # steep:ignore UndeclaredMethodDefinition
+      def initialize(content:, file_boundaries: [], original_size: nil, stdlib_requires: [], rbs_files: {}, lazy_files: []) # steep:ignore UndeclaredMethodDefinition
         super(content: content, file_boundaries: file_boundaries,
               original_size: original_size || content.bytesize,
               stdlib_requires: stdlib_requires, rbs_files: rbs_files,
-              lazy_sources: lazy_sources)
+              lazy_files: lazy_files)
       end
     end
 

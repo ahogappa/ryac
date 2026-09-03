@@ -4,7 +4,7 @@ module Ryac
   type tp_genv = TypeProf::Core::GlobalEnv
 
   class TypeOracle
-    def self.boot: (String content, Hash[String, String] rbs_files) -> TypeOracle
+    def self.boot: (String content, Hash[String, String] rbs_files, Prism::ProgramNode prism_root) -> TypeOracle
     def self.raw_prism_node: (tp_node node) -> Prism::Node?
 
     class CallerInfo

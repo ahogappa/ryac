@@ -100,8 +100,8 @@ module Ryac
 
     # code is raw (uncompacted) text — compaction is the runner's fixed
     # first step, so every stage list starts from the same dialect.
-    def self.run_stages(code, stages, stdlib_requires: [], rbs_files: {}, lazy_sources: [])
-      Pipeline::StageRunner.new(stdlib_requires: stdlib_requires, rbs_files: rbs_files, lazy_sources: lazy_sources)
+    def self.run_stages(code, stages, stdlib_requires: [], rbs_files: {}, lazy_files: [])
+      Pipeline::StageRunner.new(stdlib_requires: stdlib_requires, rbs_files: rbs_files, lazy_files: lazy_files)
                            .call(code, stages)
     end
 
@@ -134,7 +134,7 @@ module Ryac
       self.class.run_stages(source.content, stages,
         stdlib_requires: source.stdlib_requires,
         rbs_files: source.rbs_files,
-        lazy_sources: source.lazy_sources
+        lazy_files: source.lazy_files
       )
     end
 

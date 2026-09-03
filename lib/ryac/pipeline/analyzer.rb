@@ -49,7 +49,12 @@ module Ryac
       def call(source)
         prism_result, @oracle = without_stdout_pollution { setup_typeprof(source) }
         @prism_root = prism_result.value
-        @lazy_sources = source.lazy_sources
+        @lazy_regions = LazyRegions.collect(@prism_root)
+        # A program that loads files dynamically had enumerated its external
+        # readers; bundled as lazy regions, they are all inside now, and what
+        # is left outside is a launcher — which spells the class/module
+        # skeleton, never a value constant.
+        @alias_surface = source.lazy_files.empty? ? :full : :skeleton
         @boot_constant_roots = BootConstants.for(source.stdlib_requires)
         @syntax_data = collect_syntax_data(@prism_root)
 
@@ -104,7 +109,7 @@ module Ryac
           raise InvalidOutputError.new('pre-rename source', prism_result.errors)
         end
 
-        [prism_result, TypeOracle.boot(source.content, source.rbs_files)]
+        [prism_result, TypeOracle.boot(source.content, source.rbs_files, prism_result.value)]
       end
 
       def analyze_keywords_and_scopes
@@ -132,6 +137,7 @@ module Ryac
         @method_rename_mapping = MethodRenameMapping.new
         collect_method_definitions(@prism_root)
         collect_dynamic_ivar_attr_exclusions(@prism_root)
+        collect_inherited_attr_exclusions(@prism_root)
         resolve_method_calls
         collect_alias_undef_methods(@prism_root)
         scan_dynamic_method_references(@prism_root)
@@ -140,7 +146,6 @@ module Ryac
         collect_shorthand_pun_methods(@prism_root)
         if @method_policy == :safe
           collect_string_literal_mentions(@prism_root)
-          collect_lazy_source_mentions(@lazy_sources)
           @method_rename_mapping.exclude_uncalled_methods
         end
         @method_rename_mapping.assign_short_names(@scope_visible_names, @oracle)
@@ -170,10 +175,11 @@ module Ryac
       def analyze_constants_phase
         @constant_mapping = ConstantRenameMapping.new(
           boot_roots: @boot_constant_roots,
-          lazy_mentions: collect_lazy_constant_mentions(@lazy_sources)
+          alias_surface: @alias_surface
         )
         collect_constants(@prism_root)
         exclude_private_constants(@prism_root)
+        exclude_lazy_definitions(@prism_root)
         count_constant_references(@prism_root)
         augment_constant_counts_via_oracle
         collect_external_references(@prism_root)

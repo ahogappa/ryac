@@ -74,6 +74,33 @@ module Ryac
       @method_rename_mapping.merge_blind_def_groups if @method_policy == :aggressive
     end
 
+    # An attr declared below a class that touches its ivar — `attr_reader
+    # :label_text` in a subclass of the class assigning @label_text — cannot
+    # rename: the coordination that moves ivar sites along with a renamed
+    # attr walks from the declaring class down, never up to that ancestor,
+    # which would go on writing the original name. The pair keeps its name.
+    def collect_inherited_attr_exclusions(prism_root)
+      touching = Hash.new { |h, k| h[k] = Set.new } #: Hash[Symbol, Set[Array[Symbol]]]
+      Nesting.each(prism_root) do |node, cpath, _singleton, _in_def|
+        case node
+        when Prism::InstanceVariableReadNode, *IVAR_WRITE_NODES
+          # @type var node: Prism::InstanceVariableReadNode | ivar_write_node
+          touching[node.name] << cpath
+        end
+      end
+
+      excluded = Set.new
+      each_attr_declaration(prism_root, ATTR_DECLARATION_METHODS, require_class_body: false) do |_node, cpath, _singleton, sym|
+        classes = touching.fetch(:"@#{sym}", nil)
+        next unless classes
+
+        @oracle.each_ancestor_cpath(cpath, false) do |ancestor_cpath|
+          excluded << sym << :"#{sym}=" if ancestor_cpath != cpath && classes.include?(ancestor_cpath)
+        end
+      end
+      @method_rename_mapping.exclude_methods_by_mid(excluded) unless excluded.empty?
+    end
+
     # Renaming an attr declaration renames its backing ivar with it. In a
     # class that touches ivars dynamically (optcarrot's Config assigns
     # every option via instance_variable_set), the dynamic side keeps the
@@ -107,9 +134,12 @@ module Ryac
       AstUtils.each_node(prism_root) do |node|
         next unless node.is_a?(Prism::StringNode)
 
-        # the pattern has no capture groups, so scan only produces strings;
-        # the is_a? narrows the union scan's signature declares
-        node.unescaped.scan(/[a-zA-Z_][a-zA-Z0-9_]*[?!]?/).each do |w|
+        # Byte escapes (`"\x89PNG"`) leave the literal invalid in the source
+        # encoding, and String#scan refuses invalid text; the identifier
+        # pattern is pure ASCII, so scanning the bytes finds the same words.
+        # The pattern has no capture groups, so scan only produces strings;
+        # the is_a? narrows the union scan's signature declares.
+        node.unescaped.b.scan(/[a-zA-Z_][a-zA-Z0-9_]*[?!]?/).each do |w|
           words << w.to_sym if w.is_a?(String)
         end
       end
@@ -119,36 +149,6 @@ module Ryac
         words.include?(mid) || words.include?(mid.to_s.chomp('=').to_sym)
       }
       @method_rename_mapping.exclude_methods_by_mid(mentioned.to_set) unless mentioned.empty?
-    end
-
-    # Files a dynamic require can load at runtime (optcarrot's driver/
-    # plugins) run against the minified program: they call its methods and
-    # override them in subclasses, all by original name. Every name such a
-    # file defines or calls keeps its spelling under the safe policy.
-    def collect_lazy_source_mentions(lazy_sources)
-      mentioned = Set.new
-      lazy_sources.each do |src|
-        result = Prism.parse(src)
-        next unless result.success?
-
-        AstUtils.each_node(result.value) do |node|
-          case node
-          when Prism::DefNode
-            mentioned << node.name
-          when Prism::CallNode
-            mentioned << node.name
-            mentioned.merge(AstUtils.symbol_arguments(node)) if ATTR_DECLARATION_METHODS.include?(node.name)
-          when Prism::CallOperatorWriteNode, Prism::CallOrWriteNode, Prism::CallAndWriteNode
-            mentioned << node.read_name << node.write_name
-          end
-        end
-      end
-      return if mentioned.empty?
-
-      excluded = @method_rename_mapping.method_mids.select { |mid|
-        mentioned.include?(mid) || mentioned.include?(mid.to_s.chomp('=').to_sym)
-      }
-      @method_rename_mapping.exclude_methods_by_mid(excluded.to_set) unless excluded.empty?
     end
 
     # Visibility resets at every reopen of this module, so each collection

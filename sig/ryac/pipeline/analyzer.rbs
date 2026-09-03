@@ -9,7 +9,8 @@ module Ryac
       @meta_node_map: Hash[location_key, meta_node_entry]
 
       @method_policy: Symbol
-      @lazy_sources: Array[String]
+      @lazy_regions: Array[Prism::LambdaNode]
+      @alias_surface: Symbol
       @scope_visible_names: Hash[scope_id, Set[String]]
 
       def self.prism_only: (ConcatenatedSource source) -> AnalysisResult

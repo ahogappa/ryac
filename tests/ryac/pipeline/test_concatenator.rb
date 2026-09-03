@@ -26,6 +26,73 @@ class TestConcatenator < Minitest::Test
     end
   end
 
+  # Lazy files are registered as regions ahead of the flat code, each
+  # keeping its own requires in place, and every require that names a
+  # region — the dynamic site, respelled relative to the bundle root and
+  # stripped of a literal ".rb", and the static sibling require inside a
+  # region — asks the loader instead.
+  def test_lazy_files_become_registered_regions
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, 'engine.rb'), "class Base; end\n")
+      File.write(File.join(dir, 'main.rb'), <<~'RUBY')
+        require_relative "engine"
+        module App
+          def self.load(name)
+            require_relative "plugins/#{name}_plugin.rb"
+          end
+        end
+      RUBY
+      Dir.mkdir(File.join(dir, 'plugins'))
+      File.write(File.join(dir, 'plugins', 'shared.rb'), "SHARED = 1\n")
+      File.write(File.join(dir, 'plugins', 'a_plugin.rb'), <<~RUBY)
+        require "ffi"
+        require_relative "shared"
+        class APlugin < Base; end
+      RUBY
+
+      graph = Ryac::Pipeline::FileCollector.new.call(File.join(dir, 'main.rb'), project_root: dir)
+      result = @concatenator.call(graph)
+
+      assert_equal <<~'RUBY', result.content
+        RYAC_LAZY = {}
+        def ryac_require(path)
+          return require_relative(path) unless RYAC_LAZY.key?(path)
+          body = RYAC_LAZY[path]
+          return false unless body
+          RYAC_LAZY[path] = false
+          begin
+            body.call
+          rescue Exception
+            RYAC_LAZY[path] = body
+            raise
+          end
+          true
+        end
+
+        RYAC_LAZY["plugins/shared"] = -> {
+        SHARED = 1
+
+        }
+        RYAC_LAZY["plugins/a_plugin"] = -> {
+        require "ffi"
+        ryac_require("plugins/shared")
+        class APlugin < Base; end
+
+        }
+        class Base; end
+
+        module App
+          def self.load(name)
+            ryac_require("plugins/#{name}_plugin")
+          end
+        end
+      RUBY
+      assert_equal [], result.stdlib_requires
+      assert_equal [File.join(dir, 'plugins', 'a_plugin.rb'), File.join(dir, 'plugins', 'shared.rb')], result.lazy_files
+      assert_equal 4, result.file_boundaries.size
+    end
+  end
+
   def test_single_file
     graph = build_graph(
       "/a.rb" => { content: "puts 1", deps: [] }

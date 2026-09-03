@@ -9,7 +9,8 @@ options = {
   aliases: nil,
   level: nil,
   gems: nil,
-  pack: nil
+  pack: nil,
+  driver: nil
 }
 
 parser = OptionParser.new do |opts|
@@ -47,6 +48,10 @@ parser = OptionParser.new do |opts|
     end
   end
 
+  opts.on("-d", "--driver FILE", "Write the lazy regions to FILE as a runner (ruby FILE CORE --exec EXPR)") do |file|
+    options[:driver] = file
+  end
+
   opts.on("-h", "--help", "Display this help message") do
     puts opts
     exit 0
@@ -64,6 +69,21 @@ rescue OptionParser::InvalidOption => e
   warn "Error: #{e.message}"
   warn parser
   exit 1
+end
+
+if options[:driver]
+  unless options[:output]
+    warn "Error: --driver needs -o for the core file"
+    exit 1
+  end
+  if options[:aliases]
+    warn "Error: --driver cannot be combined with -a (the runner loads the core with its aliases)"
+    exit 1
+  end
+  if options[:pack]
+    warn "Error: --driver cannot be combined with --pack (a packed core cannot be loaded)"
+    exit 1
+  end
 end
 
 if options[:gems]
@@ -120,6 +140,11 @@ begin
   end
 
   content = Ryac::Packer.pack(content, options[:pack]) if options[:pack]
+
+  if options[:driver]
+    content, driver = Ryac::DriverFile.split(content)
+    File.write(options[:driver], driver)
+  end
 
   if options[:output]
     File.binwrite(options[:output], content)

@@ -249,6 +249,60 @@ class TestMethodRenamer < Minitest::Test
                  result.code
   end
 
+  # A subclass writing the ivar an ancestor's attr reads fills the slot the
+  # reader reads, so it keeps the reader's spelling: `palette` stays (its
+  # caller does not resolve), and `@palette` in the subclass stays with it
+  # instead of taking a short name of its own. optcarrot's PNGVideo does
+  # exactly this to Video's palette — renamed apart, the PPU got a nil
+  # palette and the encoder crashed.
+  def test_subclass_write_follows_the_ancestors_attr_ivar
+    code = <<~RUBY
+      class Video
+        attr_reader :palette
+        def initialize
+          @palette_rgb = [2, 3]
+          @palette = [1]
+          init
+        end
+        def init; end
+      end
+      class PNGVideo < Video
+        def init
+          @palette = @palette_rgb
+        end
+      end
+      video = [PNGVideo.new, Object.new].find { |o| o.respond_to?(:palette) }
+      puts video.palette.inspect
+    RUBY
+    result = minify_at_level(code, 5)
+    assert_equal 'class B;attr :palette;def initialize =(@a=[2,3];@palette=[1];a);def a;end;end;' \
+                 'class A<B;def a =@palette=@a;end;a=[A.new,Object.new].find{_1.respond_to?(:palette)};' \
+                 'puts a.palette.inspect',
+                 result.code
+  end
+
+  # An attr declared below the class that writes its ivar keeps the pair:
+  # renaming it would have to reach the ancestor's write, which the attr
+  # coordination — walking from the declaring class down — never visits.
+  def test_attr_below_the_writing_class_keeps_the_pair
+    code = <<~RUBY
+      class Base
+        def initialize
+          @label_text = "base"
+          @extra = 1
+        end
+      end
+      class Child < Base
+        attr_reader :label_text
+      end
+      puts Child.new.label_text
+    RUBY
+    result = minify_at_level(code, 5)
+    assert_equal 'class B;def initialize =(@label_text="base";@a=1);end;class A<B;attr :label_text;end;' \
+                 'puts A.new.label_text',
+                 result.code
+  end
+
   # `[x].map(&:foo)` dispatches to foo from Array#map's RBS declaration —
   # TypeProf records the caller, but its node is the declaration, not a call
   # site. Nothing in the source can be rewritten to follow a rename, so the

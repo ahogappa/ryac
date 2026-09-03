@@ -59,12 +59,12 @@ module Ryac
     # minifier has loaded — including, under self-hosting, the analyzed
     # program itself — then looks like a reopening.
     #
-    # lazy_mentions: constant names the program's dynamic-load surface
-    # (lazy sources) mentions, or nil when no such surface exists. See
-    # generate_alias_declarations for the pruning it enables.
-    def initialize(boot_roots: nil, lazy_mentions: nil)
+    # alias_surface: which renames the alias block restores — :full, every
+    # one, or :skeleton, classes and modules only. See
+    # generate_alias_declarations.
+    def initialize(boot_roots: nil, alias_surface: :full)
       @boot_roots = boot_roots
-      @lazy_mentions = lazy_mentions
+      @alias_surface = alias_surface
       @mappings = {}           # Hash<Array<Symbol>, ConstantInfo> - key is static_cpath
       # keyed by the last path segment
       @by_name = {}
@@ -211,20 +211,16 @@ module Ryac
     # Returns array of strings like "OriginalName=ShortName" or
     # "ShortParent::OriginalName=ShortParent::ShortName" for nested constants.
     #
-    # A program with no lazy sources gets the full surface: any external
-    # code may spell any original name, so every rename stays restorable.
-    # A program that dynamically loads files at runtime has enumerated its
-    # external readers, and the alias block serves that surface: the
-    # class/module skeleton always survives — it is the boot contract any
-    # launcher spells (`Optcarrot::NES.new.run`), whether or not a lazy
-    # file happens to mention it — while a value constant's alias survives
-    # only when a lazy source mentions its name. The unmentioned rest is
-    # internal data no enumerated reader can reach.
+    # With the :full surface every rename stays restorable: nothing says
+    # which original names code outside the analyzed world spells. A program
+    # that dynamically loads files at runtime had enumerated its external
+    # readers, and bundling them as lazy regions brought every one inside;
+    # what remains outside is a launcher, and a launcher spells the
+    # class/module skeleton (`Optcarrot::NES.new.run`), never a value
+    # constant. That is the :skeleton surface.
     def generate_alias_declarations
       renamed = @mappings.values.select(&:short_name).sort_by { |info| [info.full_path.size, info.full_path] }
-      if (mentions = @lazy_mentions)
-        renamed.reject! { |info| info.definition_type == :value && !mentions.include?(info.original_name) }
-      end
+      renamed.reject! { |info| info.definition_type == :value } if @alias_surface == :skeleton
       renamed.filter_map { |info| build_alias_declaration(info) }
     end
 
