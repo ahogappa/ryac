@@ -4,6 +4,10 @@
 
 A Ruby code minifier that uses [TypeProf](https://github.com/ruby/typeprof) for type-aware analysis and AST-based transformations to achieve high compression rates while preserving functional equivalence.
 
+## Status
+
+ryac is under active development and no interface is settled yet. The architecture — the pipeline stages, the rename policies, the alias and lazy-region mechanisms — and with it the CLI options, the `Ryac::Minifier` API and the shape of the output may all change between releases. Pin an exact version if you depend on any of them.
+
 ## Philosophy
 
 This project takes an **aggressive optimization** approach. In Ruby, even comment removal requires context awareness — for example, `foo\n# comment\n.to_s` works because the comment connects the method chain, but removing it causes a syntax error. Whether a given comment is safe to remove depends entirely on context, making the boundary between safe and unsafe transformations inherently blurry. Since conservative minification is already difficult in Ruby, we choose to optimize as aggressively as possible. TypeProf's type analysis helps make these transformations more informed, but the goal is always maximum compression.
@@ -23,6 +27,12 @@ This project takes an **aggressive optimization** approach. In Ruby, even commen
 
 ## Installation
 
+```bash
+gem install ryac
+```
+
+Or in a Gemfile:
+
 ```ruby
 gem 'ryac'
 ```
@@ -33,34 +43,34 @@ gem 'ryac'
 
 ```bash
 # Minify a file (follows require_relative automatically)
-bin/ryac path/to/entry.rb
+ryac path/to/entry.rb
 
 # Specify compression level (stable or unstable)
-bin/ryac path/to/entry.rb -c stable
-bin/ryac path/to/entry.rb -c unstable
+ryac path/to/entry.rb -c stable
+ryac path/to/entry.rb -c unstable
 
 # Write to output file
-bin/ryac path/to/entry.rb -o minified.rb
+ryac path/to/entry.rb -o minified.rb
 
 # Write constant aliases to a separate file
-bin/ryac path/to/entry.rb -o minified.rb -a aliases.rb
+ryac path/to/entry.rb -o minified.rb -a aliases.rb
 
 # Emit a self-extracting packed file (self = zero dependencies, zlib = smaller)
-bin/ryac path/to/entry.rb -o packed.rb --pack self
+ryac path/to/entry.rb -o packed.rb --pack self
 
 # Keep the program a pure library and put its lazy regions in a runner
-bin/ryac path/to/entry.rb -o minify.rb --driver driver.rb
+ryac path/to/entry.rb -o minify.rb --driver driver.rb
 
 # Multiple entry points
-bin/ryac file1.rb file2.rb
+ryac file1.rb file2.rb
 
 # Minify installed gem(s) by name (resolved via Gem::Specification)
-bin/ryac -g rack
-bin/ryac -g rack,rack-session -o bundle.rb
+ryac -g rack
+ryac -g rack,rack-session -o bundle.rb
 
 # Show version / help
-bin/ryac -v
-bin/ryac -h
+ryac -v
+ryac -h
 ```
 
 ### Ruby API
@@ -105,7 +115,7 @@ The region's body runs when the original require would have run — a short load
 The output is still one file. For optcarrot, it stands in for `lib/optcarrot.rb` under upstream's unmodified `bin/optcarrot`:
 
 ```bash
-bin/ryac gem_tests/optcarrot/lib/optcarrot.rb -o /path/to/optcarrot/lib/optcarrot.rb
+ryac gem_tests/optcarrot/lib/optcarrot.rb -o /path/to/optcarrot/lib/optcarrot.rb
 cd /path/to/optcarrot && bin/optcarrot examples/Lan_Master.nes
 ```
 
@@ -114,7 +124,7 @@ A constant only a region defines (`SDL2Video`, the `SDL2` module) keeps its name
 Or keep the program a pure library and put the regions in a runner of their own:
 
 ```bash
-bin/ryac gem_tests/optcarrot/lib/optcarrot.rb -o minify.rb --driver driver.rb
+ryac gem_tests/optcarrot/lib/optcarrot.rb -o minify.rb --driver driver.rb
 ruby driver.rb minify.rb --exec "Optcarrot::NES.new.run" examples/Lan_Master.nes
 ```
 
