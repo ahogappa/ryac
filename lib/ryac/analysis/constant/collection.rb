@@ -119,6 +119,34 @@ module Ryac
       (lazy - flat).each { |cpath| @constant_mapping.exclude_path(cpath) }
     end
 
+    # `expr::NAME` reads a constant on a scope only the running program
+    # knows — `self.class::OPTIONS` in an included helper lands on whichever
+    # class included it — so no static path stands in for the reference and
+    # the name in the text is the name looked up. Every user constant called
+    # NAME keeps its name, so any of them can be the one meant.
+    def exclude_dynamic_root_reads(prism_root)
+      names = Set.new #: Set[Symbol]
+      each_constant_event(prism_root) do |kind, node, _cpath, _singleton, _in_def|
+        next unless kind == :read && node.is_a?(Prism::ConstantPathNode) && dynamic_root?(node)
+
+        name = node.name
+        names << name if name
+      end
+      return if names.empty?
+
+      pinned = [] #: Array[Array[Symbol]]
+      @constant_mapping.each_user_defined_path { |cpath| pinned << cpath if names.include?(cpath.last) }
+      pinned.each { |cpath| @constant_mapping.exclude_path(cpath) }
+    end
+
+    # A path whose outermost parent is neither a constant nor absent (`::X`)
+    # — `self::X`, `self.class::X`, `klass::X`.
+    def dynamic_root?(node)
+      current = node.parent
+      current = current.parent while current.is_a?(Prism::ConstantPathNode)
+      !(current.nil? || current.is_a?(Prism::ConstantReadNode))
+    end
+
     def collect_constants(prism_root)
       each_constant_event(prism_root) do |kind, node, cpath, singleton, in_def|
         case kind

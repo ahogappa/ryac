@@ -180,6 +180,7 @@ module Ryac
         collect_constants(@prism_root)
         exclude_private_constants(@prism_root)
         exclude_lazy_definitions(@prism_root)
+        exclude_dynamic_root_reads(@prism_root)
         count_constant_references(@prism_root)
         augment_constant_counts_via_oracle
         collect_external_references(@prism_root)

@@ -87,8 +87,8 @@ There are exactly two levels, named for their promise. The default is **`stable`
 
 | Level | Transformations | Promise |
 |-------|----------------|---------|
-| `stable` | AST compaction and folding, constant/class/module renaming with compatibility aliases, external prefix aliasing, local/keyword/instance/class/global variable renaming | Verified frame-for-frame on a real program (Optcarrot). Sound under closed-world analysis; reflection over *names the program renames* is the caveat. |
-| `unstable` | + Method renaming, attr-backed ivar coordination | A program can defeat method renaming by construction (names inside strings, `eval`'d source, `send(computed)`), so this works only when the program plays along. Verified by self-hosting. |
+| `stable` | AST compaction and folding, constant/class/module renaming with compatibility aliases, external prefix aliasing, local/keyword/instance/class/global variable renaming, and method renaming under the `:safe` policy — a name is renamed only when type inference resolved every caller and no dynamic escape hatch (a string mention, a dynamic-ivar class, an uncalled def) touches it; attr declarations, their backing ivars and their call sites move together | Verified frame-for-frame on a real program (Optcarrot). Sound under closed-world analysis; reflection over *names the program renames* is the caveat. |
+| `unstable` | The same stages; method renaming switches to `:aggressive`, which also renames names whose callers type inference could not resolve, betting that a same-named call is the same method | A program can defeat that bet by construction (names inside strings, `eval`'d source, `send(computed)`), so this works only when the program plays along. Verified by self-hosting. |
 
 Finer configurations are not levels: the pipeline is built from steps, and callers can pass an explicit stage list in place of a level name (`Minifier#call(path, level: [...stage defs...])`). The unit tests pin each step's behavior through exactly that mechanism.
 
@@ -138,7 +138,7 @@ The supported boundary is defined by two programs, both verified in CI:
 - **[Optcarrot](https://github.com/mame/optcarrot) at `stable`** — the minified emulator matches the original frame-for-frame across the 180-frame demo and three scripted play scenarios (1,820 frames of title menus, piece rotation, pausing and button mashing), and, standing in for `lib/optcarrot.rb` under upstream's own `bin/optcarrot`, its bundled png and wav drivers write the same frame and samples as the original's ([`tests/test_optcarrot.rb`](tests/test_optcarrot.rb))
 - **This minifier itself at `unstable`** — the minified minifier re-minifies the original source to identical output, and minifying its own output is a byte-identical fixed point ([`tests/test_integration.rb`](tests/test_integration.rb))
 
-Whether `unstable` holds for a given program depends on the program. Optcarrot stops at `stable` because it defeats method renaming by construction: it builds its CPU/PPU cores as source strings and `eval`s them, scans that text for `@ivar` names with a regexp, and dispatches through `send(computed_symbol)` — method names survive inside strings, out of reach of static analysis. The sinatra and rubocop suites run in CI as regression canaries on a keyword-only step composition, but they sit outside this boundary and do not define it.
+Whether `unstable` holds for a given program depends on the program. Optcarrot stops at `stable` because it defeats aggressive method renaming by construction: it builds its CPU/PPU cores as source strings and `eval`s them, scans that text for `@ivar` names with a regexp, and dispatches through `send(computed_symbol)` — method names survive inside strings, out of reach of static analysis. The sinatra and rubocop suites run in CI as regression canaries on a keyword-only step composition, but they sit outside this boundary and do not define it.
 
 ## Development
 
@@ -177,7 +177,7 @@ FileCollector → Concatenator → StageRunner (Compactor → stage list) → Ou
 2. **Concatenator** — Topologically sorts files and concatenates them into a single source
 3. **StageRunner** — Compacts the source (AST rebuilt into minimal whitespace form), then walks the level's ordered stage list. Every stage implements one contract — `needs_analysis?` / `fixpoint?` / `collect(ctx, patches)` / `finish(ctx)` — and phase is list position:
    - **Syntactic stages** (no analysis): `ControlFlowSimplify`, `EndlessMethod`, `ConstantFold`, `BooleanShorten`, `CharShorten` before the rename batch; `ParenOptimizer` after it
-   - **Analysis stages**: `ConstantAliaser`, `AttrDeclShorten`, `VariableRenamer` (plus `MethodRenamer` at `unstable`) — consecutive analysis stages form one batch sharing a single TypeProf pass, and the runner rejects a list that would need two
+   - **Analysis stages**: `ConstantAliaser`, `AttrDeclShorten`, `VariableRenamer`, `MethodRenamer` (`:safe` at `stable`, `:aggressive` at `unstable`) — consecutive analysis stages form one batch sharing a single TypeProf pass, and the runner rejects a list that would need two
 
 ## Dependencies
 

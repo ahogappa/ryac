@@ -298,6 +298,29 @@ class TestConstantAliaserPipeline < Minitest::Test
                  result.code
   end
 
+  # `self.class::OPTIONS` in an included helper reads OPTIONS off whichever
+  # class included it: the scope is decided at runtime, so the reference
+  # cannot follow a rename the way a static path does. Every constant of
+  # that name keeps it; the ones nobody reads dynamically still rename.
+  def test_dynamic_scope_read_pins_every_constant_of_that_name
+    code = <<~RUBY
+      module Helper
+        def options = self.class::OPTIONS
+      end
+      class Builder
+        include Helper
+        OPTIONS = [:inline]
+        LIMIT = 3
+        def limit = LIMIT
+      end
+      puts Builder.new.options.inspect, Builder.new.limit
+    RUBY
+    result = minify_at_level(code, 2)
+    assert_equal 'module Helper;def options =self.class::OPTIONS;end;class Builder;include Helper;OPTIONS=[:inline];A=3;def limit =A;end;puts Builder.new.options.inspect,Builder.new.limit',
+                 result.code
+    assert_equal 'Builder::LIMIT=Builder::A', result.aliases
+  end
+
   LAZY_PRUNE_CODE = <<~RUBY
     module Engine
       RATE = 44_100
