@@ -18,15 +18,17 @@ class TestIvarCollection < Minitest::Test
     'class I;attr_writer :value;def initialize(v);@value=v;end;def get;@value;end;end;puts I.new(1).get',
   ].join(';')
 
+  # Resolvable methods rename under the stable :safe policy — except F#set,
+  # which no resolved call reaches, so its name survives as public surface.
   L4_GROUP_EXPECTED =
-    'class A;def initialize(a) =@a=a;def get =@a;end;puts A.new(1).get;' \
-    'class B;def initialize(a,b) =(@b=a;@a=b);def sum =@b+@a;end;puts B.new(1,2).sum;' \
+    'class A;def initialize(a) =@a=a;def a =@a;end;puts A.new(1).a;' \
+    'class B;def initialize(a,b) =(@b=a;@a=b);def a =@b+@a;end;puts B.new(1,2).a;' \
     'class C;attr :value;def initialize(a) =@value=a;end;puts C.new(42).value;' \
-    'class D;def initialize(a) =@a=a;def check =defined?(@a);end;puts D.new(1).check;' \
-    'class E;def initialize(a) =@value=a;def get(a) =instance_variable_get a;end;puts E.new(1).get(:"@value");' \
-    'class F;def initialize(a) =@value=a;def set(a,b) =instance_variable_set a,b;def get =@value;end;puts F.new(1).get;' \
-    'class G;def initialize =@a=0;def get =@a;end;class H<G;def inc =@a+=1;end;a=H.new;a.inc;puts a.get;' \
-    'class I;attr_writer :value;def initialize(a) =@value=a;def get =@value;end;puts I.new(1).get'
+    'class D;def initialize(a) =@a=a;def a =defined?(@a);end;puts D.new(1).a;' \
+    'class E;def initialize(a) =@value=a;def a(a) =instance_variable_get a;end;puts E.new(1).a(:"@value");' \
+    'class F;def initialize(a) =@value=a;def set(a,b) =instance_variable_set a,b;def a =@value;end;puts F.new(1).a;' \
+    'class G;def initialize =@a=0;def a =@a;end;class H<G;def b =@a+=1;end;a=H.new;a.b;puts a.a;' \
+    'class I;attr_writer :value;def initialize(a) =@value=a;def a =@value;end;puts I.new(1).a'
 
   def l4_group
     @l4_group ||= minify_at_level(L4_GROUP_CODE, 4)

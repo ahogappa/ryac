@@ -23,16 +23,42 @@ module Ryac
         case node
         when Prism::InstanceVariableReadNode, *IVAR_WRITE_NODES
           # @type var node: Prism::InstanceVariableReadNode | ivar_write_node
-          next if attr_backed[cpath]&.include?(node.name)
+          next if attr_backed_ivar?(attr_backed, cpath, node.name)
           @ivar_rename_mapping.add_site(cpath, node.name, node)
         end
       end
     end
 
+    # An attr declared anywhere up the chain backs the ivar in every
+    # descendant: a subclass's `@palette = ...` fills the slot the
+    # ancestor's `attr_reader :palette` reads. Those sites belong to the
+    # attr coordination (which follows the declaring ancestor), not to plain
+    # ivar renaming — which would give the subclass its own name for the
+    # slot and leave the reader looking at nothing.
+    def attr_backed_ivar?(attr_backed, cpath, name)
+      backed = false
+      @oracle.each_ancestor_cpath(cpath, false) do |ancestor_cpath|
+        backed ||= attr_backed.fetch(ancestor_cpath, nil)&.include?(name) || false
+      end
+      backed || (attr_backed.fetch(cpath, nil)&.include?(name) || false)
+    end
+
+    # The attr-backed ivar names per class, closed upward through the
+    # program's own classes: an attr declared in D backs the slot in every
+    # ancestor of D the program defines, since a write there (`@label_text =
+    # ...` in a base class) fills what D's reader reads. Object and the rest
+    # of the built-in chain write nothing and are not closed over — they
+    # would make every attr back every class's ivar of that name.
     def collect_attr_backed_ivars(prism_root)
+      defined = Set.new #: Set[Array[Symbol]]
+      each_constant_event(prism_root) { |kind, _node, cpath, _singleton, _in_def| defined << cpath if kind == :class_def && cpath }
+
       result = Hash.new { |h, k| h[k] = Set.new } #: Hash[Array[Symbol], Set[Symbol]]
       each_attr_declaration(prism_root, ATTR_DECLARATION_METHODS, require_class_body: false) do |_node, cpath, _singleton, sym|
         result[cpath] << :"@#{sym}"
+        @oracle.each_ancestor_cpath(cpath, false) do |ancestor_cpath|
+          result[ancestor_cpath] << :"@#{sym}" if defined.include?(ancestor_cpath)
+        end
       end
       result
     end
@@ -151,7 +177,7 @@ module Ryac
       used_ivar_names = @ivar_rename_mapping.node_mapping.values.to_set
       used_ivar_names.merge(path_a_mapping.values)
       used_method_names = rename_map.values.to_set
-      scope_vars = MethodRenameMapping.build_scope_vars(@scope_mappings)
+      scope_vars = @scope_visible_names
       generator = NameGenerator.new(prefix: "@")
 
       path_b_info

@@ -56,7 +56,7 @@ class TestAnalyzer < Minitest::Test
     code = "class Calc\n  def add(a, b)\n    a + b\n  end\nend\nputs Calc.new.add(1, 2)\n"
     rbs = "class Calc\n  def add: (Integer, Integer) -> Integer\nend\n"
     result = minify_code(code, rbs_files: { "calc.rbs" => rbs })
-    assert_equal "class A;def add(a,b) =a+b;end;puts A.new.add(1,2)", result.code
+    assert_equal "class A;def a(a,b) =a+b;end;puts A.new.a(1,2)", result.code
   end
 
   # --- defined? with local variable (lines 208-209) ---
@@ -84,7 +84,7 @@ class TestAnalyzer < Minitest::Test
 
   def test_include_meta_node
     result = minify_code("module M; def hello; puts \"hi\"; end; end\nclass C; include M; end\nC.new.hello\n")
-    assert_equal 'module M;def hello =puts "hi";end;class C;include M;end;C.new.hello', result.code
+    assert_equal 'module M;def a =puts "hi";end;class C;include M;end;C.new.a', result.code
   end
 
   # --- find patterns ---
@@ -97,10 +97,13 @@ class TestAnalyzer < Minitest::Test
     assert_equal 'case [1,2,3];in [*a,b,*c];puts b;end', result.code
   end
 
-  # --- lambda with outer scope variable (lines 227-228, 235-241) ---
+  # --- lambda with outer scope variable ---
 
+  # A lambda keeps its parameter names, so the def's `x` must not become
+  # `a`: the lambda body would then read its own `a` (2) where it read `x`
+  # (1). This pin once said exactly that, with verification switched off.
   def test_lambda_outer_scope_variable
-    result = minify_at_level("def foo\n  x = 1\n  f = ->(a) { puts x }\n  f.call(2)\nend\nfoo\n", Ryac::Minifier::DEFAULT_LEVEL, verify_output: false)
-    assert_equal 'def foo =(a=1;b=->(a){puts a};b.(2));foo', result.code
+    result = minify_at_level("def foo\n  x = 1\n  f = ->(a) { puts x }\n  f.call(2)\nend\nfoo\n", Ryac::Minifier::DEFAULT_LEVEL)
+    assert_equal 'def a =(b=1;c=->(a){puts b};c.(2));a', result.code
   end
 end

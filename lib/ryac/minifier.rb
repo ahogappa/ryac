@@ -52,44 +52,44 @@ module Ryac
       raise ArgumentError, "Invalid compress level: #{value} (valid: #{STAGES.keys.join(', ')})"
     end
 
-    ALL_VAR_FEATURES = { features: { keywords: true, ivars: true, cvars: true, gvars: true } }.freeze
     ALL_VAR_WITH_ATTR = { features: { keywords: true, ivars: true, cvars: true, gvars: true, attr_ivars: true } }.freeze
 
     # :unstable is derived from :stable, never hand-copied — the superset
-    # law lives here as code. "attrs renamed" is one fact spelled by three
-    # co-moving switches: AttrDeclShorten rename_attrs (declarations),
-    # attr_ivars (backing ivars) and MethodRenamer (call sites). This
-    # transform flips all three together; a hand-composed list must too.
+    # law lives here as code. The one switch between them is the method
+    # renamer's policy: :safe touches only names whose every caller type
+    # inference resolved; :aggressive also takes the bets.
     def self.derive_unstable(stable)
-      stable.flat_map do |entry|
-        if entry[0].equal?(Pipeline::AttrDeclShorten)
-          [[Pipeline::AttrDeclShorten, { rename_attrs: true }]] #: Array[stage_entry]
-        elsif entry[0].equal?(Pipeline::VariableRenamer)
-          [[Pipeline::VariableRenamer, ALL_VAR_WITH_ATTR], [Pipeline::MethodRenamer]] #: Array[stage_entry]
-        else
-          [entry]
-        end
-      end.freeze
+      stable.map { |entry|
+        entry[0].equal?(Pipeline::MethodRenamer) ? [Pipeline::MethodRenamer] #: stage_entry
+          : entry
+      }.freeze
     end
 
     # The two levels, named for their promise rather than a number.
     #
-    # :stable is the boundary the optcarrot test certifies frame-for-frame on
-    # a real program: everything up to class, constant and variable renaming,
-    # which closed-world analysis can keep sound.
+    # :stable is the boundary the optcarrot test certifies frame-for-frame
+    # on a real program: class, constant and variable renaming, plus method
+    # renaming under the :safe policy — a group renames only when type
+    # inference resolved every caller and no dynamic escape hatch (a string
+    # mention, a dynamic-ivar class, an uncalled def) touches its name.
+    # "attrs renamed" is one fact spelled by three co-moving switches:
+    # AttrDeclShorten rename_attrs (declarations), attr_ivars (backing
+    # ivars) and MethodRenamer (call sites) — all three live here together.
     #
-    # :unstable adds method renaming, which a program can defeat by
-    # construction — names survive inside strings, eval'd source and computed
-    # send targets, out of reach of any static analysis. It is certified by
-    # self-hosting and works only when the program plays along.
+    # :unstable switches method renaming to :aggressive, which a program
+    # can defeat by construction — names survive inside strings, eval'd
+    # source and computed send targets, out of reach of any static
+    # analysis. It is certified by self-hosting and works only when the
+    # program plays along.
     #
     # Finer configurations are not levels: individual steps stay composable
     # by passing an explicit stage list in place of a level name.
     STABLE_STAGES = [
       *OPTIMIZE_PRE,
       [Pipeline::ConstantAliaser, { rename_classes: true }],
-      [Pipeline::AttrDeclShorten],
-      [Pipeline::VariableRenamer, ALL_VAR_FEATURES],
+      [Pipeline::AttrDeclShorten, { rename_attrs: true }],
+      [Pipeline::VariableRenamer, ALL_VAR_WITH_ATTR],
+      [Pipeline::MethodRenamer, { policy: :safe }],
       *OPTIMIZE_POST,
     ].freeze
 
@@ -100,8 +100,8 @@ module Ryac
 
     # code is raw (uncompacted) text — compaction is the runner's fixed
     # first step, so every stage list starts from the same dialect.
-    def self.run_stages(code, stages, stdlib_requires: [], rbs_files: {})
-      Pipeline::StageRunner.new(stdlib_requires: stdlib_requires, rbs_files: rbs_files)
+    def self.run_stages(code, stages, stdlib_requires: [], rbs_files: {}, lazy_files: [])
+      Pipeline::StageRunner.new(stdlib_requires: stdlib_requires, rbs_files: rbs_files, lazy_files: lazy_files)
                            .call(code, stages)
     end
 
@@ -133,7 +133,8 @@ module Ryac
       stages = target_level.is_a?(Array) ? target_level : STAGES.fetch(self.class.resolve_level(target_level))
       self.class.run_stages(source.content, stages,
         stdlib_requires: source.stdlib_requires,
-        rbs_files: source.rbs_files
+        rbs_files: source.rbs_files,
+        lazy_files: source.lazy_files
       )
     end
 

@@ -5,7 +5,10 @@ module Ryac
 
       @negated_transforms: Hash[location_key, bool]
       @source_bytes: String
+      @policy: Symbol
 
+      def initialize: (?policy: Symbol) -> void
+      def analysis_options: () -> Hash[Symbol, untyped]
       def needs_analysis?: () -> bool
       def collect: (StageContext ctx, Array[patch_entry] patches) -> void
 

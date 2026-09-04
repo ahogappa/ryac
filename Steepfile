@@ -5,5 +5,7 @@ target :lib do
 
   check "lib"
 
+  library "zlib"
+
   collection_config "rbs_collection.yaml"
 end

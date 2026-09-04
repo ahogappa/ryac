@@ -40,6 +40,57 @@ class TestMethodRenamer < Minitest::Test
     minify_at_level(code, 5)
   end
 
+  # A bare call whose short name matches any local visible at the site —
+  # including one inherited from an enclosing scope through a block, and
+  # ones the local renamer never touched — parses as a variable read, and
+  # the call silently disappears. The optcarrot frame-153 bug: sprite
+  # evaluation sat in a `0.step do` block, its short name collided with a
+  # main-loop local, and rendering diverged with no error raised.
+  def test_implicit_call_avoids_locals_visible_through_block
+    code = <<~RUBY
+      class Machine
+        def bump_total
+          @total = (@total || 0) + 1
+        end
+
+        def run(cycle_count)
+          limit = cycle_count
+          2.times do
+            bump_total if limit > 0
+          end
+          @total
+        end
+      end
+      puts Machine.new.run(1)
+    RUBY
+    result = minify_at_level(code, 5)
+    assert_equal 'class A;def c =@a=(@a||0)+1;def a(a) =(b=a;2.times{c if b>0};@a);end;puts A.new.a(1)',
+                 result.code
+  end
+
+  # A name passed to a visibility modifier is data the renamer cannot move
+  # with the def — the class-method variants count too. The packer's own
+  # `private_class_method :lzss_compress` broke self-hosting when only the
+  # instance-side modifiers were recognized.
+  def test_private_class_method_symbol_keeps_its_def
+    code = <<~RUBY
+      class Toolbox
+        def self.sharpen_blade(edge)
+          edge * 2
+        end
+        def self.build_result(input)
+          sharpen_blade(input) + 1
+        end
+        private_class_method :sharpen_blade
+      end
+      puts Toolbox.build_result(20)
+    RUBY
+    result = minify_at_level(code, 5)
+    assert_equal 'class A;def self.sharpen_blade(a) =a*2;def self.a(a) =sharpen_blade(a)+1;' \
+                 'private_class_method :sharpen_blade;end;puts A.a(20)',
+                 result.code
+  end
+
   # The compactor writes `ready_now? ==` with a protective space; once the
   # rename drops the ?, the space must not survive it — a re-minified
   # artifact would remove it and the self-host fixed point drifts.
@@ -157,6 +208,99 @@ class TestMethodRenamer < Minitest::Test
       'def a =self.count+=1;def c =self.val||=42;def b =self.val&&=();' \
       'def initialize =(@c=0;@v=());end;a=F.new;a.a;puts a.count;a.c;puts a.val;a.b;puts a.val.inspect',
       result.code
+  end
+
+  # Short names are allocated per group, so an explicit setter def cannot
+  # promise the `<name>=` spelling its call sites would need — the pair
+  # keeps its name (the same doctrine as accessor pairs in compound
+  # writes). The getter beside it still renames.
+  def test_plain_setter_def_keeps_name
+    code = <<~RUBY
+      class Screen
+        def brightness=(v)
+          @b = v
+        end
+        def level = @b
+      end
+      s = Screen.new
+      s.brightness = 5
+      puts s.level
+    RUBY
+    result = minify_at_level(code, 5)
+    assert_equal 'class A;def brightness=(a);@b=a;end;def a =@b;end;a=A.new;a.brightness=5;puts a.a',
+                 result.code
+  end
+
+  # Renaming an attr renames its backing ivar with it; a class that
+  # assigns ivars dynamically keeps writing the original spelling, so the
+  # attr keeps its name there (optcarrot's Config pattern).
+  def test_attr_in_dynamic_ivar_class_keeps_name
+    code = <<~RUBY
+      class Config
+        attr_reader :romfile_path
+        def initialize
+          instance_variable_set(:"@romfile_path", "game.nes")
+        end
+      end
+      puts Config.new.romfile_path
+    RUBY
+    result = minify_at_level(code, 5)
+    assert_equal 'class A;attr :romfile_path;def initialize =instance_variable_set :"@romfile_path","game.nes";end;puts A.new.romfile_path',
+                 result.code
+  end
+
+  # A subclass writing the ivar an ancestor's attr reads fills the slot the
+  # reader reads, so it keeps the reader's spelling: `palette` stays (its
+  # caller does not resolve), and `@palette` in the subclass stays with it
+  # instead of taking a short name of its own. optcarrot's PNGVideo does
+  # exactly this to Video's palette — renamed apart, the PPU got a nil
+  # palette and the encoder crashed.
+  def test_subclass_write_follows_the_ancestors_attr_ivar
+    code = <<~RUBY
+      class Video
+        attr_reader :palette
+        def initialize
+          @palette_rgb = [2, 3]
+          @palette = [1]
+          init
+        end
+        def init; end
+      end
+      class PNGVideo < Video
+        def init
+          @palette = @palette_rgb
+        end
+      end
+      video = [PNGVideo.new, Object.new].find { |o| o.respond_to?(:palette) }
+      puts video.palette.inspect
+    RUBY
+    result = minify_at_level(code, 5)
+    assert_equal 'class B;attr :palette;def initialize =(@a=[2,3];@palette=[1];a);def a;end;end;' \
+                 'class A<B;def a =@palette=@a;end;a=[A.new,Object.new].find{_1.respond_to?(:palette)};' \
+                 'puts a.palette.inspect',
+                 result.code
+  end
+
+  # An attr declared below the class that writes its ivar keeps the pair:
+  # renaming it would have to reach the ancestor's write, which the attr
+  # coordination — walking from the declaring class down — never visits.
+  def test_attr_below_the_writing_class_keeps_the_pair
+    code = <<~RUBY
+      class Base
+        def initialize
+          @label_text = "base"
+          @extra = 1
+        end
+      end
+      class Child < Base
+        attr_reader :label_text
+      end
+      puts Child.new.label_text
+    RUBY
+    result = minify_at_level(code, 5)
+    assert_equal 'class B;def initialize =(@label_text="base";@a=1);end;class A<B;attr :label_text;end;' \
+                 'puts A.new.label_text',
+                 result.code
   end
 
   # `[x].map(&:foo)` dispatches to foo from Array#map's RBS declaration —

@@ -13,17 +13,21 @@ require_relative 'support/constant_audit'
 #
 # It is also the reason L5 stops here. Optcarrot builds its CPU and PPU cores as
 # source text and evals them, scans that text for `@ivar` names with a regexp,
-# dispatches through `send(computed_symbol)`, and requires its drivers by an
-# interpolated path. Method names survive inside strings and symbols there, so
-# method renaming cannot be applied to it by any static analysis — the ceiling
-# is a property of the program, not a defect to fix.
+# and dispatches through `send(computed_symbol)`. Method names survive inside
+# strings and symbols there, so method renaming cannot be applied to it by any
+# static analysis — the ceiling is a property of the program, not a defect to
+# fix. Its drivers, required by an interpolated path, are bundled as lazy
+# regions and renamed with the core.
 #
-# Coverage comes in two layers. The benchmark test replays optcarrot's own
+# Coverage comes in three layers. The benchmark test replays optcarrot's own
 # canonical 180-frame demo and compares the final checksum. The scenario tests
 # then actually play the game — an unattended demo never reads the pads, so it
 # cannot catch a minification bug in anything the player reaches by playing —
 # and compare a per-frame digest of every rendered frame, so a single broken
-# frame anywhere in the run fails the test and names the frame.
+# frame anywhere in the run fails the test and names the frame. Both use the
+# built-in none drivers; the bin test crosses the driver boundary the way a
+# player does — upstream's own bin/optcarrot over the bundle, png and wav
+# drivers loaded from the bundle's regions — and compares what they write.
 #
 # Excluded from the default `rake test` — run with `rake test:optcarrot`.
 class TestOptcarrot < Minitest::Test
@@ -139,6 +143,34 @@ class TestOptcarrot < Minitest::Test
                     "expected a substantial reduction, got #{result.stats.compression_ratio}"
   end
 
+  # The bundle standing in for lib/optcarrot.rb under upstream's unmodified
+  # bin/optcarrot, with the png and wav drivers running out of the bundle's
+  # regions: the frame and the samples they write must match the original's
+  # byte for byte. The digest runs never cross this boundary — the none
+  # drivers are core code — and it is the one a user crosses first.
+  def test_bin_optcarrot_runs_the_bundle_with_its_drivers
+    args = ['--video', 'png', '--audio', 'wav', '--input', 'none', '--frames', '60', ROM]
+    baseline = Dir.mktmpdir('optcarrot_bin_baseline') do |dir|
+      run_ruby(['-I', OPTCARROT_LIB, File.join(OPTCARROT_DIR, 'bin', 'optcarrot'), *args], chdir: dir)
+      driver_outputs(dir)
+    end
+    refute_nil baseline[0], 'baseline wrote no video.png'
+
+    bundled = Dir.mktmpdir('optcarrot_bin_bundle') do |dir|
+      FileUtils.mkdir_p(File.join(dir, 'lib'))
+      FileUtils.mkdir_p(File.join(dir, 'bin'))
+      File.write(File.join(dir, 'lib', 'optcarrot.rb'), self.class.minified_result.full_content)
+      FileUtils.cp(File.join(OPTCARROT_DIR, 'bin', 'optcarrot'), File.join(dir, 'bin', 'optcarrot'))
+      result = run_ruby([File.join(dir, 'bin', 'optcarrot'), *args], chdir: dir)
+      outputs = driver_outputs(dir)
+      refute_nil outputs[0], "the bundle wrote no video.png under bin/optcarrot\n#{result[:stderr][0, 800]}"
+      outputs
+    end
+
+    assert_equal baseline[0], bundled[0], 'the png driver out of the bundle rendered a different last frame'
+    assert_equal baseline[1], bundled[1], 'the wav driver out of the bundle wrote different samples'
+  end
+
   SCENARIOS.each_key do |name|
     define_method(:"test_scripted_#{name}_renders_identical_frames") do
       assert_scenario_frames_identical(name)
@@ -153,11 +185,12 @@ class TestOptcarrot < Minitest::Test
   def test_every_constant_reference_in_the_artifact_resolves
     result = self.class.minified_result
     # StackProf is optcarrot's own optional profiler dependency (required
-    # only when --stackprof-mode is passed); it resolves only where the gem
-    # is installed, so it would flip this test between machines without
-    # being minifier damage.
+    # only when --stackprof-mode is passed), and FFI is what the sdl2, sfml
+    # and ao drivers require at the top of their regions; both resolve only
+    # where the gem is installed, so they would flip this test between
+    # machines without being minifier damage.
     issues = ConstantAudit.unresolved(result.content, extra_source: result.aliases,
-                                      allow: %w[StackProf])
+                                      allow: %w[StackProf FFI])
     assert_empty issues.map { |path, line| "#{path} (line #{line})" },
                  'constant references in the minified optcarrot resolve nowhere — latent NameError'
   end
@@ -249,13 +282,14 @@ class TestOptcarrot < Minitest::Test
     parse_digests(run_ruby([runner]), "baseline #{label}")
   end
 
+  # The log-input driver replaying the script is optcarrot's own, running
+  # out of the bundle's region — it reads @conf and Pad::* from the base
+  # classes, renamed together with them.
   def minified_digests(label, frames:, key_log:)
     digests = nil
     in_minified_dir(self.class.minified_result) do |dir|
-      write_replay_shim(dir)
       runner = File.join(dir, "minified_#{label}.rb")
       File.write(runner, <<~RUBY)
-        ENV["OPTCARROT_KEY_LOG"] = #{key_log.inspect}
         ARGV.replace(#{scenario_argv(frames, key_log).inspect})
         require_relative "optcarrot_min"
         require_relative "optcarrot_aliases"
@@ -273,38 +307,12 @@ class TestOptcarrot < Minitest::Test
     line.split(',').map { |d| Integer(d) }
   end
 
-  # The minified build cannot load optcarrot's own log-input driver: that one
-  # reads @conf and Pad::* from the base classes, whose ivars and constants
-  # L4 legitimately renames. This shim replays the same log through nothing
-  # but stable seams — the init/tick driver interface (method names survive
-  # L4) and the raw pad bit indices.
-  def write_replay_shim(dir)
-    FileUtils.mkdir_p(File.join(dir, 'driver'))
-    File.write(File.join(dir, 'driver', 'log_input.rb'), <<~RUBY)
-      module Optcarrot
-        class LogInput < Input
-          def init
-            @replay_log = Marshal.load(File.binread(ENV.fetch("OPTCARROT_KEY_LOG")))
-            @replay_prev = 0
-          end
-
-          def dispose
-          end
-
-          def tick(frame, pads)
-            state = @replay_log[frame] || 0
-            8.times do |i|
-              if @replay_prev[i] == 0 && state[i] == 1
-                pads.keydown(0, i)
-              elsif @replay_prev[i] == 1 && state[i] == 0
-                pads.keyup(0, i)
-              end
-            end
-            @replay_prev = state
-          end
-        end
-      end
-    RUBY
+  # What the png and wav drivers wrote into dir, nil where a file is missing.
+  def driver_outputs(dir)
+    %w[video.png audio.wav].map do |name|
+      path = File.join(dir, name)
+      File.exist?(path) ? File.binread(path) : nil
+    end
   end
 
   def in_minified_dir(result)
@@ -317,13 +325,13 @@ class TestOptcarrot < Minitest::Test
 
   # Runs with an unbundled env so the minified program is loaded on its own
   # terms — in particular without any gem the original only requires lazily.
-  def run_ruby(args)
+  def run_ruby(args, chdir: Dir.pwd)
     out = Tempfile.new('optcarrot_out')
     err = Tempfile.new('optcarrot_err')
     out.close
     err.close
     pid = Bundler.with_unbundled_env do
-      spawn(RbConfig.ruby, *args, out: [out.path, 'w'], err: [err.path, 'w'])
+      spawn(RbConfig.ruby, *args, out: [out.path, 'w'], err: [err.path, 'w'], chdir: chdir)
     end
     waiter = Thread.new { Process.wait2(pid) }
     unless waiter.join(300)

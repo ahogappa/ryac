@@ -3,8 +3,23 @@
 module Ryac
   module Pipeline
     # Method renaming: renames method definitions and call sites.
+    #
+    # policy: :aggressive (default) renames every group the exclusion
+    # passes leave standing, folding unresolved same-name calls and blind
+    # defs into the groups they probably belong to. :safe renames only
+    # groups whose every caller type inference actually resolved — an
+    # unresolved call excludes its name, an uncalled def keeps its name
+    # (it is either dead or someone outside the program calls it), and a
+    # name that appears inside a string literal keeps its spelling (eval
+    # and send-by-string read strings, not the syntax tree).
     class MethodRenamer < Stage
       include RenamePatcher
+
+      def initialize(policy: :aggressive)
+        @policy = policy
+      end
+
+      def analysis_options = { method_policy: @policy }
 
       def needs_analysis? = true
 

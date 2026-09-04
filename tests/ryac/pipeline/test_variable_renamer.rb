@@ -134,7 +134,7 @@ class TestVariableRenamer < Minitest::Test
 
   L4_GROUP_EXPECTED = 'class B;def initialize(a) =@a=a;def g =@a;end;puts B.new(1).g;' \
     'class C;def initialize =@a=0;def m =(@a+=1;@a);end;a=C.new;a.m;puts a.m;' \
-    'class D;@@a=0;def initialize =@@a+=1;def self.count =@@a;end;D.new;puts D.count;' \
+    'class D;@@a=0;def initialize =@@a+=1;def self.a =@@a;end;D.new;puts D.a;' \
     'class E;def m =($a=42;$a);end;puts E.new.m;' \
     'class G;def m;a,@a=1,2;@a;end;end;puts G.new.m;' \
     'class H;def m;a,@@a=1,2;@@a;end;end;puts H.new.m;' \
@@ -250,5 +250,59 @@ class TestVariableRenamer < Minitest::Test
     code = '[1].map{|_a,b|b+_a}'
     result = minify_at_level(code, 3)
     assert_equal '[1].map{_2+_1}', result.code
+  end
+
+  # === Kept names of nested scopes ===
+
+  # A block's body locals are never renamed, and Ruby binds them by
+  # spelling: had the outer params taken `a, b, c`, the inner `b = ...`
+  # would have written the outer `b` — optcarrot's palette generator, whose
+  # green channel then read the previous color's blue. The outer allocation
+  # steps over every name a nested block keeps.
+  def test_outer_params_avoid_the_locals_a_nested_block_keeps
+    code = <<~RUBY
+      table = [[1.0, 2.0]].flat_map do |red_factor, green_factor|
+        [0x102030, 0x405060].map do |rgb|
+          r = ((rgb >> 16) * red_factor).floor
+          g = ((rgb >> 8 & 0xff) * green_factor).floor
+          b = rgb & 0xff
+          [r, g, b]
+        end
+      end
+      p table
+    RUBY
+    result = minify_at_level(code, 3)
+    assert_equal 'a=[[1.0,2.0]].flat_map{|c,d|[1056816,4214880].map{|e|r=((e>>16)*c).floor;' \
+                 'g=((e>>8&255)*d).floor;b=e&255;[r,g,b]}};p a',
+                 result.code
+  end
+
+  # ...including its own body locals: `pair` must not become `a` beside
+  # `a = 0`.
+  def test_block_param_avoids_its_own_body_locals
+    code = <<~RUBY
+      [[1, 2], [3, 4]].each do |pair|
+        a = 0
+        pair.each { |value| a += value }
+        p a
+      end
+    RUBY
+    result = minify_at_level(code, 3)
+    assert_equal '[[1,2],[3,4]].each{|b|a=0;b.each{a+=_1};p a}', result.code
+  end
+
+  # A lambda renames nothing, so a def local must not take a nested
+  # lambda's parameter name — the lambda body would read its parameter
+  # where it read the def's local.
+  def test_def_local_avoids_a_nested_lambdas_parameter
+    code = <<~RUBY
+      def m(long_name)
+        f = ->(a) { a + long_name }
+        f.call(1)
+      end
+      p m(41)
+    RUBY
+    result = minify_at_level(code, 3)
+    assert_equal 'def m(b) =(c=->(a){a+b};c.(1));p m(41)', result.code
   end
 end

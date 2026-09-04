@@ -101,6 +101,19 @@ module Ryac
       (blind_mids & sited_mids).each { |mid| merge_all_by_mid(mid) }
     end
 
+    # A def no resolved call reaches is either dead or called from outside
+    # the program (a library's public surface, a runner script requiring
+    # the bundle) — renaming it is unsound both ways, so the safe policy
+    # drops those names before assignment.
+    def exclude_uncalled_methods
+      mids = Set.new
+      groups_by_root.each_value do |keys|
+        sites = keys.sum { |key| @methods[key][:call_sites].size }
+        keys.each { |key| mids << key[2] } if sites.zero?
+      end
+      exclude_methods_by_mid(mids) unless mids.empty?
+    end
+
     def add_unresolved_sites_for_mid(mid, call_nodes)
       target_key = @methods.keys.find { |k| k[2] == mid }
       return unless target_key
@@ -123,11 +136,13 @@ module Ryac
       end
     end
 
-    def assign_short_names(scope_mappings, oracle = nil)
+    # scope_vars: LocalScopes#visible_local_names — every local name visible
+    # at a scope after renaming, so implicit-receiver sites can refuse a
+    # short name a bare call would resolve as a variable read.
+    def assign_short_names(scope_vars, oracle = nil)
       group_entries = build_group_entries(groups_by_root)
       group_entries.sort_by! { |entry| -(entry.original_name.size * entry.total_occurrences) }
 
-      scope_vars = self.class.build_scope_vars(scope_mappings)
       existing_methods, hierarchy = oracle ? build_existing_method_names(oracle) : [{}, {}] #: [Hash[class_key, Set[String]], hierarchy]
 
       group_entries.each do |entry|
@@ -239,16 +254,6 @@ module Ryac
         result << MethodGroupEntry.new(keys, mid.to_s, total_occurrences)
       end
       result
-    end
-
-    # Class method: the attr coordination inverts scope_mappings the same
-    # way for its own collision check, so there is exactly one inversion.
-    def self.build_scope_vars(scope_mappings)
-      scope_vars = Hash.new { |h, k| h[k] = Set.new } #: Hash[scope_id, Set[String]]
-      scope_mappings.each do |cref_id, mapping|
-        mapping.each_value { |mangled| scope_vars[cref_id] << mangled }
-      end
-      scope_vars
     end
 
     def groups_by_root

@@ -42,13 +42,15 @@ module Ryac
 
     def merge_blind_def_groups: () -> void
 
+    def exclude_uncalled_methods: () -> void
+
     def add_unresolved_sites_for_mid: (Symbol mid, Array[Prism::Node] call_nodes) -> void
 
     def group_keys: (method_key method_key) -> Array[method_key]
 
     def each_group_call_site: (method_key method_key) { (Prism::Node, scope_id?) -> void } -> void
 
-    def assign_short_names: (scope_mapping_table scope_mappings, ?TypeOracle? oracle) -> void
+    def assign_short_names: (Hash[scope_id, Set[String]] scope_vars, ?TypeOracle? oracle) -> void
     def verify_no_shadowing!: (?hierarchy hierarchy) -> void
 
     def short_name_for: ([Integer, Integer] node_location_key) -> String?
@@ -67,7 +69,6 @@ module Ryac
 
     def build_group_entries: (Hash[method_key, Array[method_key]] groups) -> Array[MethodGroupEntry]
 
-    def self.build_scope_vars: (scope_mapping_table scope_mappings) -> Hash[scope_id, Set[String]]
 
     def groups_by_root: () -> Hash[method_key, Array[method_key]]
 

@@ -96,15 +96,15 @@ class TestMethodRenameMapping < Minitest::Test
     key = [:MyClass, false, :my_method].freeze
     mapping.add_method(key, fake_node(100))
 
-    # An implicit-receiver call site in a scope where a local already claimed
-    # "a" — a bare `a` there would read the local, so the method must not
-    # take that name.
+    # An implicit-receiver call site in a scope where a local named "a" is
+    # visible — a bare `a` there would read the local, so the method must
+    # not take that name.
     mapping.add_call_site(fake_node(201), key, has_receiver: false, scope_id: scope_id)
 
     4.times { |i| mapping.add_call_site(fake_node(202 + i), key, has_receiver: true) }
 
-    scope_mappings = { scope_id => { my_var: 'a' } }
-    mapping.assign_short_names(scope_mappings)
+    scope_vars = { scope_id => Set['a'] }
+    mapping.assign_short_names(scope_vars)
 
     assert_equal "b", mapping.short_name_for(loc_key(100))
   end

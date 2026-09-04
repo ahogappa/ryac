@@ -20,6 +20,7 @@ module Ryac
 
         @graph = DependencyGraph.new
         @visited = Set.new
+        @pending_lazy = [] #: Array[String]
         @gem_names = gem_names
         @project_roots = if project_root
           # Array() leaves only Strings whichever of the two shapes came in
@@ -37,6 +38,11 @@ module Ryac
           collect_file(expanded)
         end
 
+        # Only once the static world is complete: a candidate it reached is
+        # bundled flat and already visited; the rest — and whatever they
+        # require that nothing static did — become lazy regions.
+        collect_file(@pending_lazy.shift, lazy: true) until @pending_lazy.empty?
+
         collect_rbs_files(entry_paths)
         @graph
       end
@@ -44,7 +50,7 @@ module Ryac
       private
 
       # Recursively collect a file and its dependencies
-      def collect_file(file_path, required_from: nil, line: nil)
+      def collect_file(file_path, required_from: nil, line: nil, lazy: false)
         return if @visited.include?(file_path)
 
         unless File.exist?(file_path)
@@ -71,7 +77,7 @@ module Ryac
           else
             dependencies << dep_path
           end
-          collect_file(dep_path, required_from: file_path, line: node_info[:line])
+          collect_file(dep_path, required_from: file_path, line: node_info[:line], lazy: lazy)
         end
 
         entry = FileEntry.new(
@@ -79,7 +85,8 @@ module Ryac
           content: content,
           dependencies: dependencies,
           in_class_dependencies: in_class_dependencies,
-          require_nodes: require_nodes
+          require_nodes: require_nodes,
+          lazy: lazy
         )
 
         @graph.add_file(entry)
@@ -123,6 +130,11 @@ module Ryac
         when Prism::IfNode
           traverse_for_requires(node.statements, nodes, file_path, in_method: in_method, in_class: in_class)
           traverse_for_requires(node.subsequent, nodes, file_path, in_method: in_method, in_class: in_class)
+        when Prism::UnlessNode
+          traverse_for_requires(node.statements, nodes, file_path, in_method: in_method, in_class: in_class)
+          traverse_for_requires(node.else_clause, nodes, file_path, in_method: in_method, in_class: in_class)
+        when Prism::ElseNode
+          traverse_for_requires(node.statements, nodes, file_path, in_method: in_method, in_class: in_class)
         when Prism::BeginNode
           traverse_for_requires(node.statements, nodes, file_path, in_method: in_method, in_class: in_class)
         end
@@ -163,7 +175,10 @@ module Ryac
             resolved_path: resolve_relative_path(arg.unescaped, file_path)
           }
         else
-          return if in_method
+          if in_method
+            collect_lazy_candidates(node, arg, nodes, file_path, in_class: in_class)
+            return
+          end
 
           raise DynamicRequireError.new(
             file_path,
@@ -171,6 +186,51 @@ module Ryac
             expression: node.slice
           )
         end
+      end
+
+      # A dynamic require inside a method stays a runtime require. When its
+      # path starts with a static directory ("driver/#{name}"), the files it
+      # can load exist on disk now, so they join the bundle — as lazy
+      # regions, each run at the moment the require would have run — and
+      # the site is recorded for the Concatenator to point at the loader.
+      def collect_lazy_candidates(node, arg, nodes, file_path, in_class:)
+        return unless arg.is_a?(Prism::InterpolatedStringNode)
+
+        head = arg.parts.first
+        return unless head.is_a?(Prism::StringNode)
+
+        slash = head.unescaped.rindex('/')
+        return unless slash
+
+        prefix = head.unescaped[0..slash] #: String
+        # The prefix is respelled in place, which needs the source to spell
+        # it as it reads.
+        return unless head.content.start_with?(prefix)
+
+        dir = File.expand_path(prefix, File.dirname(file_path))
+        candidates = Dir.glob(File.join(dir, '*.rb')).sort
+        return if candidates.empty?
+
+        tail = arg.parts.last
+        suffix_start = tail.is_a?(Prism::StringNode) && tail.content.end_with?('.rb') ? tail.content_loc.end_offset - 3 : nil
+        nodes << {
+          type: :require_lazy,
+          path: prefix,
+          line: node.location.start_line,
+          start_offset: node.location.start_offset,
+          length: node.location.length,
+          in_class: in_class,
+          in_method: true,
+          lazy: {
+            dir: dir,
+            arg_start_offset: arg.location.start_offset,
+            arg_end_offset: arg.location.end_offset,
+            prefix_start_offset: head.content_loc.start_offset,
+            prefix_length: prefix.bytesize,
+            suffix_start_offset: suffix_start
+          }
+        }
+        @pending_lazy.concat(candidates)
       end
 
       def handle_require(node, nodes, file_path, in_method: false, in_class: false)

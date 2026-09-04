@@ -7,6 +7,12 @@ module Ryac
     # Stage 2: File Concatenation
     # Performs topological sort and concatenates files in dependency order
     class Concatenator
+      # The registry lazy regions register into and the loader that runs
+      # them: ordinary source, minified with everything else (both get short
+      # names), spelled so as not to collide with the program's own names.
+      REGISTRY_NAME = 'RYAC_LAZY'
+      LOADER_NAME = 'ryac_require'
+
       # @param graph [DependencyGraph] From Stage 1
       # @return [ConcatenatedSource] Ordered, concatenated source
       # @raise [CircularDependencyError] If cycle detected in graph
@@ -102,21 +108,35 @@ module Ryac
         inlined = Set.new
         current_line = 1
 
+        lazy_paths = graph.lazy_paths
+        @root = common_root(graph.paths)
+        @registry, @loader = lazy_paths.empty? ? [nil, nil] : bundle_names(graph)
+
         # Pre-clean all files: resolve in-class requires by inlining
         cleaned_cache = {} #: Hash[String, String]
         sorted_paths.each do |path|
           entry = graph[path]
           next unless entry
-          collect_stdlib_requires(entry, stdlib_requires)
+          collect_stdlib_requires(entry, stdlib_requires) unless entry.lazy
           cleaned_cache[path] = process_require_statements(entry, graph, inlined, cleaned_cache)
         end
 
-        sorted_paths.each do |path|
+        if (registry = @registry) && (loader = @loader)
+          prelude = loader_prelude(registry, loader)
+          content_parts << prelude
+          current_line += prelude.count("\n") + 1
+        end
+
+        # Regions first: registering is all a region does at load, and it
+        # has to be registered before any code that could ask for it runs.
+        lazy, flat = sorted_paths.partition { |path| graph[path]&.lazy }
+        (lazy + flat).each do |path|
           next if inlined.include?(path)
           entry = graph[path]
           next unless entry
 
           cleaned_content = cleaned_cache[path]
+          cleaned_content = lazy_registration(path, cleaned_content) if entry.lazy
           lines = cleaned_content.count("\n") + 1
 
           file_boundaries << FileBoundary.new(
@@ -136,8 +156,74 @@ module Ryac
           file_boundaries: file_boundaries,
           original_size: original_size,
           stdlib_requires: stdlib_requires.uniq,
-          rbs_files: graph.rbs_files
+          rbs_files: graph.rbs_files,
+          lazy_files: lazy_paths
         )
+      end
+
+      # The directory every bundled file sits under. Region keys and the
+      # respelled prefix of a dynamic require site are both relative to it,
+      # which is what makes a key and the string the site builds at runtime
+      # agree.
+      def common_root(paths)
+        root = File.dirname(paths.fetch(0))
+        root = File.dirname(root) until root == '/' || paths.all? { |p| p.start_with?("#{root}/") }
+        root
+      end
+
+      def relative_to_root(path)
+        path.delete_prefix(@root == '/' ? '/' : "#{@root}/")
+      end
+
+      def lazy_key(path)
+        relative_to_root(path).delete_suffix('.rb')
+      end
+
+      # Names the program does not spell anywhere.
+      def bundle_names(graph)
+        contents = graph.files.each_value.map(&:content)
+        [REGISTRY_NAME, LOADER_NAME].map { |base| unused_name(base, contents) }
+      end
+
+      def unused_name(base, contents)
+        name = base
+        suffix = 0
+        while contents.any? { |c| c.match?(/\b#{Regexp.escape(name)}\b/) }
+          suffix += 1
+          name = "#{base}_#{suffix}"
+        end
+        name
+      end
+
+      # The loader keeps Ruby's require contract for the regions it owns: a
+      # region runs once and answers true, a repeat answers false, a region
+      # whose run raised (its `require "ffi"` had no ffi) is restored so a
+      # later require can try it again, and a path no region was registered
+      # under falls through to a real require_relative — relative to the
+      # bundle, the one file all this code now lives in.
+      def loader_prelude(registry, loader)
+        <<~RUBY
+          #{registry} = {}
+          def #{loader}(path)
+            return require_relative(path) unless #{registry}.key?(path)
+            body = #{registry}[path]
+            return false unless body
+            #{registry}[path] = false
+            begin
+              body.call
+            rescue Exception
+              #{registry}[path] = body
+              raise
+            end
+            true
+          end
+        RUBY
+      end
+
+      # The file as a region (see LazyRegions): its own line for the closing
+      # brace, so a trailing comment cannot swallow it.
+      def lazy_registration(path, content)
+        "#{@registry}[#{lazy_key(path).dump}] = -> {\n#{content}\n}"
       end
 
       # Hoisting a require to the top of the output makes it run at load time.
@@ -163,13 +249,13 @@ module Ryac
         nodes_with_offsets = require_nodes.select { |n| n[:start_offset] }
 
         if nodes_with_offsets.size == require_nodes.size
-          offset_based_processing(content, nodes_with_offsets, graph, in_class_deps, inlined, cleaned_cache)
+          offset_based_processing(content, nodes_with_offsets, graph, in_class_deps, inlined, cleaned_cache, entry.lazy)
         else
           line_based_processing(content, require_nodes)
         end
       end
 
-      def offset_based_processing(content, nodes, graph, in_class_deps, inlined, cleaned_cache)
+      def offset_based_processing(content, nodes, graph, in_class_deps, inlined, cleaned_cache, lazy_entry)
         sorted_nodes = nodes.sort_by { |n| n[:start_offset] }.reverse
         # Prism offsets are byte offsets: splice on bytes, or any multibyte
         # character before a require shifts every slice after it.
@@ -178,8 +264,22 @@ module Ryac
           start_pos = node[:start_offset]
           end_pos = start_pos + node[:length]
 
+          if node[:type] == :require_lazy
+            result[start_pos...end_pos] = lazy_site_call(result, node).b
+            next
+          end
+
+          dep_path = resolve_node_path(node, graph)
+          # A require that names a region asks the loader for it, whether
+          # the site is a static sibling require inside another region or
+          # an autoload — which then loads at that point, as it does for a
+          # flat file.
+          if dep_path && graph[dep_path]&.lazy
+            result[start_pos...end_pos] = "#{@loader}(#{lazy_key(dep_path).dump})".b
+            next
+          end
+
           if node[:in_class] && !node[:in_method] && node[:type] != :require_stdlib
-            dep_path = resolve_node_path(node, graph)
             if dep_path && graph[dep_path]
               # the `graph[dep_path]` check above guarantees the entry exists
               dep_content = cleaned_cache[dep_path] || graph[dep_path].content # steep:ignore NoMethod
@@ -195,8 +295,9 @@ module Ryac
           end
 
           # An in-method stdlib require is not hoisted, so it has to stay where
-          # it is — deleting it here would drop the require altogether.
-          next if node[:type] == :require_stdlib && node[:in_method]
+          # it is — deleting it here would drop the require altogether. Nothing
+          # in a region is hoisted: its requires run when the region does.
+          next if node[:type] == :require_stdlib && (node[:in_method] || lazy_entry)
 
           # For removal: consume trailing semicolons and newlines
           while end_pos < result.size && (result[end_pos] == ';' || result[end_pos] == "\n")
@@ -205,6 +306,24 @@ module Ryac
           result[start_pos...end_pos] = ''
         end
         result.force_encoding(content.encoding)
+      end
+
+      # `require_relative "driver/#{name}_#{type}"` becomes
+      # `ryac_require("optcarrot/driver/#{name}_#{type}")`: the literal keeps
+      # its interpolation, its static prefix is respelled relative to the
+      # bundle root — the spelling the regions were registered under — and a
+      # literal ".rb" tail goes, as keys carry no extension. The bytes are
+      # read before this node's own edit, so every offset is still original.
+      def lazy_site_call(bytes, node)
+        site = node.fetch(:lazy)
+        arg = bytes[site[:arg_start_offset]...site[:arg_end_offset]] #: String
+        base = site[:arg_start_offset]
+        if (suffix_start = site[:suffix_start_offset])
+          arg[(suffix_start - base), 3] = ''
+        end
+        dir = site[:dir]
+        arg[(site[:prefix_start_offset] - base), site[:prefix_length]] = (dir == @root ? '' : "#{relative_to_root(dir)}/").b
+        "#{@loader}(#{arg})"
       end
 
       def line_based_processing(content, require_nodes)

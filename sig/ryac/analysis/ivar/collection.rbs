@@ -6,6 +6,7 @@ module Ryac
     type ivar_write_node = Prism::InstanceVariableWriteNode | Prism::InstanceVariableTargetNode | Prism::InstanceVariableOperatorWriteNode | Prism::InstanceVariableOrWriteNode | Prism::InstanceVariableAndWriteNode
 
     def collect_ivar_definitions: (Prism::Node prism_root, Hash[Array[Symbol], Set[Symbol]] attr_backed) -> void
+    def attr_backed_ivar?: (Hash[Array[Symbol], Set[Symbol]] attr_backed, Array[Symbol] cpath, Symbol name) -> bool
     def collect_attr_backed_ivars: (Prism::Node prism_root) -> Hash[Array[Symbol], Set[Symbol]]
     def scan_dynamic_ivar_access: (Prism::Node prism_root) -> void
     def merge_inherited_ivars: () -> void

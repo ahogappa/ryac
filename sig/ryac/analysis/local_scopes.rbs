@@ -29,6 +29,8 @@ module Ryac
 
     @program: Prism::ProgramNode
     @scope_by_node: Hash[Integer, Scope]
+    @children: Hash[Integer, Array[Scope]]
+    @constraints: Hash[scope_id, [bool, Set[Symbol]]]
 
     attr_reader scopes: Array[Scope]
     attr_reader rename_entries: Hash[location_key, String]
@@ -41,6 +43,7 @@ module Ryac
     def scope_id_of: (Prism::Node node) -> scope_id?
     def allocate: (?kw_def_map: Hash[location_key, Hash[Symbol, String]], ?var_hints: Hash[scope_id, Hash[Symbol, String]]) -> self
     def scope_mappings: () -> scope_mapping_table
+    def visible_local_names: () -> Hash[scope_id, Set[String]]
     def resolve: () -> self
 
     private
@@ -51,7 +54,12 @@ module Ryac
     def allocate_top: (Scope scope) -> void
     def allocate_def: (Scope scope, Hash[location_key, Hash[Symbol, String]] kw_def_map, Hash[scope_id, Hash[Symbol, String]] var_hints) -> void
     def allocate_block: (Scope scope) -> void
-    def ancestor_mapping_values: (Scope scope) -> Array[String]
+    def reserved_names: (Scope scope) -> Array[String]
+    def ancestor_visible_names: (Scope scope) -> Array[String]
+    def descendant_kept_names: (Scope scope) -> Array[String]
+    def kept_local_names: (Scope scope) -> Array[String]
+    def renamed_block_param_names: (Prism::BlockNode node) -> Set[Symbol]
+    def constraints_for: (Scope scope) -> [bool, Set[Symbol]]
     def scope_constraints: (Prism::Node? body) -> [bool, Set[Symbol]]
 
     def allocated_name: (Symbol var, bool unsafe, Set[Symbol] pinned, NameGenerator generator) -> String

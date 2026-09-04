@@ -29,8 +29,9 @@ module Ryac
     @state: Symbol
     @by_name: Hash[Symbol, Array[ConstantInfo]]
     @external_prefixes: Hash[Array[Symbol], ExternalPrefixInfo]
+    @alias_surface: Symbol
 
-    def initialize: (?boot_roots: Set[Symbol]?) -> void
+    def initialize: (?boot_roots: Set[Symbol]?, ?alias_surface: Symbol) -> void
     def empty?: () -> bool
     def finalized?: () -> bool
     def add_definition_with_path: (Array[Symbol] static_cpath, definition_type: Symbol) -> void

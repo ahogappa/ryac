@@ -9,13 +9,12 @@ module Ryac
 
     OPTIMIZE_PRE: Array[stage_entry]
     OPTIMIZE_POST: Array[stage_entry]
-    ALL_VAR_FEATURES: Hash[Symbol, Hash[Symbol, bool]]
     ALL_VAR_WITH_ATTR: Hash[Symbol, Hash[Symbol, bool]]
     STABLE_STAGES: Array[stage_entry]
     STAGES: Hash[Symbol, Array[stage_entry]]
 
     def self.derive_unstable: (Array[stage_entry] stable) -> Array[stage_entry]
-    def self.run_stages: (String code, Array[stage_entry] stages, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String]) -> Pipeline::RenameResult
+    def self.run_stages: (String code, Array[stage_entry] stages, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String]) -> Pipeline::RenameResult
 
     include Pipeline::SourcePatcher
 

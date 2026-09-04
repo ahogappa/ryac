@@ -1,12 +1,16 @@
 module Ryac
   module Pipeline
     # resolved_path is absent for :require_stdlib nodes; every node records
-    # whether it sits inside a class/module body and/or a method body.
-    type require_node_info = { type: Symbol, path: String, line: Integer, start_offset: Integer, length: Integer, in_class: bool, in_method: bool, ?resolved_path: String }
+    # whether it sits inside a class/module body and/or a method body. A
+    # :require_lazy node carries the byte layout of its interpolated
+    # argument, which the Concatenator respells into a loader call.
+    type lazy_require_site = { dir: String, arg_start_offset: Integer, arg_end_offset: Integer, prefix_start_offset: Integer, prefix_length: Integer, suffix_start_offset: Integer? }
+    type require_node_info = { type: Symbol, path: String, line: Integer, start_offset: Integer, length: Integer, in_class: bool, in_method: bool, ?resolved_path: String, ?lazy: lazy_require_site }
 
     class FileCollector
       @graph: DependencyGraph
       @visited: Set[String]
+      @pending_lazy: Array[String]
       @gem_names: Array[String]
       @project_roots: Array[String]
 
@@ -14,7 +18,7 @@ module Ryac
 
       private
 
-      def collect_file: (String file_path, ?required_from: String?, ?line: Integer?) -> void
+      def collect_file: (String file_path, ?required_from: String?, ?line: Integer?, ?lazy: bool) -> void
       def extract_require_nodes: (String file_path, String content) -> Array[require_node_info]
       def traverse_for_requires: (Prism::Node? node, Array[require_node_info] nodes, String file_path, ?in_method: bool, ?in_class: bool) -> void
       def handle_call_node: (Prism::CallNode node, Array[require_node_info] nodes, String file_path, ?in_method: bool, ?in_class: bool) -> void
@@ -22,6 +26,7 @@ module Ryac
       def handle_require: (Prism::CallNode node, Array[require_node_info] nodes, String file_path, ?in_method: bool, ?in_class: bool) -> void
       def handle_autoload: (Prism::CallNode node, Array[require_node_info] nodes, String file_path, ?in_method: bool, ?in_class: bool) -> void
       def dir_interpolated_path: (Prism::Node path_arg) -> String?
+      def collect_lazy_candidates: (Prism::CallNode node, Prism::Node arg, Array[require_node_info] nodes, String file_path, in_class: bool) -> void
       def ensure_load_paths: (Array[String] require_paths) -> void
       def collect_rbs_files: (Array[String] entry_paths) -> void
       def collect_rbs_stdlib_files: () -> void

@@ -42,6 +42,8 @@ module Ryac
       @program = program_node
       @scopes = []
       @scope_by_node = {}
+      @children = {}
+      @constraints = {}
       build(program_node)
     end
 
@@ -86,6 +88,26 @@ module Ryac
       end
     end
 
+    # {scope_id => post-rename local names visible inside that scope}: its own
+    # locals plus those of enclosing scopes, looking through block and lambda
+    # boundaries the way variable lookup does. Locals a scope keeps (never
+    # renamed, or already short) count the same as renamed ones — a bare call
+    # whose new name matches any visible local parses as that local, not the
+    # method, so collision guards must see the full set.
+    def visible_local_names
+      @scopes.to_h do |scope|
+        names = Set.new #: Set[String]
+        current = scope #: Scope?
+        while current
+          mapping = current.mapping || {}
+          current.node.locals.each { |var| names << (mapping[var] || var.to_s) }
+          break unless %i[block lambda].include?(current.kind)
+          current = current.parent
+        end
+        [scope.id, names]
+      end
+    end
+
     # Phase 3 outputs.
     attr_reader :rename_entries, :def_param_names, :block_param_names, :for_index_names
 
@@ -112,6 +134,7 @@ module Ryac
                         parent: parent, owner_call: owner_call, mapping: nil)
       @scopes << scope
       @scope_by_node[node.object_id] = scope
+      (@children[parent.object_id] ||= []) << scope if parent
       scope
     end
 
@@ -167,9 +190,8 @@ module Ryac
       locals = scope.node.locals
       return unless locals.any?
 
-      # A :top scope's node is always a ProgramNode, which has #statements.
-      unsafe, pinned = scope_constraints(scope.node.statements) # steep:ignore NoMethod
-      generator = NameGenerator.new(pinned.map(&:to_s))
+      unsafe, pinned = constraints_for(scope)
+      generator = NameGenerator.new(pinned.map(&:to_s) + reserved_names(scope))
       mapping = {} #: Hash[Symbol, String]
       locals.each do |var|
         mapping[var] = allocated_name(var, unsafe, pinned, generator)
@@ -182,7 +204,7 @@ module Ryac
       node = scope.node #: Prism::DefNode
       return unless node.body
 
-      unsafe, pinned = scope_constraints(node.body)
+      unsafe, pinned = constraints_for(scope)
       keyword_params = keyword_param_names(node)
       unused_rescue = unused_rescue_vars(node.body)
       kw_mapping = kw_def_map[scope.id]
@@ -193,10 +215,16 @@ module Ryac
       # point: re-minifying the output (where the hinting call already writes
       # short keywords, so no hint arises) would allocate the burned names.
       hints = hints.reject { |var, _| keyword_params.include?(var) }
+      # An unused rescue variable is left as written, and so is every name
+      # reserved_names lists; a hint or an allocation landing on one of them
+      # would bind two variables to one name.
+      kept = unused_rescue.map(&:to_s) + reserved_names(scope)
+      hints = hints.reject { |_, name| kept.include?(name) }
 
       reserved = hints.values.dup
       reserved.concat(kw_mapping.values) if kw_mapping
       reserved.concat(pinned.map(&:to_s))
+      reserved.concat(kept)
       keyword_names = {} #: Hash[Symbol, String]
       keyword_params.each do |kw|
         keyword_names[kw] = kw_mapping&.[](kw) || kw.to_s
@@ -230,9 +258,9 @@ module Ryac
       node = scope.node #: Prism::BlockNode
       return unless node.body
 
-      unsafe, pinned = scope_constraints(node.body)
+      unsafe, pinned = constraints_for(scope)
       f_args = block_formal_names(node)
-      parent_names = ancestor_mapping_values(scope)
+      parent_names = ancestor_visible_names(scope) + reserved_names(scope)
       reserved = parent_names + pinned.map(&:to_s)
 
       if !unsafe && use_numbered_params?(node, f_args, parent_names)
@@ -280,20 +308,90 @@ module Ryac
       scope.mapping = mapping
     end
 
-    # Names a block avoids: every allocated ancestor's, all the way to the
-    # top. Visibility actually ends at the first def boundary, so anything
-    # beyond it is over-reservation — but the allocation order downstream is
-    # built around this exact set, and narrowing it reshuffles names without
-    # making any of them safer.
-    def ancestor_mapping_values(scope)
+    # The names a scope's allocation must not hand out on account of what
+    # the scope itself and the blocks and lambdas nested in it keep as
+    # written. A block's body locals and a lambda's names are never renamed,
+    # and Ruby resolves them by spelling: an outer name allocated onto one
+    # of them turns the inner assignment into a write to the outer variable
+    # (optcarrot's palette — `|rf, gf, bf|` renamed to `|a, b, c|` over an
+    # inner `b = ...`). A block adds ancestor_visible_names on top.
+    def reserved_names(scope)
+      kept_local_names(scope) + descendant_kept_names(scope)
+    end
+
+    # What a block sees from outside: every allocated ancestor's names, all
+    # the way to the top — visibility actually ends at the first def
+    # boundary, so anything beyond it is over-reservation, but the
+    # allocation order downstream is built around this exact set, and
+    # narrowing it reshuffles names without making any of them safer — plus
+    # the kept locals of the blocks and lambdas up to that boundary. A
+    # parameter allocated onto one of those would shadow what its body
+    # still reads.
+    def ancestor_visible_names(scope)
       names = [] #: Array[String]
+      visible = true
       current = scope.parent
       while current
         # allocated? guarantees mapping is non-nil here.
         names.concat(current.mapping.values) if current.allocated? # steep:ignore NoMethod
+        names.concat(kept_local_names(current)) if visible
+        visible &&= %i[block lambda].include?(current.kind)
         current = current.parent
       end
       names
+    end
+
+    # Kept names of every block and lambda nested in the scope, as far as
+    # variable lookup reaches: a def or class boundary ends the descent.
+    def descendant_kept_names(scope)
+      names = [] #: Array[String]
+      stack = (@children[scope.object_id] || []).dup
+      until stack.empty?
+        child = stack.pop #: Scope
+        next unless %i[block lambda].include?(child.kind)
+
+        names.concat(kept_local_names(child))
+        stack.concat(@children[child.object_id] || [])
+      end
+      names
+    end
+
+    # The locals a scope leaves as written: a block renames only its
+    # parameters — its body locals, and the parameters it pins or leaves
+    # under eval, stay — and a lambda renames nothing.
+    def kept_local_names(scope)
+      node = scope.node
+      case scope.kind
+      when :block
+        unsafe, pinned = constraints_for(scope)
+        return node.locals.map(&:to_s) if unsafe
+
+        # @type var node: Prism::BlockNode
+        renamed = renamed_block_param_names(node)
+        node.locals.filter_map { |var| var.to_s if pinned.include?(var) || !renamed.include?(var) }
+      when :lambda
+        node.locals.map(&:to_s)
+      else
+        []
+      end
+    end
+
+    def renamed_block_param_names(node)
+      names = block_formal_names(node).compact.reject { |p| p.to_s.match?(/\A_\d*\z/) }
+      block_multi_targets(node).each { |mt| names.concat(collect_multi_target_names(mt)) }
+      params = block_parameters(node)
+      names.concat(collect_extra_block_param_names(params)) if params
+      names.to_set
+    end
+
+    # scope_constraints, once per scope: reserved_names asks about every
+    # nested block repeatedly.
+    def constraints_for(scope)
+      @constraints[scope.id] ||= begin
+        node = scope.node
+        body = node.is_a?(Prism::ProgramNode) ? node.statements : node.body
+        scope_constraints(body)
+      end
     end
 
     # One walk answers both per-scope safety questions: whether the scope

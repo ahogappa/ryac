@@ -39,6 +39,33 @@ class TestFileCollector < Minitest::Test
     assert graph[entry_path]
     dep_a_path = File.join(@fixtures_dir, 'lib', 'dependency_a.rb')
     assert graph[dep_a_path]
+    assert_equal [], graph.lazy_paths
+  end
+
+  # A dynamic require under a static directory bundles every file there as
+  # a lazy region, and what those files require that nothing static did
+  # comes along lazily too; the static world stays flat.
+  def test_dynamic_require_under_a_static_directory_collects_lazy_files
+    fixture_dir = File.expand_path('../../fixtures/lazy_plugins', __dir__)
+    entry_path = File.join(fixture_dir, 'main.rb')
+    loader_path = File.join(fixture_dir, 'engine', 'loader.rb')
+    plugins = %w[plain_video shared turbo_video].map { |n| File.join(fixture_dir, 'engine', 'plugins', "#{n}.rb") }
+
+    graph = @collector.call(entry_path)
+
+    assert_equal plugins, graph.lazy_paths
+    refute graph[entry_path].lazy
+    refute graph[loader_path].lazy
+
+    site = graph[loader_path].require_nodes.fetch(0)
+    assert_equal :require_lazy, site[:type]
+    assert_equal 'plugins/', site[:path]
+    assert site[:in_method]
+    assert_equal File.join(fixture_dir, 'engine', 'plugins'), site[:lazy][:dir]
+    assert_nil site[:lazy][:suffix_start_offset]
+
+    plain, shared, = plugins
+    assert_equal [shared], graph[plain].dependencies
   end
 
   def test_in_class_require_marks_in_class_flag

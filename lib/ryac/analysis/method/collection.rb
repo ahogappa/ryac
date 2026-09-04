@@ -3,12 +3,27 @@
 module Ryac
   module AnalysisPhases
     def collect_method_definitions(prism_root)
+      setter_mids = Set.new
       Nesting.each_method_definition(prism_root) do |node, method_key|
         next if EXCLUDED_METHODS.include?(method_key[2])
+
+        # An explicit `def foo=` keeps its name: short names are allocated
+        # per group, so nothing promises the setter would land on
+        # `<getter's name>=`, and the def patcher would strip the `=` from
+        # any unpaired spelling. The base name is kept with it — a compound
+        # write reads through one spelling and writes through the other, so
+        # the pair must move in lockstep or not at all (the same doctrine
+        # that keeps accessor pairs in compound writes unrenamed).
+        # attr-declared setters are different — they rename textually
+        # coupled to their getter.
+        if AstUtils.setter_def_name?(method_key[2])
+          setter_mids << method_key[2] << method_key[2].to_s.chomp('=').to_sym
+        end
 
         @method_rename_mapping.add_method(method_key, node)
         link_module_function_variant(node, method_key)
       end
+      @method_rename_mapping.exclude_methods_by_mid(setter_mids) unless setter_mids.empty?
 
       # attr_reader/attr_accessor define getters worth renaming; attr_writer's
       # setter is derived from the getter name and is never registered on its
@@ -54,7 +69,86 @@ module Ryac
       merge_super_groups(super_merges)
       merge_polymorphic_groups(call_node_to_keys)
       merge_unresolved_calls(resolved_call_keys)
-      @method_rename_mapping.merge_blind_def_groups
+      # Folding blind defs into same-name sited groups is a probability
+      # bet, not a proof — the aggressive policy's territory.
+      @method_rename_mapping.merge_blind_def_groups if @method_policy == :aggressive
+    end
+
+    # An attr declared below a class that touches its ivar — `attr_reader
+    # :label_text` in a subclass of the class assigning @label_text — cannot
+    # rename: the coordination that moves ivar sites along with a renamed
+    # attr walks from the declaring class down, never up to that ancestor,
+    # which would go on writing the original name. The pair keeps its name.
+    def collect_inherited_attr_exclusions(prism_root)
+      touching = Hash.new { |h, k| h[k] = Set.new } #: Hash[Symbol, Set[Array[Symbol]]]
+      Nesting.each(prism_root) do |node, cpath, _singleton, _in_def|
+        case node
+        when Prism::InstanceVariableReadNode, *IVAR_WRITE_NODES
+          # @type var node: Prism::InstanceVariableReadNode | ivar_write_node
+          touching[node.name] << cpath
+        end
+      end
+
+      excluded = Set.new
+      each_attr_declaration(prism_root, ATTR_DECLARATION_METHODS, require_class_body: false) do |_node, cpath, _singleton, sym|
+        classes = touching.fetch(:"@#{sym}", nil)
+        next unless classes
+
+        @oracle.each_ancestor_cpath(cpath, false) do |ancestor_cpath|
+          excluded << sym << :"#{sym}=" if ancestor_cpath != cpath && classes.include?(ancestor_cpath)
+        end
+      end
+      @method_rename_mapping.exclude_methods_by_mid(excluded) unless excluded.empty?
+    end
+
+    # Renaming an attr declaration renames its backing ivar with it. In a
+    # class that touches ivars dynamically (optcarrot's Config assigns
+    # every option via instance_variable_set), the dynamic side keeps the
+    # original spelling and a renamed reader silently returns nil. The
+    # ivar renamer already refuses such classes; the attr names there must
+    # survive for the same reason, under either policy.
+    def collect_dynamic_ivar_attr_exclusions(prism_root)
+      dynamic_cpaths = Set.new
+      Nesting.each(prism_root) do |node, cpath, _singleton, _in_def|
+        next unless node.is_a?(Prism::CallNode) && DYNAMIC_IVAR_METHODS.include?(node.name)
+
+        recv = node.receiver
+        dynamic_cpaths << cpath if recv.nil? || recv.is_a?(Prism::SelfNode)
+      end
+      return if dynamic_cpaths.empty?
+
+      excluded = Set.new
+      each_attr_declaration(prism_root, ATTR_DECLARATION_METHODS, require_class_body: false) do |_node, cpath, _singleton, sym|
+        excluded << sym << :"#{sym}=" if dynamic_cpaths.include?(cpath)
+      end
+      @method_rename_mapping.exclude_methods_by_mid(excluded) unless excluded.empty?
+    end
+
+    # eval and send-by-string dispatch from strings, not the syntax tree:
+    # a method whose name is spelled inside any string literal may be
+    # called from text the renamer cannot rewrite, so under the safe
+    # policy it keeps its name. Setters count as mentioned when their
+    # base word is.
+    def collect_string_literal_mentions(prism_root)
+      words = Set.new
+      AstUtils.each_node(prism_root) do |node|
+        next unless node.is_a?(Prism::StringNode)
+
+        # Byte escapes (`"\x89PNG"`) leave the literal invalid in the source
+        # encoding, and String#scan refuses invalid text; the identifier
+        # pattern is pure ASCII, so scanning the bytes finds the same words.
+        # The pattern has no capture groups, so scan only produces strings;
+        # the is_a? narrows the union scan's signature declares.
+        node.unescaped.b.scan(/[a-zA-Z_][a-zA-Z0-9_]*[?!]?/).each do |w|
+          words << w.to_sym if w.is_a?(String)
+        end
+      end
+      return if words.empty?
+
+      mentioned = @method_rename_mapping.method_mids.select { |mid|
+        words.include?(mid) || words.include?(mid.to_s.chomp('=').to_sym)
+      }
+      @method_rename_mapping.exclude_methods_by_mid(mentioned.to_set) unless mentioned.empty?
     end
 
     # Visibility resets at every reopen of this module, so each collection
@@ -154,7 +248,9 @@ module Ryac
           end
         end
 
-        if should_exclude
+        # An unresolved call the aggressive policy folds into the group is
+        # exactly the bet the safe policy refuses: the name goes untouched.
+        if should_exclude || (@method_policy == :safe && mapped_calls.any?)
           exclude_mids << mid
         elsif mapped_calls.any?
           @method_rename_mapping.merge_all_by_mid(mid)
@@ -211,7 +307,8 @@ module Ryac
       @method_rename_mapping.exclude_methods_by_mid(punned) if punned.any?
     end
 
-    VISIBILITY_MODIFIERS = %i[private protected public module_function].freeze
+    VISIBILITY_MODIFIERS = %i[private protected public module_function
+                              private_class_method public_class_method].freeze
 
     def collect_visibility_modifier_methods(prism_root)
       excluded_mids = Set.new

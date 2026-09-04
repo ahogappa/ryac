@@ -101,6 +101,52 @@ module Ryac
         (value.name == :define && receiver.name == :Data)
     end
 
+    # A constant only a lazy region defines does not exist until the region
+    # runs, so no alias for it could execute at the end of the file: it keeps
+    # its name, and `Optcarrot.const_get(:SDL2Video)` finds it as written. A
+    # constant the flat code defines too is merely reopened by the region
+    # and renames as usual.
+    def exclude_lazy_definitions(prism_root)
+      return if @lazy_regions.empty?
+
+      flat = Set.new #: Set[Array[Symbol]]
+      lazy = Set.new #: Set[Array[Symbol]]
+      each_constant_event(prism_root) do |kind, node, cpath, _singleton, _in_def|
+        next unless cpath && (kind == :class_def || kind == :write)
+
+        (LazyRegions.contains?(@lazy_regions, node) ? lazy : flat) << cpath
+      end
+      (lazy - flat).each { |cpath| @constant_mapping.exclude_path(cpath) }
+    end
+
+    # `expr::NAME` reads a constant on a scope only the running program
+    # knows — `self.class::OPTIONS` in an included helper lands on whichever
+    # class included it — so no static path stands in for the reference and
+    # the name in the text is the name looked up. Every user constant called
+    # NAME keeps its name, so any of them can be the one meant.
+    def exclude_dynamic_root_reads(prism_root)
+      names = Set.new #: Set[Symbol]
+      each_constant_event(prism_root) do |kind, node, _cpath, _singleton, _in_def|
+        next unless kind == :read && node.is_a?(Prism::ConstantPathNode) && dynamic_root?(node)
+
+        name = node.name
+        names << name if name
+      end
+      return if names.empty?
+
+      pinned = [] #: Array[Array[Symbol]]
+      @constant_mapping.each_user_defined_path { |cpath| pinned << cpath if names.include?(cpath.last) }
+      pinned.each { |cpath| @constant_mapping.exclude_path(cpath) }
+    end
+
+    # A path whose outermost parent is neither a constant nor absent (`::X`)
+    # — `self::X`, `self.class::X`, `klass::X`.
+    def dynamic_root?(node)
+      current = node.parent
+      current = current.parent while current.is_a?(Prism::ConstantPathNode)
+      !(current.nil? || current.is_a?(Prism::ConstantReadNode))
+    end
+
     def collect_constants(prism_root)
       each_constant_event(prism_root) do |kind, node, cpath, singleton, in_def|
         case kind
@@ -224,6 +270,9 @@ module Ryac
       each_constant_event(prism_root) do |kind, node, _cpath, _singleton, _in_def|
         next unless kind == :read
         next if counted_prefix_ids.include?(node.object_id)
+        # A region's reference resolves when the region runs — after its own
+        # requires. A preamble alias for it would resolve at boot.
+        next if LazyRegions.contains?(@lazy_regions, node)
 
         mark_chain_prefixes(node, counted_prefix_ids)
         prefix = external_prefix_for(node)

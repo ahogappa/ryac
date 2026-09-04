@@ -298,6 +298,60 @@ class TestConstantAliaserPipeline < Minitest::Test
                  result.code
   end
 
+  # `self.class::OPTIONS` in an included helper reads OPTIONS off whichever
+  # class included it: the scope is decided at runtime, so the reference
+  # cannot follow a rename the way a static path does. Every constant of
+  # that name keeps it; the ones nobody reads dynamically still rename.
+  def test_dynamic_scope_read_pins_every_constant_of_that_name
+    code = <<~RUBY
+      module Helper
+        def options = self.class::OPTIONS
+      end
+      class Builder
+        include Helper
+        OPTIONS = [:inline]
+        LIMIT = 3
+        def limit = LIMIT
+      end
+      puts Builder.new.options.inspect, Builder.new.limit
+    RUBY
+    result = minify_at_level(code, 2)
+    assert_equal 'module Helper;def options =self.class::OPTIONS;end;class Builder;include Helper;OPTIONS=[:inline];A=3;def limit =A;end;puts Builder.new.options.inspect,Builder.new.limit',
+                 result.code
+    assert_equal 'Builder::LIMIT=Builder::A', result.aliases
+  end
+
+  LAZY_PRUNE_CODE = <<~RUBY
+    module Engine
+      RATE = 44_100
+      SECRET_SEED = 1234
+      LOOKUP_TABLE = [1, 2, 3]
+      class Driver
+        def base = RATE + SECRET_SEED + LOOKUP_TABLE.size
+      end
+    end
+    puts Engine::Driver.new.base
+  RUBY
+
+  # A program that loads files dynamically has enumerated its external
+  # readers, and bundling them as lazy regions brings every one inside: only
+  # the class/module skeleton — the boot contract a launcher outside the
+  # analyzed world spells — still needs an alias.
+  def test_lazy_files_prune_value_constant_aliases_to_the_skeleton
+    result = minify_at_level(LAZY_PRUNE_CODE, 4, lazy_files: ['/app/engine/plugins/turbo.rb'])
+    assert_equal 'module C;E=44100;B=1234;A=[1,2,3];class D;def a =E+B+A.size;end;end;puts C::D.new.a',
+                 result.code
+    assert_equal 'Engine=C;C::Driver=C::D', result.aliases
+  end
+
+  # No lazy files means no enumeration of external readers — any code may
+  # spell any original name, so every rename stays restorable.
+  def test_without_lazy_files_every_alias_survives
+    result = minify_at_level(LAZY_PRUNE_CODE, 4)
+    assert_equal 'Engine=C;C::Driver=C::D;C::LOOKUP_TABLE=C::A;C::RATE=C::E;C::SECRET_SEED=C::B',
+                 result.aliases
+  end
+
   # Prism models `A, B = ...` as ConstantTargetNodes rather than
   # ConstantWriteNodes. Missing them renamed every reference while leaving the
   # definitions untouched, so the short names were never assigned to anything.
@@ -311,7 +365,7 @@ class TestConstantAliaserPipeline < Minitest::Test
            "end\n" \
            "p CPU.new.tick(2)"
     result = minify_at_level(code, 4)
-    assert_equal 'class E;A=12;B,C,D=(1..3).map{_1*A};def tick(a) =a==1?B : a==2?C : D;end;p E.new.tick(2)',
+    assert_equal 'class E;A=12;B,C,D=(1..3).map{_1*A};def a(a) =a==1?B : a==2?C : D;end;p E.new.a(2)',
                  result.code
   end
 end

@@ -31,7 +31,7 @@ GIT
 PATH
   remote: .
   specs:
-    ryac (0.2.0)
+    ryac (0.3.0)
       prism (>= 1.4.0)
       rbs (>= 3.6.0, < 4.1.0)
       typeprof (>= 0.32.0)
@@ -195,7 +195,7 @@ CHECKSUMS
   rbs (4.0.0) sha256=b700e75a8ea721a66b94c4e3af7df26d1e61a786d1205d0b8de93828718c4771
   rdoc (8.0.0) sha256=03bf8c08a9639658855a0cfd77c0abca8325c227693f7f33f82957811348c469
   reline (0.7.0) sha256=5b012d8e55dbf9d450f12bde2cf7d15ff546ae80b3f8f3b30e570d431815583d
-  ryac (0.2.0)
+  ryac (0.3.0)
   securerandom (0.4.1) sha256=cc5193d414a4341b6e225f0cb4446aceca8e50d5e1888743fac16987638ea0b1
   simplecov (1.0.3) sha256=38ef0514f16ae7562f0d0f4df02610071115103d301b6de7dacbcc000082e39b
   steep (2.0.0.dev)

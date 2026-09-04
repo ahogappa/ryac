@@ -1,6 +1,13 @@
 module Ryac
   module Pipeline
     class Concatenator
+      REGISTRY_NAME: String
+      LOADER_NAME: String
+
+      @root: String
+      @registry: String?
+      @loader: String?
+
       class GraphSorter
         include TSort[String]
 
@@ -17,9 +24,17 @@ module Ryac
       def extract_cycle_from_graph: (DependencyGraph graph) -> Array[String]
       def find_cycle_dfs: (DependencyGraph graph, String node, Set[String] visited, Set[String] rec_stack, Array[String] path) -> bool
       def concatenate_files: (DependencyGraph graph, Array[String] sorted_paths) -> ConcatenatedSource
+      def common_root: (Array[String] paths) -> String
+      def relative_to_root: (String path) -> String
+      def lazy_key: (String path) -> String
+      def bundle_names: (DependencyGraph graph) -> Array[String]
+      def unused_name: (String base, Array[String] contents) -> String
+      def loader_prelude: (String registry, String loader) -> String
+      def lazy_registration: (String path, String content) -> String
       def collect_stdlib_requires: (FileEntry entry, Array[String] stdlib_requires) -> void
       def process_require_statements: (FileEntry entry, DependencyGraph graph, Set[String] inlined, Hash[String, String] cleaned_cache) -> String
-      def offset_based_processing: (String content, Array[require_node_info] nodes, DependencyGraph graph, Set[String] in_class_deps, Set[String] inlined, Hash[String, String] cleaned_cache) -> String
+      def offset_based_processing: (String content, Array[require_node_info] nodes, DependencyGraph graph, Set[String] in_class_deps, Set[String] inlined, Hash[String, String] cleaned_cache, bool lazy_entry) -> String
+      def lazy_site_call: (String bytes, require_node_info node) -> String
       def line_based_processing: (String content, Array[require_node_info] require_nodes) -> String
       def resolve_node_path: (require_node_info node, DependencyGraph graph) -> String?
       def strip_outer_nesting: (String content) -> String

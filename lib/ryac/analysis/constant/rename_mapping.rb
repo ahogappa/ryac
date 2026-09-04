@@ -58,8 +58,13 @@ module Ryac
     # minifier's own process, which over-approximates: everything the
     # minifier has loaded — including, under self-hosting, the analyzed
     # program itself — then looks like a reopening.
-    def initialize(boot_roots: nil)
+    #
+    # alias_surface: which renames the alias block restores — :full, every
+    # one, or :skeleton, classes and modules only. See
+    # generate_alias_declarations.
+    def initialize(boot_roots: nil, alias_surface: :full)
       @boot_roots = boot_roots
+      @alias_surface = alias_surface
       @mappings = {}           # Hash<Array<Symbol>, ConstantInfo> - key is static_cpath
       # keyed by the last path segment
       @by_name = {}
@@ -205,8 +210,17 @@ module Ryac
     # Generate backward-compatible alias declarations for renamed constants.
     # Returns array of strings like "OriginalName=ShortName" or
     # "ShortParent::OriginalName=ShortParent::ShortName" for nested constants.
+    #
+    # With the :full surface every rename stays restorable: nothing says
+    # which original names code outside the analyzed world spells. A program
+    # that dynamically loads files at runtime had enumerated its external
+    # readers, and bundling them as lazy regions brought every one inside;
+    # what remains outside is a launcher, and a launcher spells the
+    # class/module skeleton (`Optcarrot::NES.new.run`), never a value
+    # constant. That is the :skeleton surface.
     def generate_alias_declarations
       renamed = @mappings.values.select(&:short_name).sort_by { |info| [info.full_path.size, info.full_path] }
+      renamed.reject! { |info| info.definition_type == :value } if @alias_surface == :skeleton
       renamed.filter_map { |info| build_alias_declaration(info) }
     end
 

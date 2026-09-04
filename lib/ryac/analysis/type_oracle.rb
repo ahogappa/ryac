@@ -19,13 +19,18 @@ module Ryac
     # internals the boot requires — the Service construction and the
     # private @rb_text_nodes table behind update_rb_file — so an upstream
     # change to either breaks here and nowhere else.
-    def self.boot(content, rbs_files)
+    #
+    # TypeProf does not register a class defined inside a block, and a lazy
+    # region (LazyRegions) is exactly that. It reads the view with the
+    # region wrappers blanked instead — same byte positions, which is what
+    # the coordinate join below relies on.
+    def self.boot(content, rbs_files, prism_root)
       path = '(minify_concat)'
       service = TypeProf::Core::Service.new({})
       rbs_files.each do |rbs_path, rbs_content|
         service.update_rbs_file(rbs_path, rbs_content)
       end
-      service.update_rb_file(path, content)
+      service.update_rb_file(path, LazyRegions.typeprof_view(content, prism_root))
       new(service.genv, service.instance_variable_get(:@rb_text_nodes)[path])
     end
 

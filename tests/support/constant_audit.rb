@@ -27,7 +27,8 @@ module ConstantAudit
   # conditional require) — those resolve only where the optional gem happens
   # to be installed, which is the program's own bargain, not minifier damage.
   def unresolved(ruby_source, extra_source: '', allow: [])
-    ctx = { defined: Set.new, aliases: {}, ancestors: Hash.new { |h, k| h[k] = [] }, reads: [], requires: [] }
+    ctx = { defined: Set.new, aliases: {}, ancestors: Hash.new { |h, k| h[k] = [] }, reads: [], dynamic_reads: [],
+            requires: [] }
     [ruby_source, extra_source].each do |src|
       next if src.to_s.empty?
       result = Prism.parse(src)
@@ -39,13 +40,22 @@ module ConstantAudit
 
     pending = ctx[:reads].reject { |read| internally_resolved?(read, ctx) }
     pending = pending.reject { |read| allow.include?(read[:segs].join('::')) }
-    return [] if pending.none?
+    unresolved = if pending.none?
+      []
+    else
+      candidates = pending.map { |read| [read, external_candidates(read, ctx)] }
+      known = externally_defined(candidates.flat_map { |_, c| c }, ctx[:requires].uniq)
+      candidates
+        .reject { |_, c| c.any? { |candidate| known.include?(candidate) } }
+        .map { |read, _| [read[:segs].join('::'), read[:line]] }
+    end
 
-    candidates = pending.map { |read| [read, external_candidates(read, ctx)] }
-    known = externally_defined(candidates.flat_map { |_, c| c }, ctx[:requires].uniq)
-    candidates
-      .reject { |_, c| c.any? { |candidate| known.include?(candidate) } }
-      .map { |read, _| [read[:segs].join('::'), read[:line]] }
+    # `expr::NAME` looks NAME up on a scope only the running program knows,
+    # so the one thing the text guarantees is the name itself: it resolves
+    # when some definition still spells it.
+    unresolved + ctx[:dynamic_reads]
+      .reject { |read| allow.include?(read[:name].to_s) || ctx[:defined].any? { |path| path.last == read[:name] } }
+      .map { |read| ["?::#{read[:name]}", read[:line]] }
   end
 
   def collect(node, stack, ctx)
@@ -99,6 +109,7 @@ module ConstantAudit
       if segs
         add_read(segs, absolute, node, stack, ctx)
       else
+        ctx[:dynamic_reads] << { name: node.name, line: node.location.start_line }
         collect_children(node, stack, ctx) # dynamic root (expr::CONST) — audit the expr
       end
 

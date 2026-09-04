@@ -15,9 +15,10 @@ module Ryac
     class StageRunner
       include SourcePatcher
 
-      def initialize(stdlib_requires: [], rbs_files: {})
+      def initialize(stdlib_requires: [], rbs_files: {}, lazy_files: [])
         @stdlib_requires = stdlib_requires
         @rbs_files = rbs_files
+        @lazy_files = lazy_files
       end
 
       def call(code, stage_defs)
@@ -65,9 +66,12 @@ module Ryac
         source = ConcatenatedSource.new(
           content: code,
           stdlib_requires: @stdlib_requires,
-          rbs_files: @rbs_files
+          rbs_files: @rbs_files,
+          lazy_files: @lazy_files
         )
-        analysis = Analyzer.new.call(source)
+        options = {} #: Hash[Symbol, untyped]
+        batch.each { |stage| options.merge!(stage.analysis_options) }
+        analysis = Analyzer.new(**options).call(source)
 
         ctx = StageContext.new(code, analysis.prism_ast, analysis, '', '')
         patches = [] #: Array[patch_entry]

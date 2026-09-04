@@ -19,9 +19,9 @@ module MinifyTestHelper
     minify_at_level(code, Ryac::Minifier::DEFAULT_LEVEL, rbs_files: rbs_files)
   end
 
-  def minify_at_level(code, level, verify_output: true, rbs_files: {})
+  def minify_at_level(code, level, verify_output: true, rbs_files: {}, lazy_files: [])
     stages = level.is_a?(Symbol) ? Ryac::Minifier::STAGES.fetch(level) : STAGE_RECIPES.fetch(level)
-    result = Ryac::Minifier.run_stages(code, stages, rbs_files: rbs_files)
+    result = Ryac::Minifier.run_stages(code, stages, rbs_files: rbs_files, lazy_files: lazy_files)
 
     assert_output_preserved(code, result) if verify_output
     result
