@@ -17,6 +17,8 @@ module Ryac
       @buckets = {}
       @cpath_to_canonical = {}
       @excluded_cpaths = Set.new
+      @excluded_names = Set.new
+      @exclude_all = false
       @reserved_names = {}
       @node_short_names = {}
       @frozen = false
@@ -32,6 +34,20 @@ module Ryac
     def exclude_cpath(cpath)
       check_open!('cpath excluded')
       @excluded_cpaths << resolve_canonical(cpath)
+    end
+
+    # The name keeps its spelling in every bucket: something reaches it by
+    # that spelling on an object whose class is not known.
+    def exclude_name(name)
+      check_open!('name excluded')
+      @excluded_names << name
+    end
+
+    # Nothing renames: a computed name reaches an object whose class is not
+    # known, so any bucket could be the one it lands in.
+    def exclude_all
+      check_open!('all excluded')
+      @exclude_all = true
     end
 
     def reserve_name(cpath, short_name)
@@ -50,6 +66,10 @@ module Ryac
       child_canonical = resolve_canonical(child_cpath)
       ancestor_canonical = resolve_canonical(ancestor_cpath)
       return if child_canonical == ancestor_canonical
+
+      # An excluded child stays excluded once its sites live in the
+      # ancestor's bucket.
+      @excluded_cpaths << ancestor_canonical if @excluded_cpaths.include?(child_canonical)
       return unless @buckets.key?(ancestor_canonical)
 
       child_entry = @buckets[child_canonical]
@@ -75,11 +95,11 @@ module Ryac
 
     def assign_short_names
       @buckets.each do |cpath, names|
-        next if @excluded_cpaths.include?(cpath)
+        next if @exclude_all || @excluded_cpaths.include?(cpath)
 
         existing_names = Set.new
         names.each_key do |name|
-          existing_names << name.to_s if name.to_s.size <= @kept_name_max
+          existing_names << name.to_s if name.to_s.size <= @kept_name_max || @excluded_names.include?(name)
         end
         reserved = @reserved_names[cpath]
         existing_names.merge(reserved) if reserved
@@ -90,7 +110,7 @@ module Ryac
         end
 
         sorted.each do |name, nodes|
-          next if name.to_s.size <= @kept_name_max
+          next if name.to_s.size <= @kept_name_max || @excluded_names.include?(name)
 
           short_name = generator.next_name
           savings = (name.to_s.size - short_name.size) * nodes.size

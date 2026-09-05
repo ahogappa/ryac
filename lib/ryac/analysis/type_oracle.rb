@@ -250,6 +250,17 @@ module Ryac
       end
     end
 
+    # The classes type inference gives the call's receiver, as [cpath,
+    # singleton] pairs — nil when any receiver type is unknown, so a partial
+    # answer cannot pass for the whole.
+    def receiver_cpaths(prism_call_node)
+      cpaths = [] #: Array[[Array[Symbol], bool]]
+      known = every_receiver_base_type(prism_call_node) do |base|
+        cpaths << [base.mod.cpath, base.is_a?(TypeProf::Core::Type::Singleton)]
+      end
+      known ? cpaths : nil
+    end
+
     private
 
     # Location key of a TypeProf node, via the Prism node it was built from.

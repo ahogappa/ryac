@@ -97,9 +97,15 @@ class TestCompactor < Minitest::Test
     assert_equal ':foo', @stage.call(':foo')
   end
 
-  def test_symbol_with_special_chars
-    assert_equal ':"foo bar"', @stage.call(':"foo bar"')
-  end
+def test_symbol_with_special_chars
+  assert_equal ':"foo bar"', @stage.call(':"foo bar"')
+end
+
+def test_variable_name_symbols_are_bare
+  # `:@ivar` and `:@@cvar` parse bare like `:$gvar`; the ?/!/= suffixes a
+  # method name may carry do not, nor does a sigil with nothing after it.
+  assert_equal 'p(:@a,:@@b,:"@",:"@1",:"@a?",:"@a=")', @stage.call('p :@a, :@@b, :"@", :"@1", :"@a?", :"@a="')
+end
 
   def test_array_literal
     assert_equal '[1,2,3]', @stage.call('[1, 2, 3]')

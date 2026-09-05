@@ -1,7 +1,16 @@
 module Ryac
   module AnalysisPhases
     DYNAMIC_IVAR_METHODS: Array[Symbol]
+    EVAL_BLOCK_METHODS: Array[Symbol]
     ATTR_DECLARATION_METHODS: Array[Symbol]
+
+    class DynamicSigilAccess
+      attr_accessor cpaths: Set[Array[Symbol]]
+      attr_accessor names: Set[Symbol]
+      attr_accessor all: bool
+
+      def initialize: (cpaths: Set[Array[Symbol]], names: Set[Symbol], all: bool) -> void
+    end
     IVAR_WRITE_NODES: Array[Class]
     type ivar_write_node = Prism::InstanceVariableWriteNode | Prism::InstanceVariableTargetNode | Prism::InstanceVariableOperatorWriteNode | Prism::InstanceVariableOrWriteNode | Prism::InstanceVariableAndWriteNode
 
@@ -10,7 +19,14 @@ module Ryac
     def collect_attr_backed_ivars: (Prism::Node prism_root) -> Hash[Array[Symbol], Set[Symbol]]
     def scan_dynamic_ivar_access: (Prism::Node prism_root) -> void
     def merge_inherited_ivars: () -> void
-    def scan_dynamic_sigil_access: (Prism::Node prism_root, Array[Symbol] methods, SiteBucketMapping mapping) -> void
+    def dynamic_ivar_access: (Prism::Node prism_root) -> DynamicSigilAccess
+    def dynamic_sigil_access: (Prism::Node prism_root, Array[Symbol] methods) -> DynamicSigilAccess
+    def apply_dynamic_sigil_access: (DynamicSigilAccess access, SiteBucketMapping mapping) -> void
+    def literal_sigil_name: (Prism::CallNode node) -> Symbol?
+    def dynamic_access_cpaths: (Prism::Node prism_root, Prism::CallNode node, Array[Symbol] cpath) -> Array[Array[Symbol]]?
+    def family_cpaths: (Prism::Node prism_root, Array[Symbol] cpath) -> Array[Array[Symbol]]
+    def program_class_cpaths: (Prism::Node prism_root) -> Set[Array[Symbol]]
+    def program_descendants: (Prism::Node prism_root) -> Hash[Array[Symbol], Array[Array[Symbol]]]
     def merge_inherited_sites: (SiteBucketMapping mapping) -> void
     def reserve_attr_ivar_names: (Prism::Node prism_root) -> void
     def coordinate_attr_renames: (Prism::Node prism_root, Hash[location_key, String] rename_map, Hash[location_key, String] attr_ivar_entries) -> Hash[location_key, Hash[Symbol, String]]

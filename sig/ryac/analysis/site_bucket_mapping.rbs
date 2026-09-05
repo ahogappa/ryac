@@ -5,6 +5,8 @@ module Ryac
     @buckets: Hash[Array[Symbol], Hash[Symbol, Array[untyped]]]
     @cpath_to_canonical: Hash[Array[Symbol], Array[Symbol]]
     @excluded_cpaths: Set[Array[Symbol]]
+    @excluded_names: Set[Symbol]
+    @exclude_all: bool
     @reserved_names: Hash[Array[Symbol], Set[String]]
     @node_short_names: Hash[[Integer, Integer], String]
     @frozen: bool
@@ -12,6 +14,8 @@ module Ryac
     def initialize: (prefix: String) -> void
     def add_site: (Array[Symbol] cpath, Symbol name, untyped node) -> void
     def exclude_cpath: (Array[Symbol] cpath) -> void
+    def exclude_name: (Symbol name) -> void
+    def exclude_all: () -> void
     def reserve_name: (Array[Symbol] cpath, String short_name) -> void
     def each_canonical_cpath: () { (Array[Symbol]) -> void } -> void
     def merge_with_ancestor: (Array[Symbol] child_cpath, Array[Symbol] ancestor_cpath) -> void

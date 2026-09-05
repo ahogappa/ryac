@@ -8,7 +8,20 @@ module Ryac
       instance_variables
     ].freeze
 
+    # Blocks evaluated with another object as self: an ivar inside one
+    # belongs to that object, not to the class the text sits in.
+    EVAL_BLOCK_METHODS = %i[
+      instance_eval instance_exec class_eval class_exec module_eval module_exec
+    ].freeze
+
     ATTR_DECLARATION_METHODS = %i[attr attr_reader attr_writer attr_accessor].freeze
+
+    # What one sigil family's dynamic access forbids renaming. cpaths are
+    # whole class families: a computed name reaching an object whose class
+    # is known. names keep their spelling everywhere: a literal name,
+    # wherever it lands. all: a computed name reaching an object whose class
+    # is not known, which could be any bucket.
+    DynamicSigilAccess = Struct.new(:cpaths, :names, :all, keyword_init: true)
 
     IVAR_WRITE_NODES = [
       Prism::InstanceVariableWriteNode,
@@ -50,8 +63,7 @@ module Ryac
     # of the built-in chain write nothing and are not closed over — they
     # would make every attr back every class's ivar of that name.
     def collect_attr_backed_ivars(prism_root)
-      defined = Set.new #: Set[Array[Symbol]]
-      each_constant_event(prism_root) { |kind, _node, cpath, _singleton, _in_def| defined << cpath if kind == :class_def && cpath }
+      defined = program_class_cpaths(prism_root)
 
       result = Hash.new { |h, k| h[k] = Set.new } #: Hash[Array[Symbol], Set[Symbol]]
       each_attr_declaration(prism_root, ATTR_DECLARATION_METHODS, require_class_body: false) do |_node, cpath, _singleton, sym|
@@ -64,7 +76,33 @@ module Ryac
     end
 
     def scan_dynamic_ivar_access(prism_root)
-      scan_dynamic_sigil_access(prism_root, DYNAMIC_IVAR_METHODS, @ivar_rename_mapping)
+      apply_dynamic_sigil_access(dynamic_ivar_access(prism_root), @ivar_rename_mapping)
+    end
+
+    # Computed once and read twice: the method phase keeps the attrs these
+    # accesses reach, the variable phase the ivars. Besides the reflection
+    # calls, an ivar inside a block evaluated with another object as self
+    # keeps its name everywhere — the text sits in one class, the slot in
+    # another.
+    def dynamic_ivar_access(prism_root)
+      @dynamic_ivar_access ||= begin
+        access = dynamic_sigil_access(prism_root, DYNAMIC_IVAR_METHODS)
+        Nesting.each(prism_root) do |node, _cpath, _singleton, _in_def|
+          next unless node.is_a?(Prism::CallNode) && EVAL_BLOCK_METHODS.include?(node.name)
+
+          recv = node.receiver
+          next if recv.nil? || recv.is_a?(Prism::SelfNode)
+
+          AstUtils.each_node(node.block) do |inner|
+            case inner
+            when Prism::InstanceVariableReadNode, *IVAR_WRITE_NODES
+              # @type var inner: Prism::InstanceVariableReadNode | ivar_write_node
+              access.names << inner.name
+            end
+          end
+        end
+        access
+      end
     end
 
     def merge_inherited_ivars
@@ -101,17 +139,98 @@ module Ryac
 
     private
 
-    # A receiverless (or explicit-self) call to a dynamic sigil-variable API
-    # can reach any name in its class — nothing in that cpath is safe to
-    # rename. Shared by the ivar and cvar scans, which differ only in table
-    # and mapping.
-    def scan_dynamic_sigil_access(prism_root, methods, mapping)
+    # The reflection calls of one sigil family, sorted by what each can
+    # reach. Shared by the ivar and cvar scans, which differ only in method
+    # table and mapping.
+    def dynamic_sigil_access(prism_root, methods)
+      access = DynamicSigilAccess.new(cpaths: Set.new, names: Set.new, all: false)
       Nesting.each(prism_root) do |node, cpath, _singleton, _in_def|
-        next unless node.is_a?(Prism::CallNode)
-        next unless methods.include?(node.name)
+        next unless node.is_a?(Prism::CallNode) && methods.include?(node.name)
 
-        recv = node.receiver
-        mapping.exclude_cpath(cpath) if recv.nil? || recv.is_a?(Prism::SelfNode)
+        name = literal_sigil_name(node)
+        if name
+          access.names << name
+          next
+        end
+
+        targets = dynamic_access_cpaths(prism_root, node, cpath)
+        if targets
+          targets.each { |target| access.cpaths.merge(family_cpaths(prism_root, target)) }
+        else
+          access.all = true
+        end
+      end
+      access
+    end
+
+    def apply_dynamic_sigil_access(access, mapping)
+      if access.all
+        mapping.exclude_all
+        return
+      end
+
+      access.cpaths.each { |cpath| mapping.exclude_cpath(cpath) }
+      access.names.each { |name| mapping.exclude_name(name) }
+    end
+
+    # The name a reflection call spells out; nil when it is computed (an
+    # interpolation, a variable) or the call names none (instance_variables
+    # lists them all).
+    def literal_sigil_name(node)
+      arg = node.arguments&.arguments&.first
+      case arg
+      when Prism::SymbolNode, Prism::StringNode
+        arg.unescaped.to_sym
+      end
+    end
+
+    # The classes an access through this receiver can land on: the lexical
+    # class for a receiverless or self call, otherwise what inference gives
+    # the receiver — nil when that is unknown or names a class the program
+    # does not define (an Object could be an instance of any of ours).
+    def dynamic_access_cpaths(prism_root, node, cpath)
+      recv = node.receiver
+      return [cpath] if recv.nil? || recv.is_a?(Prism::SelfNode)
+
+      resolved = @oracle.receiver_cpaths(node)
+      return nil unless resolved
+
+      cpaths = resolved.map(&:first)
+      cpaths.all? { |c| program_class_cpaths(prism_root).include?(c) } ? cpaths : nil
+    end
+
+    # The class with the program-defined classes above and below it: an
+    # instance carries the slots every ancestor's methods write, and every
+    # descendant's instances run the access written here.
+    def family_cpaths(prism_root, cpath)
+      family = [cpath]
+      classes = program_class_cpaths(prism_root)
+      @oracle.each_ancestor_cpath(cpath, false) do |ancestor|
+        family << ancestor if ancestor != cpath && classes.include?(ancestor)
+      end
+      family.concat(program_descendants(prism_root).fetch(cpath, []))
+    end
+
+    def program_class_cpaths(prism_root)
+      @program_class_cpaths ||= begin
+        defined = Set.new #: Set[Array[Symbol]]
+        each_constant_event(prism_root) { |kind, _node, cpath, _singleton, _in_def| defined << cpath if kind == :class_def && cpath }
+        defined
+      end
+    end
+
+    def program_descendants(prism_root)
+      @program_descendants ||= begin
+        classes = program_class_cpaths(prism_root)
+        descendants = {} #: Hash[Array[Symbol], Array[Array[Symbol]]]
+        classes.each do |cpath|
+          @oracle.each_ancestor_cpath(cpath, false) do |ancestor|
+            next if ancestor == cpath || !classes.include?(ancestor)
+
+            (descendants[ancestor] ||= []) << cpath
+          end
+        end
+        descendants
       end
     end
 
