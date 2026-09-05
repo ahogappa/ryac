@@ -42,10 +42,11 @@ module Ryac
       attr_reader stdlib_requires: Array[String]
       attr_reader rbs_files: Hash[String, String]
       attr_reader lazy_files: Array[String]
+      attr_reader driver: bool
 
-      def self.new: (content: String, ?file_boundaries: Array[FileBoundary], ?original_size: Integer?, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String]) -> ConcatenatedSource
-      def initialize: (content: String, ?file_boundaries: Array[FileBoundary], ?original_size: Integer?, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String]) -> void
-      def with: (?content: String, ?file_boundaries: Array[FileBoundary], ?original_size: Integer, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String]) -> ConcatenatedSource
+      def self.new: (content: String, ?file_boundaries: Array[FileBoundary], ?original_size: Integer?, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String], ?driver: bool) -> ConcatenatedSource
+      def initialize: (content: String, ?file_boundaries: Array[FileBoundary], ?original_size: Integer?, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String], ?driver: bool) -> void
+      def with: (?content: String, ?file_boundaries: Array[FileBoundary], ?original_size: Integer, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String], ?driver: bool) -> ConcatenatedSource
     end
 
     class AnalysisResult

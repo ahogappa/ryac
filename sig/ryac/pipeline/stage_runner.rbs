@@ -6,8 +6,9 @@ module Ryac
       @stdlib_requires: Array[String]
       @rbs_files: Hash[String, String]
       @lazy_files: Array[String]
+      @driver: bool
 
-      def initialize: (?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String]) -> void
+      def initialize: (?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String], ?driver: bool) -> void
       def call: (String code, Array[Minifier::stage_entry] stage_defs) -> RenameResult
 
       private

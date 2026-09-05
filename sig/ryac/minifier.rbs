@@ -14,14 +14,14 @@ module Ryac
     STAGES: Hash[Symbol, Array[stage_entry]]
 
     def self.derive_unstable: (Array[stage_entry] stable) -> Array[stage_entry]
-    def self.run_stages: (String code, Array[stage_entry] stages, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String]) -> Pipeline::RenameResult
+    def self.run_stages: (String code, Array[stage_entry] stages, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String], ?driver: bool) -> Pipeline::RenameResult
 
     include Pipeline::SourcePatcher
 
     attr_reader result: Pipeline::MinifiedResult?
 
     def initialize: () -> void
-    def call: (String | Array[String] entry_path, ?level: Symbol | Array[stage_entry], ?project_root: String | Array[String] | nil, ?gem_names: Array[String], ?gem_require_paths: Array[String]) -> Pipeline::MinifiedResult
+    def call: (String | Array[String] entry_path, ?level: Symbol | Array[stage_entry], ?project_root: String | Array[String] | nil, ?gem_names: Array[String], ?gem_require_paths: Array[String], ?driver: bool) -> Pipeline::MinifiedResult
 
     private
 

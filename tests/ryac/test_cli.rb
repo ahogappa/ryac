@@ -72,7 +72,7 @@ class TestCLIGemOption < Minitest::Test
           -g, --gem GEM_NAMES              Minify installed gem(s) by name (comma-separated)
           -c, --compress LEVEL             Set compression level (stable or unstable)
           -p, --pack FORMAT                Emit a self-extracting file (self or zlib)
-          -d, --driver FILE                Write the lazy regions to FILE as a runner (ruby FILE CORE --exec EXPR)
+          -d, --driver FILE                Keep the program a library and write its driver to FILE (ruby FILE CORE --exec EXPR)
           -h, --help                       Display this help message
           -v, --version                    Display version
     HELP
@@ -80,24 +80,24 @@ class TestCLIGemOption < Minitest::Test
 
   LAZY_FIXTURE = File.expand_path('../fixtures/lazy_plugins/main.rb', __dir__)
 
-  # The two-file layout on the lazy_plugins fixture: the core loads as a
-  # library (its launch is guarded), the runner registers the regions and
-  # starts the program with --exec, its own arguments gone from ARGV and
-  # everything after "--" untouched. The expression is code outside the
-  # bundle: it spells the skeleton (aliased) and an entry point no code in
-  # the bundle calls, which the safe policy therefore never renames.
-  def test_driver_option_splits_a_runner_that_loads_the_core
+  # The two-file layout on the lazy_plugins fixture: the core is the
+  # program as a library (its launch is guarded), the driver is ryac's
+  # fixed file, which supplies the loader, loads the core and starts the
+  # program with --exec, its own arguments gone from ARGV and everything
+  # after "--" untouched. The expression is code outside the bundle: it
+  # spells the skeleton (aliased) and an entry point no code in the bundle
+  # calls, which the safe policy therefore never renames.
+  def test_driver_option_writes_the_core_as_a_library_and_the_fixed_driver
     Dir.mktmpdir do |dir|
       core = File.join(dir, 'minify.rb')
       driver = File.join(dir, 'driver.rb')
       _stdout, stderr, status = Open3.capture3(RbConfig.ruby, MINIFY_BIN, LAZY_FIXTURE, '-o', core, '--driver', driver)
       assert status.success?, "minify --driver failed: #{stderr}"
-      result = Ryac::Minifier.new.call(LAZY_FIXTURE, level: :stable)
+      result = Ryac::Minifier.new.call(LAZY_FIXTURE, level: :stable, driver: true)
       assert_equal expected_stderr_for(result), stderr
 
-      expected_core, expected_driver = Ryac::DriverFile.split(result.full_content)
-      assert_equal expected_core, File.read(core)
-      assert_equal expected_driver, File.read(driver)
+      assert_equal result.full_content, File.read(core)
+      assert_equal Ryac::DriverFile::SOURCE, File.read(driver)
 
       stdout, stderr, status = Open3.capture3(
         RbConfig.ruby, driver, core,

@@ -55,6 +55,7 @@ module Ryac
         # is left outside is a launcher — which spells the class/module
         # skeleton, never a value constant.
         @alias_surface = source.lazy_files.empty? ? :full : :skeleton
+        @driver = source.driver
         @boot_constant_roots = BootConstants.for(source.stdlib_requires)
         @syntax_data = collect_syntax_data(@prism_root)
 
@@ -181,6 +182,7 @@ module Ryac
         exclude_private_constants(@prism_root)
         exclude_lazy_definitions(@prism_root)
         exclude_dynamic_root_reads(@prism_root)
+        exclude_driver_registry
         count_constant_references(@prism_root)
         augment_constant_counts_via_oracle
         collect_external_references(@prism_root)

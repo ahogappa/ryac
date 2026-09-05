@@ -58,7 +58,7 @@ ryac path/to/entry.rb -o minified.rb -a aliases.rb
 # Emit a self-extracting packed file (self = zero dependencies, zlib = smaller)
 ryac path/to/entry.rb -o packed.rb --pack self
 
-# Keep the program a pure library and put its lazy regions in a runner
+# Keep the program a library and write the driver that loads and runs it
 ryac path/to/entry.rb -o minify.rb --driver driver.rb
 
 # Multiple entry points
@@ -89,6 +89,10 @@ puts result.stats.compression_ratio  # e.g., 0.44 (56% reduction)
 
 # Specify optimization level (:stable or :unstable, default: :stable)
 result = minifier.call('path/to/entry.rb', level: :unstable)
+
+# The two-file layout: the program as a library, run by ryac's fixed driver
+core = minifier.call('path/to/entry.rb', driver: true).full_content
+File.write('driver.rb', Ryac::DriverFile::SOURCE)
 ```
 
 ## Optimization Levels
@@ -121,14 +125,14 @@ cd /path/to/optcarrot && bin/optcarrot examples/Lan_Master.nes
 
 A constant only a region defines (`SDL2Video`, the `SDL2` module) keeps its name — it does not exist until the region runs, so no alias at the end of the file could restore it — and an external constant a region references is never hoisted into the preamble. Neither costs much: a region's own names are few, and its references to the core rename like everything else.
 
-Or keep the program a pure library and put the regions in a runner of their own:
+Or keep the program a library and let a driver run it:
 
 ```bash
 ryac gem_tests/optcarrot/lib/optcarrot.rb -o minify.rb --driver driver.rb
 ruby driver.rb minify.rb --exec "Optcarrot::NES.new.run" examples/Lan_Master.nes
 ```
 
-`minify.rb` is the loader, the core and its aliases — nothing that runs. `driver.rb` loads it, registers the regions and evals the `--exec` expression at top level, its own two arguments already gone from `ARGV` so the program's option parsing sees only what follows (anything after `--` is never read). The split assumes the program loads its dynamic files after boot, from a method — the shape that made them lazy; a dynamic require the core ran while loading would miss its region. The expression is code outside the bundle, so it can spell only what survives outside: the class/module skeleton, which the aliases restore, and methods the program itself never calls — under `stable`'s safe policy an uncalled def keeps its name, and a launcher's entry point (`NES#run`) is exactly that. `--driver` needs `-o`, and cannot be combined with `-a` or with `--pack` (a packed core cannot be loaded).
+`minify.rb` is the whole program as a library: the registry with every region, the core and its aliases — nothing that runs, and no loader. `driver.rb` is the loader, the same file for every program (`--driver` writes a copy): it defines `ryac_require`, which looks the path up in `RYAC_LAZY` and runs the region — Ruby's contract kept, an unregistered path falling through to a real require relative to the core — then loads the core and evals the `--exec` expression at top level, its own two arguments already gone from `ARGV` so the program's option parsing sees only what follows (anything after `--` is never read). Those two names are the contract between the files: the core keeps them, a program that spells either itself is refused, and everything else renames as usual. The expression is code outside the bundle, so it can spell only what survives outside: the class/module skeleton, which the aliases restore, and methods the program itself never calls — under `stable`'s safe policy an uncalled def keeps its name, and a launcher's entry point (`NES#run`) is exactly that. `--driver` needs `-o`, and cannot be combined with `-a` or with `--pack` (a packed core cannot be loaded).
 
 ### Packed output
 

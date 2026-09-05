@@ -139,6 +139,15 @@ module Ryac
       pinned.each { |cpath| @constant_mapping.exclude_path(cpath) }
     end
 
+    # Under the driver layout the loader is a file of its own that reads
+    # the registry by name (DriverFile), so the registry is a constant a
+    # caller outside the program spells: it keeps its name.
+    def exclude_driver_registry
+      return unless @driver
+
+      @constant_mapping.exclude_path([Pipeline::Concatenator::REGISTRY_NAME.to_sym])
+    end
+
     # A path whose outermost parent is neither a constant nor absent (`::X`)
     # — `self::X`, `self.class::X`, `klass::X`.
     def dynamic_root?(node)

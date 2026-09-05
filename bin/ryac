@@ -48,7 +48,7 @@ parser = OptionParser.new do |opts|
     end
   end
 
-  opts.on("-d", "--driver FILE", "Write the lazy regions to FILE as a runner (ruby FILE CORE --exec EXPR)") do |file|
+  opts.on("-d", "--driver FILE", "Keep the program a library and write its driver to FILE (ruby FILE CORE --exec EXPR)") do |file|
     options[:driver] = file
   end
 
@@ -130,7 +130,8 @@ gem_names = options[:gems] || []
 begin
   minifier = Ryac::Minifier.new
   level_opts = options[:level] ? { level: options[:level] } : {}
-  result = minifier.call(entry, **level_opts, project_root: project_root, gem_names: gem_names, gem_require_paths: gem_require_paths)
+  result = minifier.call(entry, **level_opts, project_root: project_root, gem_names: gem_names,
+                         gem_require_paths: gem_require_paths, driver: !options[:driver].nil?)
 
   content = if options[:aliases]
     File.write(options[:aliases], result.aliases)
@@ -141,10 +142,7 @@ begin
 
   content = Ryac::Packer.pack(content, options[:pack]) if options[:pack]
 
-  if options[:driver]
-    content, driver = Ryac::DriverFile.split(content)
-    File.write(options[:driver], driver)
-  end
+  File.write(options[:driver], Ryac::DriverFile::SOURCE) if options[:driver]
 
   if options[:output]
     File.binwrite(options[:output], content)

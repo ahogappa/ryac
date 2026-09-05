@@ -100,8 +100,8 @@ module Ryac
 
     # code is raw (uncompacted) text — compaction is the runner's fixed
     # first step, so every stage list starts from the same dialect.
-    def self.run_stages(code, stages, stdlib_requires: [], rbs_files: {}, lazy_files: [])
-      Pipeline::StageRunner.new(stdlib_requires: stdlib_requires, rbs_files: rbs_files, lazy_files: lazy_files)
+    def self.run_stages(code, stages, stdlib_requires: [], rbs_files: {}, lazy_files: [], driver: false)
+      Pipeline::StageRunner.new(stdlib_requires: stdlib_requires, rbs_files: rbs_files, lazy_files: lazy_files, driver: driver)
                            .call(code, stages)
     end
 
@@ -114,9 +114,11 @@ module Ryac
       @concatenator = Pipeline::Concatenator.new
     end
 
-    def call(entry_path, level: DEFAULT_LEVEL, project_root: nil, gem_names: [], gem_require_paths: [])
+    # driver: the two-file layout (DriverFile) — the program comes back as a
+    # library whose lazy regions the driver file's loader runs.
+    def call(entry_path, level: DEFAULT_LEVEL, project_root: nil, gem_names: [], gem_require_paths: [], driver: false)
       graph = @file_collector.call(entry_path, project_root: project_root, gem_names: gem_names, gem_require_paths: gem_require_paths)
-      source = @concatenator.call(graph)
+      source = @concatenator.call(graph, driver: driver)
       # Captured while the boundaries still describe the text; from
       # compaction on they are input provenance, not current positions.
       file_count = source.file_boundaries.size
@@ -134,7 +136,8 @@ module Ryac
       self.class.run_stages(source.content, stages,
         stdlib_requires: source.stdlib_requires,
         rbs_files: source.rbs_files,
-        lazy_files: source.lazy_files
+        lazy_files: source.lazy_files,
+        driver: source.driver
       )
     end
 

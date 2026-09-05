@@ -7,6 +7,7 @@ module Ryac
     def struct_definition_write?: (Prism::Node node) -> bool
     def exclude_lazy_definitions: (Prism::Node prism_root) -> void
     def exclude_dynamic_root_reads: (Prism::Node prism_root) -> void
+    def exclude_driver_registry: () -> void
     def dynamic_root?: (Prism::ConstantPathNode node) -> bool
     def collect_constants: (Prism::Node prism_root) -> void
     def exclude_private_constants: (Prism::Node prism_root) -> void

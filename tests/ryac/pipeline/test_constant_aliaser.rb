@@ -352,6 +352,29 @@ class TestConstantAliaserPipeline < Minitest::Test
                  result.aliases
   end
 
+  DRIVER_CODE = <<~'RUBY'
+    RYAC_LAZY = {}
+    RYAC_LAZY["plugins/turbo"] = -> { module Engine; class Turbo; end; end }
+    module Engine
+      def self.load(name) = ryac_require("plugins/#{name}")
+    end
+  RUBY
+
+  # Under the driver layout the registry is read by the driver file, by
+  # name: it keeps its name, where the single file shortens it with the rest
+  # of the value constants.
+  def test_driver_layout_keeps_the_registry_name
+    single = minify_at_level(DRIVER_CODE, 4, lazy_files: ['/app/plugins/turbo.rb'])
+    assert_equal 'B={};B["plugins/turbo"]=->{module A;class Turbo;end;end};module A;def self.load(a) =ryac_require "plugins/#{a}";end',
+                 single.code
+    assert_equal 'Engine=A', single.aliases
+
+    driven = minify_at_level(DRIVER_CODE, 4, lazy_files: ['/app/plugins/turbo.rb'], driver: true)
+    assert_equal 'RYAC_LAZY={};RYAC_LAZY["plugins/turbo"]=->{module A;class Turbo;end;end};module A;def self.load(a) =ryac_require "plugins/#{a}";end',
+                 driven.code
+    assert_equal 'Engine=A', driven.aliases
+  end
+
   # Prism models `A, B = ...` as ConstantTargetNodes rather than
   # ConstantWriteNodes. Missing them renamed every reference while leaving the
   # definitions untouched, so the short names were never assigned to anything.

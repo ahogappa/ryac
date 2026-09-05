@@ -15,10 +15,11 @@ module Ryac
     class StageRunner
       include SourcePatcher
 
-      def initialize(stdlib_requires: [], rbs_files: {}, lazy_files: [])
+      def initialize(stdlib_requires: [], rbs_files: {}, lazy_files: [], driver: false)
         @stdlib_requires = stdlib_requires
         @rbs_files = rbs_files
         @lazy_files = lazy_files
+        @driver = driver
       end
 
       def call(code, stage_defs)
@@ -67,7 +68,8 @@ module Ryac
           content: code,
           stdlib_requires: @stdlib_requires,
           rbs_files: @rbs_files,
-          lazy_files: @lazy_files
+          lazy_files: @lazy_files,
+          driver: @driver
         )
         options = {} #: Hash[Symbol, untyped]
         batch.each { |stage| options.merge!(stage.analysis_options) }

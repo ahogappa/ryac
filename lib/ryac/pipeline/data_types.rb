@@ -94,16 +94,17 @@ module Ryac
       :original_size,    # Integer: Bytes of the input the content descends from
       :stdlib_requires,  # Array<String>: Standard library requires to preserve
       :rbs_files,        # Hash<String, String>: path -> RBS content for TypeProf
-      :lazy_files        # Array<String>: paths of the files bundled as lazy regions (see LazyRegions)
+      :lazy_files,       # Array<String>: paths of the files bundled as lazy regions (see LazyRegions)
+      :driver            # Boolean: the loader is a driver file outside the program, which reads the registry by name (see DriverFile)
     ) do
       # A source built straight from a string (tests, sub-pipelines) has no
       # file ancestry: everything but the content defaults away, and its
       # original size is the content itself.
-      def initialize(content:, file_boundaries: [], original_size: nil, stdlib_requires: [], rbs_files: {}, lazy_files: []) # steep:ignore UndeclaredMethodDefinition
+      def initialize(content:, file_boundaries: [], original_size: nil, stdlib_requires: [], rbs_files: {}, lazy_files: [], driver: false) # steep:ignore UndeclaredMethodDefinition
         super(content: content, file_boundaries: file_boundaries,
               original_size: original_size || content.bytesize,
               stdlib_requires: stdlib_requires, rbs_files: rbs_files,
-              lazy_files: lazy_files)
+              lazy_files: lazy_files, driver: driver)
       end
     end
 

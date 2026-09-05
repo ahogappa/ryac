@@ -11,6 +11,7 @@ module Ryac
       @method_policy: Symbol
       @lazy_regions: Array[Prism::LambdaNode]
       @alias_surface: Symbol
+      @driver: bool
       @scope_visible_names: Hash[scope_id, Set[String]]
 
       def self.prism_only: (ConcatenatedSource source) -> AnalysisResult
