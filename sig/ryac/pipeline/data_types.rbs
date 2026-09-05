@@ -35,6 +35,13 @@ module Ryac
       def self.new: (path: String, start_line: Integer, end_line: Integer) -> FileBoundary
     end
 
+    class FileMark
+      attr_reader path: String
+      attr_reader lazy: bool
+
+      def self.new: (path: String, lazy: bool) -> FileMark
+    end
+
     class ConcatenatedSource
       attr_reader content: String
       attr_reader file_boundaries: Array[FileBoundary]
@@ -42,10 +49,12 @@ module Ryac
       attr_reader stdlib_requires: Array[String]
       attr_reader rbs_files: Hash[String, String]
       attr_reader lazy_files: Array[String]
+      attr_reader driver: bool
+      attr_reader marks: Array[FileMark]
 
-      def self.new: (content: String, ?file_boundaries: Array[FileBoundary], ?original_size: Integer?, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String]) -> ConcatenatedSource
-      def initialize: (content: String, ?file_boundaries: Array[FileBoundary], ?original_size: Integer?, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String]) -> void
-      def with: (?content: String, ?file_boundaries: Array[FileBoundary], ?original_size: Integer, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String]) -> ConcatenatedSource
+      def self.new: (content: String, ?file_boundaries: Array[FileBoundary], ?original_size: Integer?, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String], ?driver: bool, ?marks: Array[FileMark]) -> ConcatenatedSource
+      def initialize: (content: String, ?file_boundaries: Array[FileBoundary], ?original_size: Integer?, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String], ?driver: bool, ?marks: Array[FileMark]) -> void
+      def with: (?content: String, ?file_boundaries: Array[FileBoundary], ?original_size: Integer, ?stdlib_requires: Array[String], ?rbs_files: Hash[String, String], ?lazy_files: Array[String], ?driver: bool, ?marks: Array[FileMark]) -> ConcatenatedSource
     end
 
     class AnalysisResult
@@ -149,6 +158,13 @@ module Ryac
       def self.new: (content: String, ?aliases: String, ?preamble: String, stats: CompressionStats) -> MinifiedResult
       def initialize: (content: String, ?aliases: String, ?preamble: String, stats: CompressionStats) -> void
       def full_content: () -> String
+    end
+
+    class SplitResult
+      attr_reader files: Hash[String, String]
+      attr_reader stats: CompressionStats
+
+      def self.new: (files: Hash[String, String], stats: CompressionStats) -> SplitResult
     end
   end
 end

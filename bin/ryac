@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require 'optparse'
+require 'fileutils'
 require_relative '../lib/ryac'
 
 options = {
@@ -10,7 +11,8 @@ options = {
   level: nil,
   gems: nil,
   pack: nil,
-  driver: nil
+  driver: nil,
+  split: nil
 }
 
 parser = OptionParser.new do |opts|
@@ -48,8 +50,12 @@ parser = OptionParser.new do |opts|
     end
   end
 
-  opts.on("-d", "--driver FILE", "Write the lazy regions to FILE as a runner (ruby FILE CORE --exec EXPR)") do |file|
+  opts.on("-d", "--driver FILE", "Keep the program a library and write its driver to FILE (ruby FILE CORE --exec EXPR)") do |file|
     options[:driver] = file
+  end
+
+  opts.on("-s", "--split DIR", "Write the program back as files under DIR, minified together") do |dir|
+    options[:split] = dir
   end
 
   opts.on("-h", "--help", "Display this help message") do
@@ -69,6 +75,14 @@ rescue OptionParser::InvalidOption => e
   warn "Error: #{e.message}"
   warn parser
   exit 1
+end
+
+if options[:split]
+  taken = { output: '-o', aliases: '-a', pack: '--pack', driver: '--driver' }.find { |key, _| options[key] }
+  if taken
+    warn "Error: --split cannot be combined with #{taken[1]} (the split layout writes the whole program under DIR)"
+    exit 1
+  end
 end
 
 if options[:driver]
@@ -130,27 +144,35 @@ gem_names = options[:gems] || []
 begin
   minifier = Ryac::Minifier.new
   level_opts = options[:level] ? { level: options[:level] } : {}
-  result = minifier.call(entry, **level_opts, project_root: project_root, gem_names: gem_names, gem_require_paths: gem_require_paths)
+  source_opts = { project_root: project_root, gem_names: gem_names, gem_require_paths: gem_require_paths }
 
-  content = if options[:aliases]
-    File.write(options[:aliases], result.aliases)
-    result.content
+  if options[:split]
+    result = minifier.split(entry, **level_opts, **source_opts)
+    result.files.each do |path, text|
+      target = File.join(options[:split], path)
+      FileUtils.mkdir_p(File.dirname(target))
+      File.binwrite(target, text)
+    end
   else
-    result.full_content
-  end
+    result = minifier.call(entry, **level_opts, **source_opts, driver: !options[:driver].nil?)
 
-  content = Ryac::Packer.pack(content, options[:pack]) if options[:pack]
+    content = if options[:aliases]
+      File.write(options[:aliases], result.aliases)
+      result.content
+    else
+      result.full_content
+    end
 
-  if options[:driver]
-    content, driver = Ryac::DriverFile.split(content)
-    File.write(options[:driver], driver)
-  end
+    content = Ryac::Packer.pack(content, options[:pack]) if options[:pack]
 
-  if options[:output]
-    File.binwrite(options[:output], content)
-  else
-    $stdout.binmode if options[:pack]
-    puts content
+    File.write(options[:driver], Ryac::DriverFile::SOURCE) if options[:driver]
+
+    if options[:output]
+      File.binwrite(options[:output], content)
+    else
+      $stdout.binmode if options[:pack]
+      puts content
+    end
   end
 
   warn "Compression: #{((1 - result.stats.compression_ratio) * 100).round(1)}%"

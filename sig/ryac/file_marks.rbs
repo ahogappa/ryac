@@ -1,0 +1,11 @@
+module Ryac
+  module FileMarks
+    NAME: Symbol
+
+    def self?.statement: (Integer index) -> String
+    def self?.index: (Prism::Node node) -> Integer?
+    def self?.each_marker: (Prism::ProgramNode prism_root) { (Prism::Node, Integer) -> void } -> void
+    def self?.lazy_spans: (Prism::ProgramNode prism_root, Array[Pipeline::FileMark] marks, Integer content_size) -> Array[[Integer, Integer]]
+    def self?.split: (String code, Array[Pipeline::FileMark] marks) -> Hash[String, String]
+  end
+end

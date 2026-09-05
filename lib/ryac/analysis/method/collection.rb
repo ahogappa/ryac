@@ -130,9 +130,11 @@ module Ryac
     # policy it keeps its name. Setters count as mentioned when their
     # base word is.
     def collect_string_literal_mentions(prism_root)
+      paths = path_argument_ids(prism_root)
       words = Set.new
       AstUtils.each_node(prism_root) do |node|
         next unless node.is_a?(Prism::StringNode)
+        next if paths.include?(node.object_id)
 
         # Byte escapes (`"\x89PNG"`) leave the literal invalid in the source
         # encoding, and String#scan refuses invalid text; the identifier
@@ -151,6 +153,28 @@ module Ryac
       @method_rename_mapping.exclude_methods_by_mid(mentioned.to_set) unless mentioned.empty?
     end
 
+    # The string a require, load or autoload names is a path, not a name:
+    # its words do not reach any dispatch. The parts of an interpolated
+    # path count as the path.
+    PATH_TAKING_METHODS = { require: 0, require_relative: 0, load: 0, autoload: 1 }.freeze
+
+    def path_argument_ids(prism_root)
+      ids = Set.new #: Set[Integer]
+      AstUtils.each_node(prism_root) do |node|
+        next unless node.is_a?(Prism::CallNode) && node.receiver.nil?
+
+        position = PATH_TAKING_METHODS[node.name]
+        next unless position
+
+        arg = node.arguments&.arguments&.[](position)
+        case arg
+        when Prism::StringNode then ids << arg.object_id
+        when Prism::InterpolatedStringNode then arg.parts.each { |part| ids << part.object_id }
+        end
+      end
+      ids
+    end
+
     # Visibility resets at every reopen of this module, so each collection
     # file's `private` covers that file alone.
     private
@@ -160,17 +184,15 @@ module Ryac
     #
     # The pair is identified by both entities pointing at the same definition
     # site — an explicit `def self.foo` alongside `def foo` is two sites and
-    # must stay independent. The "no defs but has call boxes" shape is also
-    # accepted: older TypeProf releases recorded no def at all for the
-    # singleton side of module_function.
+    # must stay independent, and so must a same-named method the other side
+    # merely inherits: `Base.name` beside `def name` is Module#name, whose
+    # call sites are not this def's to rename.
     def link_module_function_variant(def_node, method_key)
       cpath, singleton, mid = method_key
       return unless @oracle.method_known?(cpath, !singleton, mid)
 
       alt_def_keys = @oracle.method_definition_keys(cpath, !singleton, mid)
-      shares_definition = alt_def_keys.include?(AstUtils.location_key(def_node))
-      call_only = alt_def_keys.empty? && @oracle.method_call_count(cpath, !singleton, mid) > 0
-      return unless shares_definition || call_only
+      return unless alt_def_keys.include?(AstUtils.location_key(def_node))
 
       alt_key = [cpath, !singleton, mid].freeze
       @method_rename_mapping.add_method(alt_key, nil)

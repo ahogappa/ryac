@@ -1,8 +1,5 @@
 module Ryac
   module DriverFile
-    HEADER: String
-    FOOTER: String
-
-    def self.split: (String full_content) -> [String, String]
+    SOURCE: String
   end
 end

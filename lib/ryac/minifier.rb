@@ -100,8 +100,9 @@ module Ryac
 
     # code is raw (uncompacted) text — compaction is the runner's fixed
     # first step, so every stage list starts from the same dialect.
-    def self.run_stages(code, stages, stdlib_requires: [], rbs_files: {}, lazy_files: [])
-      Pipeline::StageRunner.new(stdlib_requires: stdlib_requires, rbs_files: rbs_files, lazy_files: lazy_files)
+    def self.run_stages(code, stages, stdlib_requires: [], rbs_files: {}, lazy_files: [], driver: false, marks: [])
+      Pipeline::StageRunner.new(stdlib_requires: stdlib_requires, rbs_files: rbs_files, lazy_files: lazy_files,
+                                driver: driver, marks: marks)
                            .call(code, stages)
     end
 
@@ -114,15 +115,53 @@ module Ryac
       @concatenator = Pipeline::Concatenator.new
     end
 
-    def call(entry_path, level: DEFAULT_LEVEL, project_root: nil, gem_names: [], gem_require_paths: [])
+    # driver: the two-file layout (DriverFile) — the program comes back as a
+    # library whose lazy regions the driver file's loader runs.
+    def call(entry_path, level: DEFAULT_LEVEL, project_root: nil, gem_names: [], gem_require_paths: [], driver: false)
       graph = @file_collector.call(entry_path, project_root: project_root, gem_names: gem_names, gem_require_paths: gem_require_paths)
-      source = @concatenator.call(graph)
+      source = @concatenator.call(graph, driver: driver)
       # Captured while the boundaries still describe the text; from
       # compaction on they are input provenance, not current positions.
       file_count = source.file_boundaries.size
 
       result = run_pipeline(source, level)
       build_result(result, source, file_count)
+    end
+
+    # The split layout: the program written back as files, minified under
+    # the one rename table the whole program shares. Every file keeps its
+    # requires, so it loads from its place in the tree exactly as the
+    # original did; the entry file also carries the preamble at its top
+    # and the aliases at its end. Paths are relative to the common root of
+    # the collected files.
+    def split(entry_path, level: DEFAULT_LEVEL, project_root: nil, gem_names: [], gem_require_paths: [])
+      if entry_path.is_a?(Array) && entry_path.size != 1
+        raise MinifyError, 'split output needs a single entry file'
+      end
+
+      graph = @file_collector.call(entry_path, project_root: project_root, gem_names: gem_names, gem_require_paths: gem_require_paths)
+      source = @concatenator.call(graph, split: true)
+      file_count = source.file_boundaries.size
+
+      result = run_pipeline(source, level)
+      root = Pipeline::Concatenator.common_root(graph.paths)
+      entry = File.expand_path(entry_path.is_a?(Array) ? entry_path.fetch(0) : entry_path)
+      files = FileMarks.split(result.code, source.marks).to_h do |path, text|
+        text = [result.preamble, text, result.aliases].reject(&:empty?).join(';') if path == entry
+        verify_parses(text, path)
+        [path.delete_prefix(root == '/' ? '/' : "#{root}/"), "#{text}\n"]
+      end
+
+      size = files.values.sum(&:bytesize)
+      Pipeline::SplitResult.new(
+        files: files,
+        stats: Pipeline::CompressionStats.new(
+          original_size: source.original_size,
+          minified_size: size,
+          compression_ratio: size.to_f / source.original_size,
+          file_count: file_count
+        )
+      )
     end
 
     private
@@ -134,7 +173,9 @@ module Ryac
       self.class.run_stages(source.content, stages,
         stdlib_requires: source.stdlib_requires,
         rbs_files: source.rbs_files,
-        lazy_files: source.lazy_files
+        lazy_files: source.lazy_files,
+        driver: source.driver,
+        marks: source.marks
       )
     end
 

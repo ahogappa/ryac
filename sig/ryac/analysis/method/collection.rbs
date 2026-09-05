@@ -4,6 +4,8 @@ module Ryac
     def collect_dynamic_ivar_attr_exclusions: (Prism::Node prism_root) -> void
     def collect_inherited_attr_exclusions: (Prism::Node prism_root) -> void
     def collect_string_literal_mentions: (Prism::Node prism_root) -> void
+    PATH_TAKING_METHODS: Hash[Symbol, Integer]
+    def path_argument_ids: (Prism::Node prism_root) -> Set[Integer]
     def resolve_method_calls: () -> void
     def scan_dynamic_method_references: (Prism::Node prism_root) -> void
     def collect_visibility_modifier_methods: (Prism::Node prism_root) -> void

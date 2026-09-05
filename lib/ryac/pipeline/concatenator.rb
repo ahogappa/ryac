@@ -10,15 +10,35 @@ module Ryac
       # The registry lazy regions register into and the loader that runs
       # them: ordinary source, minified with everything else (both get short
       # names), spelled so as not to collide with the program's own names.
+      # In the driver layout (DriverFile) the loader is the driver's own and
+      # the registry is read by name from outside, so both names are fixed.
       REGISTRY_NAME = 'RYAC_LAZY'
       LOADER_NAME = 'ryac_require'
 
       # @param graph [DependencyGraph] From Stage 1
+      # @param driver [Boolean] The driver layout: the registry alone, its
+      #   loader left to the driver file (DriverFile)
+      # @param split [Boolean] The split layout: every file as written, opened
+      #   by a marker (FileMarks), its requires left to run as requires
       # @return [ConcatenatedSource] Ordered, concatenated source
       # @raise [CircularDependencyError] If cycle detected in graph
-      def call(graph)
+      # @raise [MinifyError] If the driver layout is asked of a program it
+      #   cannot take: one with no lazy regions, or one spelling a fixed name
+      def call(graph, driver: false, split: false)
+        raise ArgumentError, 'the driver and split layouts exclude each other' if driver && split
+
         sorted_paths = topological_sort(graph)
-        concatenate_files(graph, sorted_paths)
+        concatenate_files(graph, sorted_paths, driver, split)
+      end
+
+      # The directory every bundled file sits under. Region keys, the
+      # respelled prefix of a dynamic require site and the split layout's
+      # output paths are all relative to it, which is what makes a key and
+      # the string the site builds at runtime agree.
+      def self.common_root(paths)
+        root = File.dirname(paths.fetch(0))
+        root = File.dirname(root) until root == '/' || paths.all? { |p| p.start_with?("#{root}/") }
+        root
       end
 
       private
@@ -101,42 +121,57 @@ module Ryac
       end
 
       # Concatenate files in sorted order
-      def concatenate_files(graph, sorted_paths)
+      def concatenate_files(graph, sorted_paths, driver, split)
         content_parts = [] #: Array[String]
         file_boundaries = [] #: Array[FileBoundary]
         stdlib_requires = [] #: Array[String]
+        marks = [] #: Array[FileMark]
         inlined = Set.new
         current_line = 1
 
         lazy_paths = graph.lazy_paths
-        @root = common_root(graph.paths)
-        @registry, @loader = lazy_paths.empty? ? [nil, nil] : bundle_names(graph)
+        if driver && lazy_paths.empty?
+          raise MinifyError, 'cannot write a driver file: the program has no lazy regions'
+        end
+        @root = self.class.common_root(graph.paths)
+        @registry, @loader = lazy_paths.empty? || split ? [nil, nil] : bundle_names(graph, driver)
 
-        # Pre-clean all files: resolve in-class requires by inlining
+        # Pre-clean all files: resolve in-class requires by inlining. The
+        # split layout keeps every file as written — its requires run as
+        # requires, against the files written next to it — so nothing is
+        # hoisted, inlined or pointed at a loader.
         cleaned_cache = {} #: Hash[String, String]
         sorted_paths.each do |path|
           entry = graph[path]
           next unless entry
+          next cleaned_cache[path] = entry.content if split
           collect_stdlib_requires(entry, stdlib_requires) unless entry.lazy
           cleaned_cache[path] = process_require_statements(entry, graph, inlined, cleaned_cache)
         end
 
         if (registry = @registry) && (loader = @loader)
-          prelude = loader_prelude(registry, loader)
+          prelude = driver ? registry_prelude(registry) : loader_prelude(registry, loader)
           content_parts << prelude
           current_line += prelude.count("\n") + 1
         end
 
         # Regions first: registering is all a region does at load, and it
         # has to be registered before any code that could ask for it runs.
+        # In the split layout the dynamically loaded files come last
+        # instead, after everything they subclass.
         lazy, flat = sorted_paths.partition { |path| graph[path]&.lazy }
-        (lazy + flat).each do |path|
+        (split ? flat + lazy : lazy + flat).each do |path|
           next if inlined.include?(path)
           entry = graph[path]
           next unless entry
 
-          cleaned_content = cleaned_cache[path]
-          cleaned_content = lazy_registration(path, cleaned_content) if entry.lazy
+          cleaned_content = cleaned_cache.fetch(path)
+          if split
+            marks << FileMark.new(path: path, lazy: entry.lazy)
+            cleaned_content = "#{FileMarks.statement(marks.size - 1)}\n#{cleaned_content}"
+          elsif entry.lazy
+            cleaned_content = lazy_registration(path, cleaned_content)
+          end
           lines = cleaned_content.count("\n") + 1
 
           file_boundaries << FileBoundary.new(
@@ -157,18 +192,10 @@ module Ryac
           original_size: original_size,
           stdlib_requires: stdlib_requires.uniq,
           rbs_files: graph.rbs_files,
-          lazy_files: lazy_paths
+          lazy_files: lazy_paths,
+          driver: driver,
+          marks: marks
         )
-      end
-
-      # The directory every bundled file sits under. Region keys and the
-      # respelled prefix of a dynamic require site are both relative to it,
-      # which is what makes a key and the string the site builds at runtime
-      # agree.
-      def common_root(paths)
-        root = File.dirname(paths.fetch(0))
-        root = File.dirname(root) until root == '/' || paths.all? { |p| p.start_with?("#{root}/") }
-        root
       end
 
       def relative_to_root(path)
@@ -179,20 +206,38 @@ module Ryac
         relative_to_root(path).delete_suffix('.rb')
       end
 
-      # Names the program does not spell anywhere.
-      def bundle_names(graph)
+      # Names the program does not spell anywhere. The driver speaks the two
+      # base names and nothing else, so under the driver layout they cannot
+      # move: a program that spells one cannot take that layout.
+      def bundle_names(graph, driver)
         contents = graph.files.each_value.map(&:content)
-        [REGISTRY_NAME, LOADER_NAME].map { |base| unused_name(base, contents) }
+        [REGISTRY_NAME, LOADER_NAME].map do |base|
+          next unused_name(base, contents) unless driver
+          if spelled?(base, contents)
+            raise MinifyError, "cannot write a driver file: the program spells #{base}, a name the driver speaks"
+          end
+          base
+        end
       end
 
       def unused_name(base, contents)
         name = base
         suffix = 0
-        while contents.any? { |c| c.match?(/\b#{Regexp.escape(name)}\b/) }
+        while spelled?(name, contents)
           suffix += 1
           name = "#{base}_#{suffix}"
         end
         name
+      end
+
+      def spelled?(name, contents)
+        contents.any? { |c| c.match?(/\b#{Regexp.escape(name)}\b/) }
+      end
+
+      # The driver layout's prelude: the registry the regions fill, and no
+      # loader — the driver defines it before it loads the core.
+      def registry_prelude(registry)
+        "#{registry} = {}\n"
       end
 
       # The loader keeps Ruby's require contract for the regions it owns: a

@@ -54,4 +54,24 @@ class TestSafeMethodPolicy < Minitest::Test
     assert_equal 'class A;def external_hook =99;def a =21;def b =a*2;end;puts A.new.b',
                  result.code
   end
+
+  # The string a require names is a path, not a name: a method spelled
+  # like one of its words is still renamed.
+  def test_require_path_is_not_a_mention
+    code = <<~RUBY
+      class Loader
+        def sdl2 = 1
+        def boot
+          begin
+            require "no/such/sdl2"
+          rescue LoadError
+          end
+          sdl2
+        end
+      end
+      p Loader.new.boot
+    RUBY
+    result = minify_at_level(code, 4)
+    assert_equal 'class A;def a =1;def b =(begin;require "no/such/sdl2";rescue LoadError;end;a);end;p A.new.b', result.code
+  end
 end

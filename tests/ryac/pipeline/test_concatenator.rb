@@ -8,6 +8,29 @@ class TestConcatenator < Minitest::Test
     @concatenator = Ryac::Pipeline::Concatenator.new
   end
 
+  # A loader requiring "plugins/#{name}_plugin" from a method, a plugin with
+  # a gem require and a sibling require, and the sibling; main_prefix is
+  # prepended to the entry file.
+  def lazy_fixture_graph(dir, main_prefix: '')
+    File.write(File.join(dir, 'engine.rb'), "class Base; end\n")
+    File.write(File.join(dir, 'main.rb'), main_prefix + <<~'RUBY')
+      require_relative "engine"
+      module App
+        def self.load(name)
+          require_relative "plugins/#{name}_plugin.rb"
+        end
+      end
+    RUBY
+    Dir.mkdir(File.join(dir, 'plugins'))
+    File.write(File.join(dir, 'plugins', 'shared.rb'), "SHARED = 1\n")
+    File.write(File.join(dir, 'plugins', 'a_plugin.rb'), <<~RUBY)
+      require "ffi"
+      require_relative "shared"
+      class APlugin < Base; end
+    RUBY
+    Ryac::Pipeline::FileCollector.new.call(File.join(dir, 'main.rb'), project_root: dir)
+  end
+
   # Prism reports byte offsets; splicing them into a String as character
   # indices shifts every slice that follows a multibyte character. A comment
   # with an em-dash before a require is enough to reproduce.
@@ -33,25 +56,7 @@ class TestConcatenator < Minitest::Test
   # region — asks the loader instead.
   def test_lazy_files_become_registered_regions
     Dir.mktmpdir do |dir|
-      File.write(File.join(dir, 'engine.rb'), "class Base; end\n")
-      File.write(File.join(dir, 'main.rb'), <<~'RUBY')
-        require_relative "engine"
-        module App
-          def self.load(name)
-            require_relative "plugins/#{name}_plugin.rb"
-          end
-        end
-      RUBY
-      Dir.mkdir(File.join(dir, 'plugins'))
-      File.write(File.join(dir, 'plugins', 'shared.rb'), "SHARED = 1\n")
-      File.write(File.join(dir, 'plugins', 'a_plugin.rb'), <<~RUBY)
-        require "ffi"
-        require_relative "shared"
-        class APlugin < Base; end
-      RUBY
-
-      graph = Ryac::Pipeline::FileCollector.new.call(File.join(dir, 'main.rb'), project_root: dir)
-      result = @concatenator.call(graph)
+      result = @concatenator.call(lazy_fixture_graph(dir))
 
       assert_equal <<~'RUBY', result.content
         RYAC_LAZY = {}
@@ -90,7 +95,104 @@ class TestConcatenator < Minitest::Test
       assert_equal [], result.stdlib_requires
       assert_equal [File.join(dir, 'plugins', 'a_plugin.rb'), File.join(dir, 'plugins', 'shared.rb')], result.lazy_files
       assert_equal 4, result.file_boundaries.size
+      assert_equal false, result.driver
     end
+  end
+
+  # The driver layout: the same regions and rewritten requires, the
+  # registry alone ahead of them under its fixed name — the loader is the
+  # driver file's.
+  def test_driver_layout_keeps_the_registry_and_leaves_the_loader_to_the_driver
+    Dir.mktmpdir do |dir|
+      result = @concatenator.call(lazy_fixture_graph(dir), driver: true)
+
+      assert_equal <<~'RUBY', result.content
+        RYAC_LAZY = {}
+
+        RYAC_LAZY["plugins/shared"] = -> {
+        SHARED = 1
+
+        }
+        RYAC_LAZY["plugins/a_plugin"] = -> {
+        require "ffi"
+        ryac_require("plugins/shared")
+        class APlugin < Base; end
+
+        }
+        class Base; end
+
+        module App
+          def self.load(name)
+            ryac_require("plugins/#{name}_plugin")
+          end
+        end
+      RUBY
+      assert_equal true, result.driver
+    end
+  end
+
+  def test_driver_layout_needs_a_region
+    graph = build_graph("/a.rb" => { content: "puts 1", deps: [] })
+    error = assert_raises(Ryac::MinifyError) { @concatenator.call(graph, driver: true) }
+    assert_equal 'cannot write a driver file: the program has no lazy regions', error.message
+  end
+
+  # The driver speaks the two names as spelled, so unlike the single file —
+  # which suffixes its own copy out of the way — the layout has no room for
+  # a program that spells one.
+  def test_driver_layout_refuses_a_program_spelling_a_fixed_name
+    Dir.mktmpdir do |dir|
+      graph = lazy_fixture_graph(dir, main_prefix: "RYAC_LAZY = nil\n")
+      error = assert_raises(Ryac::MinifyError) { @concatenator.call(graph, driver: true) }
+      assert_equal 'cannot write a driver file: the program spells RYAC_LAZY, a name the driver speaks', error.message
+    end
+  end
+
+  # The split layout: every file as written — requires and all, the
+  # dynamic site included — opened by its marker, the dynamically loaded
+  # files last; nothing is hoisted, so the stdlib list is empty, and the
+  # marks name each file with whether a dynamic require loads it.
+  def test_split_layout_keeps_every_file_as_written
+    Dir.mktmpdir do |dir|
+      result = @concatenator.call(lazy_fixture_graph(dir), split: true)
+
+      assert_equal <<~'RUBY', result.content
+        __ryac_mark__ 0
+        class Base; end
+
+        __ryac_mark__ 1
+        require_relative "engine"
+        module App
+          def self.load(name)
+            require_relative "plugins/#{name}_plugin.rb"
+          end
+        end
+
+        __ryac_mark__ 2
+        SHARED = 1
+
+        __ryac_mark__ 3
+        require "ffi"
+        require_relative "shared"
+        class APlugin < Base; end
+      RUBY
+      assert_equal [
+        Ryac::Pipeline::FileMark.new(path: File.join(dir, 'engine.rb'), lazy: false),
+        Ryac::Pipeline::FileMark.new(path: File.join(dir, 'main.rb'), lazy: false),
+        Ryac::Pipeline::FileMark.new(path: File.join(dir, 'plugins', 'shared.rb'), lazy: true),
+        Ryac::Pipeline::FileMark.new(path: File.join(dir, 'plugins', 'a_plugin.rb'), lazy: true)
+      ], result.marks
+      assert_equal [], result.stdlib_requires
+      assert_equal [File.join(dir, 'plugins', 'a_plugin.rb'), File.join(dir, 'plugins', 'shared.rb')], result.lazy_files
+      assert_equal [[1, 3], [4, 11], [12, 14], [15, 19]], result.file_boundaries.map { |b| [b.start_line, b.end_line] }
+      assert_equal false, result.driver
+    end
+  end
+
+  def test_driver_and_split_layouts_exclude_each_other
+    graph = build_graph("/a.rb" => { content: "puts 1", deps: [] })
+    error = assert_raises(ArgumentError) { @concatenator.call(graph, driver: true, split: true) }
+    assert_equal 'the driver and split layouts exclude each other', error.message
   end
 
   def test_single_file

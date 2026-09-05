@@ -9,8 +9,10 @@ module Ryac
       @meta_node_map: Hash[location_key, meta_node_entry]
 
       @method_policy: Symbol
-      @lazy_regions: Array[Prism::LambdaNode]
+      @lazy_regions: Array[[Integer, Integer]]
       @alias_surface: Symbol
+      @driver: bool
+      @split: bool
       @scope_visible_names: Hash[scope_id, Set[String]]
 
       def self.prism_only: (ConcatenatedSource source) -> AnalysisResult

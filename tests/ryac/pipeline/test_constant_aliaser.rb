@@ -352,6 +352,29 @@ class TestConstantAliaserPipeline < Minitest::Test
                  result.aliases
   end
 
+  DRIVER_CODE = <<~'RUBY'
+    RYAC_LAZY = {}
+    RYAC_LAZY["plugins/turbo"] = -> { module Engine; class Turbo; end; end }
+    module Engine
+      def self.load(name) = ryac_require("plugins/#{name}")
+    end
+  RUBY
+
+  # Under the driver layout the registry is read by the driver file, by
+  # name: it keeps its name, where the single file shortens it with the rest
+  # of the value constants.
+  def test_driver_layout_keeps_the_registry_name
+    single = minify_at_level(DRIVER_CODE, 4, lazy_files: ['/app/plugins/turbo.rb'])
+    assert_equal 'B={};B["plugins/turbo"]=->{module A;class Turbo;end;end};module A;def self.load(a) =ryac_require "plugins/#{a}";end',
+                 single.code
+    assert_equal 'Engine=A', single.aliases
+
+    driven = minify_at_level(DRIVER_CODE, 4, lazy_files: ['/app/plugins/turbo.rb'], driver: true)
+    assert_equal 'RYAC_LAZY={};RYAC_LAZY["plugins/turbo"]=->{module A;class Turbo;end;end};module A;def self.load(a) =ryac_require "plugins/#{a}";end',
+                 driven.code
+    assert_equal 'Engine=A', driven.aliases
+  end
+
   # Prism models `A, B = ...` as ConstantTargetNodes rather than
   # ConstantWriteNodes. Missing them renamed every reference while leaving the
   # definitions untouched, so the short names were never assigned to anything.
@@ -367,5 +390,57 @@ class TestConstantAliaserPipeline < Minitest::Test
     result = minify_at_level(code, 4)
     assert_equal 'class E;A=12;B,C,D=(1..3).map{_1*A};def a(a) =a==1?B : a==2?C : D;end;p E.new.a(2)',
                  result.code
+  end
+
+  # `autoload :Name, "file"` looks the constant up by the spelled name and
+  # the file defines it under that spelling: both keep it. The class
+  # around it renames as usual.
+  def test_autoload_target_keeps_its_name
+    code = <<~RUBY
+      module Engine
+        autoload :Helper, "helper"
+        class Core
+          def run = Helper
+        end
+      end
+    RUBY
+    result = minify_at_level(code, 4)
+    assert_equal 'module A;autoload :Helper,"helper";class B;def run =Helper;end;end', result.code
+    assert_equal 'Engine=A;A::Core=A::B', result.aliases
+  end
+
+  RESOLVED_EXTERNAL_CODE = <<~RUBY
+    class Worker
+      def run
+        LazyGem::Config.load
+        LazyGem::Config.load
+        LazyGem::Config.load
+        LazyGem::Config.load
+      end
+    end
+  RUBY
+  RESOLVED_EXTERNAL_RBS = { 'lazy_gem.rbs' => "module LazyGem\n  class Config\n    def self.load: () -> void\n  end\nend\n" }.freeze
+  SPLIT_MARKS = [Ryac::Pipeline::FileMark.new(path: '/app/worker.rb', lazy: false)].freeze
+
+  # A path type analysis resolved through RBS is aliased in the single
+  # file, whose hoisted requires run ahead of the preamble. The split
+  # layout hoists nothing: the preamble runs before any require the
+  # program spells, so only a root that exists at boot can be aliased —
+  # the resolved gem prefix stays spelled out, Process still shortens.
+  def test_split_layout_aliases_only_boot_roots_in_the_preamble
+    single = minify_at_level(RESOLVED_EXTERNAL_CODE, 2, rbs_files: RESOLVED_EXTERNAL_RBS, verify_output: false)
+    assert_equal 'class Worker;def run =(A::Config.load;A::Config.load;A::Config.load;A::Config.load);end', single.code
+    assert_equal 'A=LazyGem', single.preamble
+
+    split = minify_at_level("__ryac_mark__ 0\n#{RESOLVED_EXTERNAL_CODE}", 2, rbs_files: RESOLVED_EXTERNAL_RBS,
+                                                                            marks: SPLIT_MARKS, verify_output: false)
+    assert_equal '__ryac_mark__ 0;class Worker;def run =(LazyGem::Config.load;LazyGem::Config.load;LazyGem::Config.load;LazyGem::Config.load);end',
+                 split.code
+    assert_equal '', split.preamble
+
+    core = "__ryac_mark__ 0\nclass W\n  def run\n    p Process::Status, Process::Sys, Process::UID, Process::GID\n  end\nend\n"
+    result = minify_at_level(core, 2, marks: SPLIT_MARKS, verify_output: false)
+    assert_equal '__ryac_mark__ 0;class W;def run =p A::Status,A::Sys,A::UID,A::GID;end', result.code
+    assert_equal 'A=Process', result.preamble
   end
 end
