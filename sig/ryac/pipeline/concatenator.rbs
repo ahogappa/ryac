@@ -16,15 +16,15 @@ module Ryac
         def tsort_each_child: (String node) { (String) -> void } -> void
       end
 
-      def call: (DependencyGraph graph, ?driver: bool) -> ConcatenatedSource
+      def call: (DependencyGraph graph, ?driver: bool, ?split: bool) -> ConcatenatedSource
+      def self.common_root: (Array[String] paths) -> String
 
       private
 
       def topological_sort: (DependencyGraph graph) -> Array[String]
       def extract_cycle_from_graph: (DependencyGraph graph) -> Array[String]
       def find_cycle_dfs: (DependencyGraph graph, String node, Set[String] visited, Set[String] rec_stack, Array[String] path) -> bool
-      def concatenate_files: (DependencyGraph graph, Array[String] sorted_paths, bool driver) -> ConcatenatedSource
-      def common_root: (Array[String] paths) -> String
+      def concatenate_files: (DependencyGraph graph, Array[String] sorted_paths, bool driver, bool split) -> ConcatenatedSource
       def relative_to_root: (String path) -> String
       def lazy_key: (String path) -> String
       def bundle_names: (DependencyGraph graph, bool driver) -> Array[String]

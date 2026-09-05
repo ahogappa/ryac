@@ -148,6 +148,53 @@ class TestConcatenator < Minitest::Test
     end
   end
 
+  # The split layout: every file as written — requires and all, the
+  # dynamic site included — opened by its marker, the dynamically loaded
+  # files last; nothing is hoisted, so the stdlib list is empty, and the
+  # marks name each file with whether a dynamic require loads it.
+  def test_split_layout_keeps_every_file_as_written
+    Dir.mktmpdir do |dir|
+      result = @concatenator.call(lazy_fixture_graph(dir), split: true)
+
+      assert_equal <<~'RUBY', result.content
+        __ryac_mark__ 0
+        class Base; end
+
+        __ryac_mark__ 1
+        require_relative "engine"
+        module App
+          def self.load(name)
+            require_relative "plugins/#{name}_plugin.rb"
+          end
+        end
+
+        __ryac_mark__ 2
+        SHARED = 1
+
+        __ryac_mark__ 3
+        require "ffi"
+        require_relative "shared"
+        class APlugin < Base; end
+      RUBY
+      assert_equal [
+        Ryac::Pipeline::FileMark.new(path: File.join(dir, 'engine.rb'), lazy: false),
+        Ryac::Pipeline::FileMark.new(path: File.join(dir, 'main.rb'), lazy: false),
+        Ryac::Pipeline::FileMark.new(path: File.join(dir, 'plugins', 'shared.rb'), lazy: true),
+        Ryac::Pipeline::FileMark.new(path: File.join(dir, 'plugins', 'a_plugin.rb'), lazy: true)
+      ], result.marks
+      assert_equal [], result.stdlib_requires
+      assert_equal [File.join(dir, 'plugins', 'a_plugin.rb'), File.join(dir, 'plugins', 'shared.rb')], result.lazy_files
+      assert_equal [[1, 3], [4, 11], [12, 14], [15, 19]], result.file_boundaries.map { |b| [b.start_line, b.end_line] }
+      assert_equal false, result.driver
+    end
+  end
+
+  def test_driver_and_split_layouts_exclude_each_other
+    graph = build_graph("/a.rb" => { content: "puts 1", deps: [] })
+    error = assert_raises(ArgumentError) { @concatenator.call(graph, driver: true, split: true) }
+    assert_equal 'the driver and split layouts exclude each other', error.message
+  end
+
   def test_single_file
     graph = build_graph(
       "/a.rb" => { content: "puts 1", deps: [] }

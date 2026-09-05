@@ -83,6 +83,14 @@ module Ryac
       :end_line     # Integer: 1-indexed end line in concatenated output
     )
 
+    # A file of the split layout, as the marker statement that opens it in
+    # the concatenation names it: its path, and whether a dynamic require
+    # is what loads it (the split layout's lazy region).
+    FileMark = Data.define(
+      :path, # String: Absolute path of the file
+      :lazy  # Boolean: reached only through a dynamic require
+    )
+
     # Output of Stage 2 (Concatenator), input to Stage 3 (Minifier)
     #
     # Stages that rewrite the text rebuild this with #with(content: ...):
@@ -95,16 +103,17 @@ module Ryac
       :stdlib_requires,  # Array<String>: Standard library requires to preserve
       :rbs_files,        # Hash<String, String>: path -> RBS content for TypeProf
       :lazy_files,       # Array<String>: paths of the files bundled as lazy regions (see LazyRegions)
-      :driver            # Boolean: the loader is a driver file outside the program, which reads the registry by name (see DriverFile)
+      :driver,           # Boolean: the loader is a driver file outside the program, which reads the registry by name (see DriverFile)
+      :marks             # Array<FileMark>: the split layout's files, in the order their markers open them (see FileMarks); empty otherwise
     ) do
       # A source built straight from a string (tests, sub-pipelines) has no
       # file ancestry: everything but the content defaults away, and its
       # original size is the content itself.
-      def initialize(content:, file_boundaries: [], original_size: nil, stdlib_requires: [], rbs_files: {}, lazy_files: [], driver: false) # steep:ignore UndeclaredMethodDefinition
+      def initialize(content:, file_boundaries: [], original_size: nil, stdlib_requires: [], rbs_files: {}, lazy_files: [], driver: false, marks: []) # steep:ignore UndeclaredMethodDefinition
         super(content: content, file_boundaries: file_boundaries,
               original_size: original_size || content.bytesize,
               stdlib_requires: stdlib_requires, rbs_files: rbs_files,
-              lazy_files: lazy_files, driver: driver)
+              lazy_files: lazy_files, driver: driver, marks: marks)
       end
     end
 
@@ -184,5 +193,13 @@ module Ryac
         aliases.empty? ? content : "#{content};#{aliases}" # steep:ignore NoMethod
       end
     end
+
+    # Final output of the split layout: the program written back as files.
+    # Each keeps its requires; the entry file also carries the preamble at
+    # its top and the aliases at its end.
+    SplitResult = Data.define(
+      :files, # Hash<String, String>: path relative to the common root -> the file's minified text
+      :stats  # CompressionStats
+    )
   end
 end

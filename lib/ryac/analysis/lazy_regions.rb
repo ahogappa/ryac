@@ -26,19 +26,26 @@ module Ryac
   # which the aliaser renames like any other constant. Reading a program's
   # own statement of that shape as a region is safe: every consequence keeps
   # more names, never fewer.
+  #
+  # In the split layout the same files stay files, opened by markers
+  # (FileMarks) instead of wrapped in lambdas; a region is then the span
+  # from a lazy file's marker to the next.
   module LazyRegions
     module_function
 
-    # The lambdas of every registration, in source order.
-    def collect(prism_root)
-      lambdas = [] #: Array[Prism::LambdaNode]
-      each_registration(prism_root) { |_statement, lambda_node| lambdas << lambda_node }
-      lambdas
+    # The [from, to] byte spans of every region: the registrations' lambda
+    # bodies, and the split layout's lazy files.
+    def spans(prism_root, marks, content_size)
+      spans = [] #: Array[[Integer, Integer]]
+      each_registration(prism_root) do |_statement, lambda_node|
+        spans << [lambda_node.opening_loc.start_offset, lambda_node.closing_loc.start_offset]
+      end
+      spans.concat(FileMarks.lazy_spans(prism_root, marks, content_size))
     end
 
-    def contains?(lambdas, node)
+    def contains?(spans, node)
       offset = node.location.start_offset
-      lambdas.any? { |lam| offset > lam.opening_loc.start_offset && offset < lam.closing_loc.start_offset }
+      spans.any? { |from, to| offset > from && offset < to }
     end
 
     # The source as TypeProf must read it: each registration's wrapper —

@@ -141,4 +141,25 @@ class TestMethodCollection < Minitest::Test
     result = minify_at_level(code, 5, verify_output: false)
     assert_equal 'class F;def original_method =1;undef original_method;end', result.code
   end
+
+  # A singleton call to a name the class merely inherits (`self.class.name`
+  # is Module#name) is not the other half of a module_function pair: the
+  # instance def renames alone and the singleton call keeps its spelling.
+  # What it returns is the renamed class, so the program prints the short
+  # name — the output is pinned instead of compared with the original.
+  def test_inherited_singleton_method_is_not_the_defs_other_half
+    code = <<~RUBY
+      class Base
+        def name = self.class.name
+      end
+      class Widget < Base
+        def display = "[\#{name}]"
+      end
+      puts Widget.new.display
+    RUBY
+    result = minify_at_level(code, 4, verify_output: false)
+    assert_equal 'class B;def b =self.class.name;end;class A<B;def a ="[#{b}]";end;puts A.new.a', result.code
+    assert_equal 'Base=B;Widget=A', result.aliases
+    assert_equal ["[A]\n", true], run_ruby_code("#{result.code};#{result.aliases}")
+  end
 end

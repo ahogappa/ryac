@@ -14,7 +14,7 @@ This project takes an **aggressive optimization** approach. In Ruby, even commen
 
 ## Features
 
-- **Multi-file support**: Follows `require_relative` and `autoload` to collect and concatenate dependencies into a single output
+- **Multi-file support**: Follows `require_relative` and `autoload` to collect and concatenate dependencies into a single output — or, with `--split`, writes every file back minified at its own path (see [Split output](#split-output))
 - **Dynamic requires**: A `require_relative "driver/#{name}"` inside a method bundles every file under that directory as a lazy region — registered at load, run the moment the require would have run — so a driver's own `require "ffi"` keeps its optional-dependency timing while the whole program shares one rename table (see [Dynamic requires](#dynamic-requires))
 - **Whitespace & comment removal**: Strips all unnecessary whitespace and comments
 - **AST transformations**: Boolean/char shortening, constant folding, control flow simplification, endless methods, parenthesis optimization
@@ -61,6 +61,9 @@ ryac path/to/entry.rb -o packed.rb --pack self
 # Keep the program a library and write the driver that loads and runs it
 ryac path/to/entry.rb -o minify.rb --driver driver.rb
 
+# Write the program back as files under a directory, minified together
+ryac path/to/entry.rb --split min/
+
 # Multiple entry points
 ryac file1.rb file2.rb
 
@@ -93,6 +96,9 @@ result = minifier.call('path/to/entry.rb', level: :unstable)
 # The two-file layout: the program as a library, run by ryac's fixed driver
 core = minifier.call('path/to/entry.rb', driver: true).full_content
 File.write('driver.rb', Ryac::DriverFile::SOURCE)
+
+# The split layout: every file written back, one rename table across them
+minifier.split('path/to/entry.rb').files  # { "entry.rb" => "...", "lib/dep.rb" => "..." }
 ```
 
 ## Optimization Levels
@@ -133,6 +139,17 @@ ruby driver.rb minify.rb --exec "Optcarrot::NES.new.run" examples/Lan_Master.nes
 ```
 
 `minify.rb` is the whole program as a library: the registry with every region, the core and its aliases — nothing that runs, and no loader. `driver.rb` is the loader, the same file for every program (`--driver` writes a copy): it defines `ryac_require`, which looks the path up in `RYAC_LAZY` and runs the region — Ruby's contract kept, an unregistered path falling through to a real require relative to the core — then loads the core and evals the `--exec` expression at top level, its own two arguments already gone from `ARGV` so the program's option parsing sees only what follows (anything after `--` is never read). Those two names are the contract between the files: the core keeps them, a program that spells either itself is refused, and everything else renames as usual. The expression is code outside the bundle, so it can spell only what survives outside: the class/module skeleton, which the aliases restore, and methods the program itself never calls — under `stable`'s safe policy an uncalled def keeps its name, and a launcher's entry point (`NES#run`) is exactly that. `--driver` needs `-o`, and cannot be combined with `-a` or with `--pack` (a packed core cannot be loaded).
+
+### Split output
+
+`--split DIR` keeps the files. The whole program is still analyzed and renamed as one closed world — the same rename table across every file, dynamically loaded ones included — but each file is written back under `DIR` at its path relative to the files' common root, with its `require_relative`, `require` and `autoload` lines in place. So it loads from the tree exactly as the original did: nothing is bundled, registered or hoisted, a dynamic require stays a real require, and `__FILE__` means the file. The entry file additionally carries the preamble at its top and the aliases at its end. Two things keep their spelling because the text itself is the lookup: a constant named by `autoload :Name, "file"`, and — since no require is hoisted above the preamble — an external prefix is aliased only when its root exists at boot. For optcarrot it stands in for `lib/` wholesale under upstream's unmodified `bin/optcarrot`:
+
+```bash
+ryac gem_tests/optcarrot/lib/optcarrot.rb --split min
+cp -r min/. /path/to/optcarrot/lib/ && cd /path/to/optcarrot && bin/optcarrot examples/Lan_Master.nes
+```
+
+`--split` takes one entry file and cannot be combined with `-o`, `-a`, `--pack` or `--driver`.
 
 ### Packed output
 

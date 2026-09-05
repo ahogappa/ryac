@@ -18,13 +18,27 @@ module Ryac
       # @param graph [DependencyGraph] From Stage 1
       # @param driver [Boolean] The driver layout: the registry alone, its
       #   loader left to the driver file (DriverFile)
+      # @param split [Boolean] The split layout: every file as written, opened
+      #   by a marker (FileMarks), its requires left to run as requires
       # @return [ConcatenatedSource] Ordered, concatenated source
       # @raise [CircularDependencyError] If cycle detected in graph
       # @raise [MinifyError] If the driver layout is asked of a program it
       #   cannot take: one with no lazy regions, or one spelling a fixed name
-      def call(graph, driver: false)
+      def call(graph, driver: false, split: false)
+        raise ArgumentError, 'the driver and split layouts exclude each other' if driver && split
+
         sorted_paths = topological_sort(graph)
-        concatenate_files(graph, sorted_paths, driver)
+        concatenate_files(graph, sorted_paths, driver, split)
+      end
+
+      # The directory every bundled file sits under. Region keys, the
+      # respelled prefix of a dynamic require site and the split layout's
+      # output paths are all relative to it, which is what makes a key and
+      # the string the site builds at runtime agree.
+      def self.common_root(paths)
+        root = File.dirname(paths.fetch(0))
+        root = File.dirname(root) until root == '/' || paths.all? { |p| p.start_with?("#{root}/") }
+        root
       end
 
       private
@@ -107,10 +121,11 @@ module Ryac
       end
 
       # Concatenate files in sorted order
-      def concatenate_files(graph, sorted_paths, driver)
+      def concatenate_files(graph, sorted_paths, driver, split)
         content_parts = [] #: Array[String]
         file_boundaries = [] #: Array[FileBoundary]
         stdlib_requires = [] #: Array[String]
+        marks = [] #: Array[FileMark]
         inlined = Set.new
         current_line = 1
 
@@ -118,14 +133,18 @@ module Ryac
         if driver && lazy_paths.empty?
           raise MinifyError, 'cannot write a driver file: the program has no lazy regions'
         end
-        @root = common_root(graph.paths)
-        @registry, @loader = lazy_paths.empty? ? [nil, nil] : bundle_names(graph, driver)
+        @root = self.class.common_root(graph.paths)
+        @registry, @loader = lazy_paths.empty? || split ? [nil, nil] : bundle_names(graph, driver)
 
-        # Pre-clean all files: resolve in-class requires by inlining
+        # Pre-clean all files: resolve in-class requires by inlining. The
+        # split layout keeps every file as written — its requires run as
+        # requires, against the files written next to it — so nothing is
+        # hoisted, inlined or pointed at a loader.
         cleaned_cache = {} #: Hash[String, String]
         sorted_paths.each do |path|
           entry = graph[path]
           next unless entry
+          next cleaned_cache[path] = entry.content if split
           collect_stdlib_requires(entry, stdlib_requires) unless entry.lazy
           cleaned_cache[path] = process_require_statements(entry, graph, inlined, cleaned_cache)
         end
@@ -138,14 +157,21 @@ module Ryac
 
         # Regions first: registering is all a region does at load, and it
         # has to be registered before any code that could ask for it runs.
+        # In the split layout the dynamically loaded files come last
+        # instead, after everything they subclass.
         lazy, flat = sorted_paths.partition { |path| graph[path]&.lazy }
-        (lazy + flat).each do |path|
+        (split ? flat + lazy : lazy + flat).each do |path|
           next if inlined.include?(path)
           entry = graph[path]
           next unless entry
 
-          cleaned_content = cleaned_cache[path]
-          cleaned_content = lazy_registration(path, cleaned_content) if entry.lazy
+          cleaned_content = cleaned_cache.fetch(path)
+          if split
+            marks << FileMark.new(path: path, lazy: entry.lazy)
+            cleaned_content = "#{FileMarks.statement(marks.size - 1)}\n#{cleaned_content}"
+          elsif entry.lazy
+            cleaned_content = lazy_registration(path, cleaned_content)
+          end
           lines = cleaned_content.count("\n") + 1
 
           file_boundaries << FileBoundary.new(
@@ -167,18 +193,9 @@ module Ryac
           stdlib_requires: stdlib_requires.uniq,
           rbs_files: graph.rbs_files,
           lazy_files: lazy_paths,
-          driver: driver
+          driver: driver,
+          marks: marks
         )
-      end
-
-      # The directory every bundled file sits under. Region keys and the
-      # respelled prefix of a dynamic require site are both relative to it,
-      # which is what makes a key and the string the site builds at runtime
-      # agree.
-      def common_root(paths)
-        root = File.dirname(paths.fetch(0))
-        root = File.dirname(root) until root == '/' || paths.all? { |p| p.start_with?("#{root}/") }
-        root
       end
 
       def relative_to_root(path)

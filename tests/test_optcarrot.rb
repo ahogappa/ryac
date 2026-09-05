@@ -106,6 +106,10 @@ class TestOptcarrot < Minitest::Test
     @minified_result ||= Ryac::Minifier.new.call(ENTRY, level: SUPPORTED_LEVEL)
   end
 
+  def self.split_result
+    @split_result ||= Ryac::Minifier.new.split(ENTRY, level: SUPPORTED_LEVEL)
+  end
+
   def setup
     skip "optcarrot not cloned: #{OPTCARROT_DIR}" unless File.exist?(ENTRY) && File.exist?(ROM)
   end
@@ -150,11 +154,7 @@ class TestOptcarrot < Minitest::Test
   # drivers are core code — and it is the one a user crosses first.
   def test_bin_optcarrot_runs_the_bundle_with_its_drivers
     args = ['--video', 'png', '--audio', 'wav', '--input', 'none', '--frames', '60', ROM]
-    baseline = Dir.mktmpdir('optcarrot_bin_baseline') do |dir|
-      run_ruby(['-I', OPTCARROT_LIB, File.join(OPTCARROT_DIR, 'bin', 'optcarrot'), *args], chdir: dir)
-      driver_outputs(dir)
-    end
-    refute_nil baseline[0], 'baseline wrote no video.png'
+    baseline = bin_baseline(args)
 
     bundled = Dir.mktmpdir('optcarrot_bin_bundle') do |dir|
       FileUtils.mkdir_p(File.join(dir, 'lib'))
@@ -169,6 +169,42 @@ class TestOptcarrot < Minitest::Test
 
     assert_equal baseline[0], bundled[0], 'the png driver out of the bundle rendered a different last frame'
     assert_equal baseline[1], bundled[1], 'the wav driver out of the bundle wrote different samples'
+  end
+
+  # The split layout standing in for lib/ wholesale under the same
+  # unmodified bin/optcarrot: every file back at its path, the drivers
+  # reached by the original interpolated require_relative, and the png and
+  # wav they write matching the original's byte for byte.
+  def test_bin_optcarrot_runs_the_split_lib
+    args = ['--video', 'png', '--audio', 'wav', '--input', 'none', '--frames', '60', ROM]
+    baseline = bin_baseline(args)
+
+    split = Dir.mktmpdir('optcarrot_bin_split') do |dir|
+      self.class.split_result.files.each do |path, text|
+        target = File.join(dir, 'lib', path)
+        FileUtils.mkdir_p(File.dirname(target))
+        File.binwrite(target, text)
+      end
+      FileUtils.mkdir_p(File.join(dir, 'bin'))
+      FileUtils.cp(File.join(OPTCARROT_DIR, 'bin', 'optcarrot'), File.join(dir, 'bin', 'optcarrot'))
+      result = run_ruby([File.join(dir, 'bin', 'optcarrot'), *args], chdir: dir)
+      outputs = driver_outputs(dir)
+      refute_nil outputs[0], "the split lib wrote no video.png under bin/optcarrot\n#{result[:stderr][0, 800]}"
+      outputs
+    end
+
+    assert_equal baseline[0], split[0], 'the png driver out of the split lib rendered a different last frame'
+    assert_equal baseline[1], split[1], 'the wav driver out of the split lib wrote different samples'
+  end
+
+  # What upstream's bin/optcarrot writes with args, run over its own lib/.
+  def bin_baseline(args)
+    outputs = Dir.mktmpdir('optcarrot_bin_baseline') do |dir|
+      run_ruby(['-I', OPTCARROT_LIB, File.join(OPTCARROT_DIR, 'bin', 'optcarrot'), *args], chdir: dir)
+      driver_outputs(dir)
+    end
+    refute_nil outputs[0], 'baseline wrote no video.png'
+    outputs
   end
 
   SCENARIOS.each_key do |name|

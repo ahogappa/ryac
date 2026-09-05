@@ -101,6 +101,25 @@ module Ryac
         (value.name == :define && receiver.name == :Data)
     end
 
+    # `autoload :Name, "file"` registers the name as spelled, and the file
+    # defines it under the same spelling when it loads; the two are text a
+    # rename would have to rewrite together. Every user constant of that
+    # name keeps its spelling instead. (A single file has no autoloads left
+    # — the Concatenator resolves them — so this fires in the split layout.)
+    def exclude_autoload_targets(prism_root)
+      names = Set.new #: Set[Symbol]
+      Nesting.each(prism_root) do |node, _nesting, _singleton, _in_def|
+        next unless node.is_a?(Prism::CallNode) && node.name == :autoload
+
+        names.merge(AstUtils.symbol_arguments(node))
+      end
+      return if names.empty?
+
+      pinned = [] #: Array[Array[Symbol]]
+      @constant_mapping.each_user_defined_path { |cpath| pinned << cpath if names.include?(cpath.last) }
+      pinned.each { |cpath| @constant_mapping.exclude_path(cpath) }
+    end
+
     # A constant only a lazy region defines does not exist until the region
     # runs, so no alias for it could execute at the end of the file: it keeps
     # its name, and `Optcarrot.const_get(:SDL2Video)` finds it as written. A
@@ -323,6 +342,11 @@ module Ryac
       effective_path = resolved_cpath ||
                        (full_path if complete_const_chain?(node) && required_external_root?(full_path.first))
       return nil unless effective_path
+      # In the split layout the preamble runs ahead of every require the
+      # program spells — none is hoisted above it — so a root only a require
+      # provides is not there yet, however surely type analysis resolved
+      # the path: only a root that exists at boot can be aliased.
+      return nil if @split && !required_external_root?(effective_path.first)
       return nil if effective_path.size < 2
       return nil if @constant_mapping.has_user_defined_prefix?(full_path)
 

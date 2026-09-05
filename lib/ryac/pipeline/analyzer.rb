@@ -49,13 +49,14 @@ module Ryac
       def call(source)
         prism_result, @oracle = without_stdout_pollution { setup_typeprof(source) }
         @prism_root = prism_result.value
-        @lazy_regions = LazyRegions.collect(@prism_root)
+        @lazy_regions = LazyRegions.spans(@prism_root, source.marks, source.content.bytesize)
         # A program that loads files dynamically had enumerated its external
         # readers; bundled as lazy regions, they are all inside now, and what
         # is left outside is a launcher — which spells the class/module
         # skeleton, never a value constant.
         @alias_surface = source.lazy_files.empty? ? :full : :skeleton
         @driver = source.driver
+        @split = !source.marks.empty?
         @boot_constant_roots = BootConstants.for(source.stdlib_requires)
         @syntax_data = collect_syntax_data(@prism_root)
 
@@ -180,6 +181,7 @@ module Ryac
         )
         collect_constants(@prism_root)
         exclude_private_constants(@prism_root)
+        exclude_autoload_targets(@prism_root)
         exclude_lazy_definitions(@prism_root)
         exclude_dynamic_root_reads(@prism_root)
         exclude_driver_registry

@@ -73,6 +73,7 @@ class TestCLIGemOption < Minitest::Test
           -c, --compress LEVEL             Set compression level (stable or unstable)
           -p, --pack FORMAT                Emit a self-extracting file (self or zlib)
           -d, --driver FILE                Keep the program a library and write its driver to FILE (ruby FILE CORE --exec EXPR)
+          -s, --split DIR                  Write the program back as files under DIR, minified together
           -h, --help                       Display this help message
           -v, --version                    Display version
     HELP
@@ -132,6 +133,44 @@ class TestCLIGemOption < Minitest::Test
       assert_equal 2, status.exitstatus
       assert_equal "Error: cannot write a driver file: the program has no lazy regions\n", stderr
       refute File.exist?(File.join(dir, 'x.rb'))
+    end
+  end
+
+  # --split writes the library's split layout under DIR, file by file at
+  # its path, and the tree runs as the original does.
+  def test_split_option_writes_the_program_back_as_files
+    Dir.mktmpdir do |dir|
+      out = File.join(dir, 'min')
+      _stdout, stderr, status = Open3.capture3(RbConfig.ruby, MINIFY_BIN, LAZY_FIXTURE, '--split', out)
+      assert status.success?, "minify --split failed: #{stderr}"
+      result = Ryac::Minifier.new.split(LAZY_FIXTURE, level: :stable)
+      assert_equal expected_stderr_for(result), stderr
+
+      written = Dir.glob('**/*.rb', base: out).sort.to_h { |path| [path, File.read(File.join(out, path))] }
+      assert_equal result.files.sort.to_h, written
+
+      stdout, stderr, status = Open3.capture3(RbConfig.ruby, 'main.rb', chdir: out)
+      assert status.success?, "the split program failed: #{stderr}"
+      assert_equal "true\n[15, 25, 35]\n2\nfalse\n2\n", stdout
+    end
+  end
+
+  def test_split_option_rejects_the_single_file_options
+    { '-o' => ['-o', 'x.rb'], '-a' => ['-a', 'a.rb'], '--pack' => ['--pack', 'self'], '--driver' => ['--driver', 'd.rb'] }.each do |flag, args|
+      _stdout, stderr, status = Open3.capture3(RbConfig.ruby, MINIFY_BIN, LAZY_FIXTURE, *args, '--split', 'out')
+      assert_equal 1, status.exitstatus
+      assert_equal "Error: --split cannot be combined with #{flag} (the split layout writes the whole program under DIR)\n", stderr
+    end
+  end
+
+  def test_split_option_needs_a_single_entry
+    entries = %w[independent_a.rb independent_b.rb].map { |name| File.expand_path("../fixtures/multi_file/#{name}", __dir__) }
+    Dir.mktmpdir do |dir|
+      out = File.join(dir, 'out')
+      _stdout, stderr, status = Open3.capture3(RbConfig.ruby, MINIFY_BIN, *entries, '--split', out)
+      assert_equal 2, status.exitstatus
+      assert_equal "Error: split output needs a single entry file\n", stderr
+      refute File.exist?(out)
     end
   end
 end

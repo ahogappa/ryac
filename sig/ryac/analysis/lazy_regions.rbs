@@ -1,7 +1,7 @@
 module Ryac
   module LazyRegions
-    def self?.collect: (Prism::ProgramNode prism_root) -> Array[Prism::LambdaNode]
-    def self?.contains?: (Array[Prism::LambdaNode] lambdas, Prism::Node node) -> bool
+    def self?.spans: (Prism::ProgramNode prism_root, Array[Pipeline::FileMark] marks, Integer content_size) -> Array[[Integer, Integer]]
+    def self?.contains?: (Array[[Integer, Integer]] spans, Prism::Node node) -> bool
     def self?.typeprof_view: (String content, Prism::ProgramNode prism_root) -> String
     def self?.each_registration: (Prism::ProgramNode prism_root) { (Prism::Node, Prism::LambdaNode) -> void } -> void
     def self?.registration_lambda: (Prism::Node statement) -> Prism::LambdaNode?
