@@ -6,7 +6,7 @@ gems:
   source:
     type: git
     name: ruby/gem_rbs_collection
-    revision: 31250b67b9dadaeaccdb65c55d64a20dca7a812e
+    revision: a2080c5762e4d22bf00ca0591eb4c8ec5d1fdd55
     remote: https://github.com/ruby/gem_rbs_collection.git
     repo_dir: gems
 - name: concurrent-ruby
@@ -14,7 +14,7 @@ gems:
   source:
     type: git
     name: ruby/gem_rbs_collection
-    revision: 31250b67b9dadaeaccdb65c55d64a20dca7a812e
+    revision: a2080c5762e4d22bf00ca0591eb4c8ec5d1fdd55
     remote: https://github.com/ruby/gem_rbs_collection.git
     repo_dir: gems
 - name: csv
@@ -22,7 +22,7 @@ gems:
   source:
     type: git
     name: ruby/gem_rbs_collection
-    revision: 31250b67b9dadaeaccdb65c55d64a20dca7a812e
+    revision: a2080c5762e4d22bf00ca0591eb4c8ec5d1fdd55
     remote: https://github.com/ruby/gem_rbs_collection.git
     repo_dir: gems
 - name: ffi
@@ -50,7 +50,7 @@ gems:
   source:
     type: git
     name: ruby/gem_rbs_collection
-    revision: 31250b67b9dadaeaccdb65c55d64a20dca7a812e
+    revision: a2080c5762e4d22bf00ca0591eb4c8ec5d1fdd55
     remote: https://github.com/ruby/gem_rbs_collection.git
     repo_dir: gems
 - name: logger
@@ -58,7 +58,7 @@ gems:
   source:
     type: git
     name: ruby/gem_rbs_collection
-    revision: 31250b67b9dadaeaccdb65c55d64a20dca7a812e
+    revision: a2080c5762e4d22bf00ca0591eb4c8ec5d1fdd55
     remote: https://github.com/ruby/gem_rbs_collection.git
     repo_dir: gems
 - name: minitest
@@ -66,7 +66,7 @@ gems:
   source:
     type: git
     name: ruby/gem_rbs_collection
-    revision: 31250b67b9dadaeaccdb65c55d64a20dca7a812e
+    revision: a2080c5762e4d22bf00ca0591eb4c8ec5d1fdd55
     remote: https://github.com/ruby/gem_rbs_collection.git
     repo_dir: gems
 - name: monitor
@@ -82,7 +82,7 @@ gems:
   source:
     type: git
     name: ruby/gem_rbs_collection
-    revision: 31250b67b9dadaeaccdb65c55d64a20dca7a812e
+    revision: a2080c5762e4d22bf00ca0591eb4c8ec5d1fdd55
     remote: https://github.com/ruby/gem_rbs_collection.git
     repo_dir: gems
 - name: pp
@@ -97,12 +97,20 @@ gems:
   version: 1.9.0
   source:
     type: rubygems
+- name: racc
+  version: '1.8'
+  source:
+    type: git
+    name: ruby/gem_rbs_collection
+    revision: a2080c5762e4d22bf00ca0591eb4c8ec5d1fdd55
+    remote: https://github.com/ruby/gem_rbs_collection.git
+    repo_dir: gems
 - name: rainbow
   version: '3.0'
   source:
     type: git
     name: ruby/gem_rbs_collection
-    revision: 31250b67b9dadaeaccdb65c55d64a20dca7a812e
+    revision: a2080c5762e4d22bf00ca0591eb4c8ec5d1fdd55
     remote: https://github.com/ruby/gem_rbs_collection.git
     repo_dir: gems
 - name: rake
@@ -110,7 +118,7 @@ gems:
   source:
     type: git
     name: ruby/gem_rbs_collection
-    revision: 31250b67b9dadaeaccdb65c55d64a20dca7a812e
+    revision: a2080c5762e4d22bf00ca0591eb4c8ec5d1fdd55
     remote: https://github.com/ruby/gem_rbs_collection.git
     repo_dir: gems
 - name: random-formatter
