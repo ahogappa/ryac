@@ -43,6 +43,7 @@ module Ryac
     def first_argument_symbols: (Prism::CallNode prism_call_node) -> Array[Symbol]
     def receiver_responds_to?: (Prism::CallNode prism_call_node, Symbol mid) -> bool
     def receiver_within_type?: (Prism::CallNode prism_call_node, Symbol type_name) -> bool
+    def receiver_cpaths: (Prism::CallNode prism_call_node) -> Array[[Array[Symbol], bool]]?
     def resolve_constant_read: (Prism::Node prism_node) -> Array[Symbol]?
     def constant_read_count: (Array[Symbol] cpath) -> Integer
 

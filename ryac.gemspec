@@ -42,12 +42,13 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   spec.add_dependency "prism", ">= 1.4.0"
-  # The floor is the first release with the constant-resolution fixes this
-  # gem relies on; older releases abort while analyzing some real-world
-  # sources.
-  spec.add_dependency "typeprof", ">= 0.32.0"
-  # rbs is a transitive dependency via typeprof, but the bound belongs here:
-  # past the upper bound, TypeProf::Core::Service.new never finishes loading
-  # the core RBS files, which hangs every run that reaches the rename stages.
-  spec.add_dependency "rbs", ">= 3.6.0", "< 4.1.0"
+  # The floor is the first release that ingests every pattern shape in the
+  # corpus (anonymous-splat find patterns, `**nil`, bare block pipes) and
+  # that finishes loading the core RBS files on rbs 4.1+; 0.32 aborts on the
+  # former and hangs on the latter.
+  spec.add_dependency "typeprof", ">= 0.33.0"
+  # rbs comes in through typeprof; the floor mirrors typeprof's own. The
+  # `< 4.1.0` ceiling that used to sit here worked around the 0.32 hang
+  # above, and the suite passes on rbs 4.2 with typeprof 0.33.
+  spec.add_dependency "rbs", ">= 3.6.0"
 end

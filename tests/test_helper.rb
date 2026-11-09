@@ -2,9 +2,9 @@
 
 require 'simplecov'
 SimpleCov.start do
-  add_filter '/tests/'
-  add_filter '/vendor/'
-  track_files 'lib/**/*.rb'
+  skip '/tests/'
+  skip '/vendor/'
+  cover 'lib/**/*.rb'
 end
 
 require 'minitest/autorun'

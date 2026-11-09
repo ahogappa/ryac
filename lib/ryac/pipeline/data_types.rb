@@ -142,8 +142,28 @@ module Ryac
       :cvar_rename_entries,        # Hash<location_key, String>: class variable renames
       :gvar_rename_entries         # Hash<location_key, String>: global variable renames
     ) do
-      def initialize(local_rename_entries: {}, keyword_rename_entries: {}, ivar_rename_entries: {}, attr_ivar_entries: {}, cvar_rename_entries: {}, gvar_rename_entries: {}, **kwargs) # steep:ignore UndeclaredMethodDefinition
-        super(local_rename_entries: local_rename_entries, keyword_rename_entries: keyword_rename_entries, ivar_rename_entries: ivar_rename_entries, attr_ivar_entries: attr_ivar_entries, cvar_rename_entries: cvar_rename_entries, gvar_rename_entries: gvar_rename_entries, **kwargs)
+      # Spelled out instead of forwarding **kwargs: TypeProf models a keyword
+      # rest as a single Hash and splats its value union into every keyword
+      # of the generated initialize, which would type each member as the
+      # union of all of them and break the self-hosting fixed point.
+      def initialize( # steep:ignore UndeclaredMethodDefinition
+        prism_ast:, scope_mappings:, constant_mapping:, rename_map:, method_alias_map:,
+        method_transform_map:, source:, attr_rename_map:, block_param_names_map:,
+        syntax_data:, const_resolution_map:, const_full_path_map:,
+        const_write_cpath_map:, class_cpath_map:, superclass_resolution_map:,
+        meta_node_map:, local_rename_entries: {}, keyword_rename_entries: {},
+        ivar_rename_entries: {}, attr_ivar_entries: {}, cvar_rename_entries: {},
+        gvar_rename_entries: {}
+      )
+        super(
+          prism_ast:, scope_mappings:, constant_mapping:, rename_map:, method_alias_map:,
+          method_transform_map:, source:, attr_rename_map:, block_param_names_map:,
+          syntax_data:, const_resolution_map:, const_full_path_map:,
+          const_write_cpath_map:, class_cpath_map:, superclass_resolution_map:,
+          meta_node_map:, local_rename_entries:, keyword_rename_entries:,
+          ivar_rename_entries:, attr_ivar_entries:, cvar_rename_entries:,
+          gvar_rename_entries:
+        )
       end
     end
 

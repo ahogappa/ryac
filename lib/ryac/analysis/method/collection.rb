@@ -101,25 +101,19 @@ module Ryac
       @method_rename_mapping.exclude_methods_by_mid(excluded) unless excluded.empty?
     end
 
-    # Renaming an attr declaration renames its backing ivar with it. In a
-    # class that touches ivars dynamically (optcarrot's Config assigns
-    # every option via instance_variable_set), the dynamic side keeps the
-    # original spelling and a renamed reader silently returns nil. The
-    # ivar renamer already refuses such classes; the attr names there must
-    # survive for the same reason, under either policy.
+    # Renaming an attr declaration renames its backing ivar with it. Where
+    # ivars are reached by their spelling (optcarrot's Config assigns every
+    # option via instance_variable_set), the dynamic side keeps writing the
+    # original and a renamed reader silently returns nil. The ivar renamer
+    # refuses those classes and names; the attrs there must survive for the
+    # same reason, under either policy.
     def collect_dynamic_ivar_attr_exclusions(prism_root)
-      dynamic_cpaths = Set.new
-      Nesting.each(prism_root) do |node, cpath, _singleton, _in_def|
-        next unless node.is_a?(Prism::CallNode) && DYNAMIC_IVAR_METHODS.include?(node.name)
-
-        recv = node.receiver
-        dynamic_cpaths << cpath if recv.nil? || recv.is_a?(Prism::SelfNode)
-      end
-      return if dynamic_cpaths.empty?
-
+      access = dynamic_ivar_access(prism_root)
       excluded = Set.new
       each_attr_declaration(prism_root, ATTR_DECLARATION_METHODS, require_class_body: false) do |_node, cpath, _singleton, sym|
-        excluded << sym << :"#{sym}=" if dynamic_cpaths.include?(cpath)
+        next unless access.all || access.cpaths.include?(cpath) || access.names.include?(:"@#{sym}")
+
+        excluded << sym << :"#{sym}="
       end
       @method_rename_mapping.exclude_methods_by_mid(excluded) unless excluded.empty?
     end

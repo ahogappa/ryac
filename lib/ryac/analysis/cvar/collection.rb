@@ -27,7 +27,7 @@ module Ryac
     end
 
     def scan_dynamic_cvar_access(prism_root)
-      scan_dynamic_sigil_access(prism_root, DYNAMIC_CVAR_METHODS, @cvar_rename_mapping)
+      apply_dynamic_sigil_access(dynamic_sigil_access(prism_root, DYNAMIC_CVAR_METHODS), @cvar_rename_mapping)
     end
 
     def merge_inherited_cvars

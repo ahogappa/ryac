@@ -245,7 +245,7 @@ class TestMethodRenamer < Minitest::Test
       puts Config.new.romfile_path
     RUBY
     result = minify_at_level(code, 5)
-    assert_equal 'class A;attr :romfile_path;def initialize =instance_variable_set :"@romfile_path","game.nes";end;puts A.new.romfile_path',
+    assert_equal 'class A;attr :romfile_path;def initialize =instance_variable_set :@romfile_path,"game.nes";end;puts A.new.romfile_path',
                  result.code
   end
 

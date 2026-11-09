@@ -25,7 +25,7 @@ class TestIvarCollection < Minitest::Test
     'class B;def initialize(a,b) =(@b=a;@a=b);def a =@b+@a;end;puts B.new(1,2).a;' \
     'class C;attr :value;def initialize(a) =@value=a;end;puts C.new(42).value;' \
     'class D;def initialize(a) =@a=a;def a =defined?(@a);end;puts D.new(1).a;' \
-    'class E;def initialize(a) =@value=a;def a(a) =instance_variable_get a;end;puts E.new(1).a(:"@value");' \
+    'class E;def initialize(a) =@value=a;def a(a) =instance_variable_get a;end;puts E.new(1).a(:@value);' \
     'class F;def initialize(a) =@value=a;def set(a,b) =instance_variable_set a,b;def a =@value;end;puts F.new(1).a;' \
     'class G;def initialize =@a=0;def a =@a;end;class H<G;def b =@a+=1;end;a=H.new;a.b;puts a.a;' \
     'class I;attr_writer :value;def initialize(a) =@value=a;def a =@value;end;puts I.new(1).a'
@@ -154,4 +154,108 @@ class TestIvarCollection < Minitest::Test
                  'a=A.new;a.payload_data=9;puts a.payload_data',
                  result.code
   end
+
+# === Reflection aimed at another object: the slot lives in its class ===
+#
+# A receiverless reflection call reaches its own class; one written with
+# a receiver reaches whatever that receiver is. A literal name keeps its
+# spelling everywhere, so no receiver type is needed for it. A computed
+# name excludes the receiver's class family when inference knows the
+# receiver, and every ivar when it does not — an Object could be an
+# instance of any class the program defines.
+
+def test_literal_name_through_another_object_keeps_the_slot
+  code = 'class Ext;def initialize;@other=:wrong;@raw_node=:prism;end;end;' \
+         'class Oracle;def self.via_get(node);node.instance_variable_get(:@raw_node);end;end;' \
+         'p Oracle.via_get(Ext.new)'
+  result = minify_at_level(code, 5)
+  assert_equal 'class B;def initialize =(@a=:wrong;@raw_node=:prism);end;' \
+               'class A;def self.a(a) =a.instance_variable_get :@raw_node;end;p A.a(B.new)',
+               result.code
+end
+
+# The block runs with the other object as self, so its ivar is that
+# object's. Renamed under the class the text sits in, it would read
+# whichever of the other class's ivars landed on the same short name.
+def test_instance_eval_block_on_another_object_keeps_its_ivars
+  code = 'class Ext;def initialize;@other=:wrong;@raw_node=:prism;end;def bump;@other=@other.to_s;@other;end;end;' \
+         'class Oracle;def self.via_block(node);node.instance_eval{@raw_node};end;end;' \
+         'p Oracle.via_block(Ext.new)'
+  result = minify_at_level(code, 5)
+  assert_equal 'class B;def initialize =(@a=:wrong;@raw_node=:prism);def bump =(@a=@a.to_s;@a);end;' \
+               'class A;def self.a(node) =node.instance_eval{@raw_node};end;p A.a(B.new)',
+               result.code
+end
+
+def test_computed_name_through_a_known_receiver_excludes_its_class_only
+  code = 'class Ext;def initialize;@other=1;@raw_node=2;end;end;' \
+         'class Plain;def initialize;@long_name=3;end;def get;@long_name;end;end;' \
+         'class Dumper;def self.dump(o);o.instance_variables;end;end;' \
+         'p Dumper.dump(Ext.new),Plain.new.get'
+  result = minify_at_level(code, 5)
+  assert_equal 'class C;def initialize =(@other=1;@raw_node=2);end;' \
+               'class B;def initialize =@a=3;def a =@a;end;' \
+               'class A;def self.a(a) =a.instance_variables;end;p A.a(C.new),B.new.a',
+               result.code
+end
+
+def test_computed_name_through_an_unknown_receiver_excludes_every_ivar
+  code = 'class Plain;def initialize;@long_name=3;end;def get;@long_name;end;end;' \
+         'class Dumper;def self.dump(o);o.instance_variables;end;end;' \
+         'p Dumper.dump(Object.new),Plain.new.get'
+  result = minify_at_level(code, 5)
+  assert_equal 'class B;def initialize =@long_name=3;def a =@long_name;end;' \
+               'class A;def self.a(a) =a.instance_variables;end;p A.a(Object.new),B.new.a',
+               result.code
+end
+
+# A class object is a receiver like any other: the computed name reaches
+# its class-level ivars.
+def test_computed_name_on_a_class_object_keeps_its_class_level_ivars
+  code = 'class Registry;@entries=[];def self.entries;@entries;end;end;' \
+         'class Dumper;def self.dump(k);k.instance_variables;end;end;' \
+         'p Dumper.dump(Registry),Registry.entries'
+  result = minify_at_level(code, 5)
+  assert_equal 'class A;@entries=[];def self.a =@entries;end;' \
+               'class B;def self.a(a) =a.instance_variables;end;p B.a(A),A.a',
+               result.code
+end
+
+# A literal name pins that name alone; the class's other ivars still
+# rename.
+def test_literal_name_on_self_pins_only_that_name
+  code = 'class Config;def initialize;instance_variable_set(:@romfile_path,"game.nes");@frame_count=0;end;' \
+         'def tick;@frame_count+=1;end;def path;@romfile_path;end;end;' \
+         'c=Config.new;c.tick;p c.path,c.tick'
+  result = minify_at_level(code, 5)
+  assert_equal 'class A;def initialize =(instance_variable_set :@romfile_path,"game.nes";@a=0);' \
+               'def a =@a+=1;def b =@romfile_path;end;a=A.new;a.a;p a.b,a.a',
+               result.code
+end
+
+# === A computed name on self reaches the whole class family ===
+#
+# An instance carries the slots every ancestor's methods write, and every
+# descendant's instances run the access written in the base — so the
+# exclusion covers both directions, not just the class the text sits in.
+
+def test_computed_name_in_a_subclass_keeps_the_ancestors_slot
+  code = 'class Base;def initialize;@count=1;end;end;' \
+         'class Child<Base;def peek(name);instance_variable_get(name);end;end;' \
+         'p Child.new.peek(:@count)'
+  result = minify_at_level(code, 5)
+  assert_equal 'class B;def initialize =@count=1;end;class A<B;def a(a) =instance_variable_get a;end;p A.new.a(:@count)',
+               result.code
+end
+
+def test_computed_name_in_a_base_class_keeps_the_descendants_slots
+  code = 'class Base;def dump;instance_variables;end;end;' \
+         'class Child<Base;def initialize;@extra_value=1;end;end;' \
+         'class Plain;def initialize;@long_name=3;end;def get;@long_name;end;end;' \
+         'p Child.new.dump,Plain.new.get'
+  result = minify_at_level(code, 5)
+  assert_equal 'class C;def a =instance_variables;end;class A<C;def initialize =@extra_value=1;end;' \
+               'class B;def initialize =@a=3;def a =@a;end;p A.new.a,B.new.a',
+               result.code
+end
 end

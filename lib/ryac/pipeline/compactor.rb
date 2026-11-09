@@ -489,6 +489,10 @@ module Ryac
         name = sym.to_s
         if name.match?(/\A[a-zA-Z_]\w*[?!=]?\z/) || BINARY_OPERATORS.include?(sym) || %i[[] []=].include?(sym)
           ":#{name}"
+        elsif name.match?(/\A@@?[a-zA-Z_]\w*\z/)
+          # A variable name is a bare symbol too (`:@ivar`, `:@@cvar`); only
+          # the ?/!/= suffixes a method name may carry are not.
+          ":#{name}"
         elsif name.start_with?('$') && !name.include?('\\')
           # A backslash never survives the bare form — `:$\` does not parse —
           # so those fall through to the quoted form, where the raw content
