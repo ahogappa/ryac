@@ -401,7 +401,7 @@ module Ryac
       # gemspec-style Gemfile, and the program's own constants leak into the
       # "exists at boot" answer — under self-hosting, Ryac itself.
       def probe(stdlib_requires)
-        requires = stdlib_requires.map { |r| "begin;require #{r.dump};rescue LoadError;end" }.join(';')
+        requires = stdlib_requires.map { |r| "begin;require #{r.dump};rescue LoadError, StandardError;end" }.join(';')
         script = "#{requires};puts Object.constants"
         popen = -> { IO.popen([{ 'RUBYOPT' => nil }, RbConfig.ruby, '-e', script], &:read) } #: ^() -> String
         out = defined?(Bundler) ? Bundler.with_unbundled_env(&popen) : popen.call
