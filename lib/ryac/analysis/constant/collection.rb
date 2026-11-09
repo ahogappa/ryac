@@ -400,9 +400,10 @@ module Ryac
       # subprocess boots bundler, bundler evaluates the analyzed project's
       # gemspec-style Gemfile, and the program's own constants leak into the
       # "exists at boot" answer — under self-hosting, Ryac itself. A require
-      # that raises fails the whole probe, so the caller falls back rather
-      # than trusting a partial answer; the probe's stderr is discarded, since
-      # that error is not the minifier's output.
+      # whose file is missing (LoadError) is skipped and the probe goes on
+      # without it. Any other error fails the whole probe, so the caller
+      # falls back rather than trusting a partial answer; the probe's stderr
+      # is discarded, since that error is not the minifier's output.
       def probe(stdlib_requires)
         requires = stdlib_requires.map { |r| "begin;require #{r.dump};rescue LoadError;end" }.join(';')
         script = "#{requires};puts Object.constants"
